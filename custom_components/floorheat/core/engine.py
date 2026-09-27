@@ -8,11 +8,13 @@ run it as often as it likes.
 Order within a step:
 1. heat source transitions from the actual switch state (D-66, D-78, D-91, D-95);
 2. readings and sensor fault (§3.6, D-88, D-93);
-3. zone transitions (§3.3 rules 1 to 4 and 6);
+3. zone transitions (§3.3 rules 1 to 4 and 6); outside the heating season every zone
+   without a fault is IDLE (D-24, D-97);
 4. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
+   outside the season the request is OFF at once, overriding min ON (D-68);
 5. valves and reason texts (D-20, D-27, D-64, D-71, D-89).
 
-Season OFF and notification events follow in P3, schedules and holiday in P9.
+Schedules and holiday follow in P9.
 """
 
 from __future__ import annotations
@@ -91,6 +93,7 @@ def step(
     """Compute the desired outputs and the next state (§5.3)."""
     _check(config, inputs, now)
     params = inputs.global_params
+    season = inputs.heating_season
     source = _heat_source(state, inputs.heat_source, now)
     running, last_on, off_since = source.running, source.last_on, source.off_since
     min_on_left = last_on + params.hp_min_on_time - now if running and last_on else _ZERO
@@ -110,27 +113,20 @@ def step(
         )
         zone = _Zone(zone_config, zone_params, zone_params.base_setpoint, room)
         zones[zone_config.id] = zone
-        zone_states[zone_config.id] = _transition(zone_state, zone, timed_out, running, now)
+        zone_state = _transition(zone_state, zone, timed_out, running, now)
+        if not season and zone_state.mode is not _FAULT:
+            zone_state = _set_mode(zone_state, _IDLE)  # no demand at all (D-24, D-97)
+        zone_states[zone_config.id] = zone_state
 
-    # A calling zone only exists while the request is ON, so it continues the cycle.
-    calling = state.calling_zone if state.calling_zone in zones else None
-    sync_fired = state.sync_fired
-    if source.stopped:
-        calling, sync_fired = None, False  # the heat pump stopped: the cycle is over
-    if source.available:
-        zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
-    request = _request(zone_states, running, min_on_left, min_off_left)
-    # While the switch is unavailable it is unknown whether the heat pump still runs:
-    # the cycle stays as it is until the switch reports again (D-95).
-    if source.available and not request.on:
-        calling, sync_fired = None, False  # the cycle is over (or held by min OFF)
-    elif source.available and calling is None:
-        calling = _choose_calling_zone(zones, zone_states)
-        zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
-        request = _request(zone_states, running, min_on_left, min_off_left)
+    if season:
+        zone_states, request, calling, sync_fired = _cycle(
+            state, source, zones, zone_states, min_on_left, min_off_left
+        )
+    else:  # the request goes OFF at once, even within min ON (D-68)
+        request, calling, sync_fired = _Request(on=False, spreading=False, held=False), None, False
 
     valves = {
-        zone_id: _valve(zone_states[zone_id], zone, running, request, params)
+        zone_id: season and _valve(zone_states[zone_id], zone, running, request, params)
         for zone_id, zone in zones.items()
     }
     reports = {
@@ -142,6 +138,7 @@ def step(
                 valves[zone_id],
                 calling,
                 request,
+                season,
                 source.available,
                 min_on_left,
                 min_off_left,
@@ -168,6 +165,35 @@ def step(
         sync_fired=sync_fired,
     )
     return outputs, new_state, []
+
+
+def _cycle(
+    state: CoreState,
+    source: _HeatSource,
+    zones: Mapping[str, _Zone],
+    zone_states: dict[str, ZoneState],
+    min_on_left: timedelta,
+    min_off_left: timedelta,
+) -> tuple[dict[str, ZoneState], _Request, str | None, bool]:
+    """Sync rule, request and calling zone in the heating season (§3.3, §3.5)."""
+    running = source.running
+    # A calling zone only exists while the request is ON, so it continues the cycle.
+    calling = state.calling_zone if state.calling_zone in zones else None
+    sync_fired = state.sync_fired
+    if source.stopped:
+        calling, sync_fired = None, False  # the heat pump stopped: the cycle is over
+    if source.available:
+        zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
+    request = _request(zone_states, running, min_on_left, min_off_left)
+    # While the switch is unavailable it is unknown whether the heat pump still runs:
+    # the cycle stays as it is until the switch reports again (D-95).
+    if source.available and not request.on:
+        calling, sync_fired = None, False  # the cycle is over (or held by min OFF)
+    elif source.available and calling is None:
+        calling = _choose_calling_zone(zones, zone_states)
+        zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
+        request = _request(zone_states, running, min_on_left, min_off_left)
+    return zone_states, request, calling, sync_fired
 
 
 def _check(config: CoreConfig, inputs: Inputs, now: datetime) -> None:
@@ -376,6 +402,7 @@ def _reason(
     valve: bool,
     calling: str | None,
     request: _Request,
+    season: bool,
     source_available: bool,
     min_on_left: timedelta,
     min_off_left: timedelta,
@@ -383,7 +410,11 @@ def _reason(
 ) -> str:
     """Reason text for the zone's reason sensor (D-89)."""
     if zone_state.mode is _FAULT:
+        if not season:
+            return "Sensor fault (heating season off)"
         return "Sensor fault, following the heat pump"
+    if not season:
+        return "Heating season off"
     if zone.room is None:
         return "Waiting for a sensor reading"
     if zone_state.mode is _HEATING:

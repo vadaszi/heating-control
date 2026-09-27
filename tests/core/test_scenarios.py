@@ -417,3 +417,41 @@ def test_heat_source_back_off_after_power_loss() -> None:
     sc.advance_to("07:45")
     assert sc.hp
     assert sc.calling_zone == "zone_2"  # new cycle: zone 2 has the larger deficit
+
+
+def test_a20_season_off_mid_cycle_ignores_min_on() -> None:
+    """A20 (season part): switched OFF 20 min into a cycle, the request goes OFF and
+    every valve closes at once, although min ON has not elapsed (D-68, D-97)."""
+    sc = _started_by_zone_1(3, {2: 21.8})
+    sc.advance_to("06:50")
+    assert sc.open_valves() == {"zone_1", "zone_2"}
+    sc.set_season(False)
+    sc.step()
+    assert not sc.hp
+    assert sc.open_valves() == set()
+    assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE}
+    assert sc.calling_zone is None
+    assert not sc.sync_fired
+    assert sc.reason(1) == "Heating season off"
+    assert sc.state.hp_last_off_at == sc.now  # min OFF counts from the actual OFF
+
+
+def test_a20_no_demand_while_season_off() -> None:
+    sc = Scenario(3, temps={1: 21.0})
+    sc.set_season(False)
+    sc.step()
+    assert sc.mode(1) is IDLE
+    sc.temp(2, 18.0)
+    sc.advance_to("12:00")
+    assert not sc.hp
+    assert sc.open_valves() == set()
+    assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE}
+
+    sc.set_season(True)  # back ON: normal logic from IDLE, with WaitTime (rule 1)
+    sc.step()
+    assert sc.mode(1) is WAITING
+    assert sc.mode(2) is WAITING
+    assert not sc.hp
+    sc.advance_to("12:30")
+    assert sc.hp
+    assert sc.calling_zone == "zone_2"  # largest deficit (D-65)

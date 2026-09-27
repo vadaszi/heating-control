@@ -390,6 +390,81 @@ def test_restart_during_outage_keeps_the_outage() -> None:
     assert sc.state.hp_last_on_at == started  # never stopped
 
 
+# ---------------------------------------------------------------- §3.7 heating season (D-97)
+
+
+def test_season_on_again_is_held_by_min_off_from_the_actual_off() -> None:
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.step()
+    assert sc.hp
+    sc.advance(20)
+    sc.set_season(False)
+    sc.step()
+    off_at = sc.now
+    sc.advance(10)
+    sc.set_season(True)
+    sc.step()
+    assert sc.mode(1) is HEATING  # WaitTime 0
+    assert not sc.hp
+    assert sc.reason(1) == "Held by min OFF, 50 min left"
+    sc.now = off_at + timedelta(minutes=59)
+    sc.step()
+    assert not sc.hp
+    sc.advance(1)
+    assert sc.hp
+
+
+def test_season_off_closes_faulty_zones_while_the_hp_still_runs() -> None:
+    sc = Scenario(2, temps={1: 21.8, 2: None})
+    sc.step()
+    sc.advance_to("07:01")
+    assert sc.mode(2) is FAULT
+    assert sc.hp
+    assert sc.valve(2) is True  # follows the house
+    sc.set_hp_actual(OutputState.ON)  # the switch does not follow the OFF command yet
+    sc.set_season(False)
+    sc.step()
+    assert not sc.hp
+    assert sc.valve(2) is False
+    assert sc.mode(2) is FAULT  # fault detection keeps running (D-75)
+    assert sc.reason(2) == "Sensor fault (heating season off)"
+    assert sc.mode(1) is IDLE  # no join by rule 3 although the HP still runs
+
+
+def test_season_off_ends_the_cycle_while_the_heat_source_is_unavailable() -> None:
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.step()
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(5)
+    assert sc.calling_zone == "zone_1"  # kept while unknown (D-95)
+    sc.set_season(False)
+    sc.step()
+    assert sc.calling_zone is None
+    assert not sc.sync_fired
+    assert sc.reason(1) == "Heating season off"
+
+
+def test_season_off_at_first_start_with_the_hp_on() -> None:
+    """No D-91 spread outside the season: the request is OFF at once."""
+    sc = Scenario(2, start="07:00", hp_on=True)
+    sc.set_season(False)
+    sc.step()
+    assert not sc.hp
+    assert sc.open_valves() == set()
+
+
+def test_setpoint_change_during_season_off_is_not_a_raise_later() -> None:
+    """SetPoint tracking continues while OFF, so switching ON is not a D-26 raise."""
+    sc = Scenario(2, temps={1: 21.5})
+    sc.set_season(False)
+    sc.step()
+    sc.set_setpoint(1, 23.0)
+    sc.advance(5)
+    sc.set_season(True)
+    sc.step()
+    assert sc.mode(1) is WAITING
+
+
 # ---------------------------------------------------------------- §3.6 readings and fault
 
 

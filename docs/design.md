@@ -234,7 +234,7 @@ Unvalved zones compute state normally; only their output is a no-op.
 - **All zones satisfied before HpMinOnTime has elapsed (D-20, D-71):** the request stays ON and all valves open until HpMinOnTime elapses. Zones with RoomTemp ≥ ManualMaxTemp are excluded and stay closed. The remaining heat is spread over the house. Then the request goes OFF and valves follow normal logic.
 - **A zone calls before HpMinOffTime has elapsed:** the request waits until HpMinOffTime has elapsed. The zone is `HEATING` with its valve open in the meantime (D-64).
 - **WaitTime and HpMinOffTime run in parallel.** The request goes ON when both have elapsed and the WaitTime check passed.
-- **Heating season switched OFF (D-68):** the request goes OFF and valves close immediately, even if HpMinOnTime has not elapsed.
+- **Heating season switched OFF (D-68, D-97):** the request goes OFF and valves close immediately, even if HpMinOnTime has not elapsed. HpMinOffTime counts from that OFF when the season is switched ON again.
 - **First start (D-78):** with no persisted last-OFF time, HpMinOffTime is not applied.
 - **First start with the heat source already ON (D-91):** with no persisted last-ON time, HpMinOnTime counts from startup. If no zone has demand, the D-20 spread runs until it elapses.
 
@@ -293,6 +293,14 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - The failsafe heats only in heating season (D-37).
   - Switching it OFF mid-cycle stops the heat pump request immediately, ignoring HpMinOnTime (D-68).
   - Manual and auto schedules create no heating while it is OFF.
+  - **Details (D-97):**
+    - sensor fault detection and SetPoint tracking keep running;
+    - every zone not in `SENSOR_FAULT` is `IDLE`; a running WaitTime ends;
+    - the calling zone and the sync flag are cleared, also while the heat source switch is unavailable;
+    - the request is OFF and every valve is closed, faulty zones included; this overrides min ON and the D-20 spread;
+    - the HP timers keep following the actual switch, so HpMinOffTime counts from the actual OFF;
+    - reason texts: "Heating season off"; a faulty zone shows "Sensor fault (heating season off)";
+    - switching it ON again is not a SetPoint raise (D-26): zones start from `IDLE` under the normal rules (a cold zone enters `WAITING`).
 - **Valve exercise (D-10, D-25, D-37):** only outside the heating season.
   - Weekly, Monday 08:00; each valve opens for 15 min, one after another; heat pump off.
   - No flow is needed; the goal is mechanical movement of the actuators.
@@ -729,9 +737,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-94 | A SetPoint decrease that leaves RoomTemp above the new StartTemp ends a running WaitTime at once (IDLE) |
 | D-95 | Heat source switch unavailable, then back: back ON after ON means it never stopped (min ON and the cycle continue); back OFF means OFF since it became unavailable; the cycle is kept while unavailable. Refines D-66; relies on the Shelly power-on default OFF |
 | D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence |
+| D-97 | Heating season OFF: zones without a fault are IDLE, the cycle ends, request OFF and all valves closed at once (faulty zones too); fault detection and SetPoint tracking continue; season ON is not a SetPoint raise (normal rules, WaitTime); HpMinOffTime counts from the actual OFF |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 during P3.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 and D-97 during P3.
 
 ---
 
