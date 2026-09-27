@@ -51,17 +51,17 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - `core/io.py`: `Inputs` (temps + last_reported, actual outputs, params, season, control_active) and `Outputs` / `Event` types.
 - `core/units.py`: °C conversion helpers for the adapter (D-77).
 - **Tests:** validation edge cases (every range boundary, including 29/30 min rejected/accepted); state serialisation round-trip (hypothesis); unknown schema version handled.
-- Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87.)*
+- Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87; D-88/D-89 settled for P2/P3.)*
 
 ## P2 — Core zone logic & HP protection (`step`)
 - `core/engine.py`: `step(config, state, inputs, now) -> (outputs, new_state, events)`.
 - Implements the IDLE/WAITING/HEATING state machine (§3.2–3.3): single check at the end of the wait (D-05), join while running (D-14), SetPoint raise (D-26), sync rule once per cycle (D-06/15), calling zone and tie-break (D-65), switch-off, unvalved zone (no output).
 - HP protection (§3.5): min ON/OFF from actual transitions (D-66), D-20 spread excluding zones ≥ ManualMaxTemp (D-71), demand held back by min OFF with the valve open (D-64), WaitTime ∥ min OFF (D-39), first start (D-78).
-- Reason texts per zone ("Calling zone", "Waiting, 12 min left", "Held by min OFF, 8 min left").
+- Reason texts per zone ("Calling zone", "Waiting, 12 min left", "Held by min OFF, 8 min left"), returned in `Outputs` (D-89).
 - **Tests:** A1–A9, A18 (sync part), A23, A26, A30; unit tests per rule; the simulation harness is introduced here with the invariants above; idempotency test.
 
 ## P3 — Core sensor fault, season, events
-- Sensor validity (plausibility range, `last_reported` age), SENSOR_FAULT enter/exit (§3.6), a faulty calling zone fires the sync rule (D-28), the fault follows the house.
+- Sensor validity (plausibility range on the raw reading before the offset, D-88; `last_reported` age), SENSOR_FAULT enter/exit (§3.6), a faulty calling zone fires the sync rule (D-28), the fault follows the house.
 - Heating season OFF: no demand, immediate stop (D-68).
 - Notification events: fault start / daily reminder at SensorFaultReminder / recovery; no reminder outside the season (D-75).
 - Output mismatch detection in the core: the counter over N consecutive steps where actual ≠ desired or unavailable → alert event + recovery (D-67). Inactive in shadow mode.

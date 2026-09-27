@@ -231,7 +231,7 @@ Unvalved zones compute state normally; only their output is a no-op.
 ### 3.6 Failure handling
 **Sensor fault (D-08, D-21, D-27, D-28)**
 - No valid reading for > `SensorFaultTimeout` (60 min) → the zone enters `SENSOR_FAULT`, regardless of its previous state.
-  - "Valid" means a numeric, plausible value received within the timeout. The plausibility range is *config*, default 0–40 °C (D-77). Implausible values are ignored, as if nothing had been received.
+  - "Valid" means a numeric, plausible value received within the timeout. The plausibility range is *config*, default 0–40 °C (D-77). It is checked against the raw sensor reading, before the per-zone offset (D-88). Implausible values are ignored, as if nothing had been received.
   - The last-report time is used, not the last-change time (§5.3).
 - While in fault, the zone follows the house and creates no demand.
 - On a valid reading again → the zone returns to normal logic.
@@ -383,8 +383,8 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - a single deterministic step function:
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
-  - `desired_outputs`: per-zone valve on/off, heat pump request on/off;
-  - `events`: notifications, log entries, reason texts;
+  - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89);
+  - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
 - fully covered by unit tests (§6).
 
@@ -707,9 +707,11 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-85 | Duplicate zone names are detected case-insensitively after trimming |
 | D-86 | Parameter validation checks the inclusive §4 range only (plus finite numbers); the §4 step is UI granularity |
 | D-87 | Persisted core state is versioned; additive fields get defaults, breaking changes bump the version; newer-version or corrupt data is discarded and the integration starts as on a first start (D-78); state of removed zones is dropped |
+| D-88 | The plausibility range (§3.6) is checked against the raw sensor reading, before the per-zone offset |
+| D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-87 were added on 2026-09-27 during P1.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1.
 
 ---
 
