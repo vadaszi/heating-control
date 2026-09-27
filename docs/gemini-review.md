@@ -11,7 +11,8 @@
 
 ## Quick Navigation
 
-- [⭐ **Latest Review: 2026-09-27 (Phase P3 / Commit `c510a38`)**](#review-session-2026-09-27--phase-p3-verification-commit-c510a38)
+- [⭐ **Latest Review: 2026-09-27 (Phase P4 / Commit `44098ab`)**](#review-session-2026-09-27--phase-p4-verification-commit-44098ab)
+- [Review Session: 2026-09-27 (Phase P3 / Commit `c510a38`)](#review-session-2026-09-27--phase-p3-verification-commit-c510a38)
 - [Review Session: 2026-09-27 (Phase P2 / Commit `b0376c2`)](#review-session-2026-09-27--phase-p2-verification-commit-b0376c2)
 - [Review History & Session Index](#review-history--session-index)
 
@@ -21,8 +22,73 @@
 
 | Date | Phase / Milestone | Commit | Status / Verdict | Link |
 |---|---|---|---|---|
+| **2026-09-27** | Phase P4 (Shelly watchdog scripts v1, heartbeat protocol) | `44098ab` | ✅ P4 Complete & Verified (305 Python tests, 94 JS tests, AST subset enforced) | [Jump to session](#review-session-2026-09-27--phase-p4-verification-commit-44098ab) |
 | **2026-09-27** | Phase P3 (Season OFF, alerts, mismatch counter, v1 core complete) | `c510a38` | ✅ P3 Complete & Verified (305 tests, 100% core coverage, v1 core finished) | [Jump to session](#review-session-2026-09-27--phase-p3-verification-commit-c510a38) |
 | **2026-09-27** | Phase P2 (Core zone logic, sensor validity, HP protection) | `b0376c2` | ✅ P2 Complete & Verified (249 tests, 100% core coverage, 6 observations noted) | [Jump to session](#review-session-2026-09-27--phase-p2-verification-commit-b0376c2) |
+
+---
+
+## Review Session: 2026-09-27 — Phase P4 Verification (Commit `44098ab`)
+
+- **Scope:** Shelly watchdog scripts (`shelly_scripts/heat_source_watchdog.js`, `valve_watchdog.js`), protocol specs (`docs/heartbeat-protocol.md`, `docs/shelly-scripts.md`), test harness and runtime mock (`tests/shelly/`).
+- **Target Specification:** Spec rev. 1.2 (`docs/design.md`), Implementation Plan Phase P4 (`docs/implementation-plan.md`), decisions D-100 through D-105.
+- **Automated Verification:**
+  - `npm test`: **94 passed** in 161ms across 16 test suites (`tests/shelly/**/*.test.mjs`).
+  - AST language subset analysis (`tests/shelly/subset.mjs`): Acorn parser guarantees scripts adhere strictly to the supported mJS / Espruino subset (no `const`, no arrow functions, no closures/hoisting, no ES6+ constructs that could crash the Shelly firmware).
+  - Runtime constraint verification (`tests/shelly/shelly_mock.mjs`): Simulates Gen2/Gen3 execution environment, verifying that scripts strictly obey hardware resource limits (max 5 timers, max 5 endpoints, max 5 RPCs in-flight, KVS key/value lengths).
+  - `pytest --cov`: **305 passed** (100% statement and branch coverage on Python `core/`).
+  - `mypy`: 0 errors across 22 source files.
+  - `ruff`: Clean.
+
+### 1. Executive Summary
+Phase P4 is **complete, exceptionally well-tested, and fully verified**. The two watchdog scripts (`valve_watchdog.js` and `heat_source_watchdog.js`) implement the required failsafe behaviors with defensive hardware safeguards. The heartbeat protocol specification and bench testing guides are clear and actionable.
+
+### 2. Verification of P4 Deliverables
+
+1. **Valve Watchdog Script (`shelly_scripts/valve_watchdog.js`):**
+   - Automatically probes switch components 0..7 or honors a user-specified `CONFIG.switch_ids`.
+   - On timeout (`heartbeat_timeout_s`, default 5 h), sets all channels `ON` (open) while throttling in-flight RPCs (`MAX_PENDING_CALLS = 4`) to prevent Shelly RPC queue exhaustion.
+   - Idempotently re-asserts `ON` at each check interval if an external command switches any channel `OFF` while timed out (D-103).
+   - Once a valid heartbeat arrives, immediately transitions back to `normal` and ceases commanding outputs, letting Home Assistant resume control (S4).
+
+2. **Heat Source Watchdog Script (`shelly_scripts/heat_source_watchdog.js`):**
+   - On timeout (`heartbeat_timeout_s`, default 5 h), sets the heat request output `OFF`.
+   - Idempotently re-asserts `OFF` at each check interval if an external command turns the output `ON` while timed out (D-103).
+   - Validates that heartbeat `POST` requests include `{"season": true/false}`; rejects malformed or missing season flags with `400` so HA can detect failed calls.
+   - Flash protection: writes the season flag to KVS only when it changes from the stored value, avoiding unnecessary flash wear.
+   - On boot, reads stored season from KVS; correctly prioritizes any incoming heartbeat received while the KVS read is in-flight.
+
+3. **Protocol & Documentation (`docs/heartbeat-protocol.md`, `docs/shelly-scripts.md`):**
+   - Documented endpoints (`POST` for heartbeat + status, `GET` for status only; 405 for other methods).
+   - Standardized JSON status schema (`v`, `role`, `script_version`, `running`, `state`, `heartbeat_seen`, `heartbeat_age_s`, `uptime_s`, `switches`, `params`).
+   - Comprehensive bench test procedures provided for the owner (S1, S4, S6, reboot checks, and V2 hardware verification).
+   - Strongly emphasizes setting device power-on defaults to `OFF` (critical for D-95 logic).
+
+---
+
+### 3. Considerations for Upcoming Phases (P5 & P7)
+
+#### A. Phase P5 (Home Assistant Adapter - Reconcile Loop & Outputs)
+- **Recompute before commanding:** The reconcile loop must always execute `step()` with actual observed switch states before sending commands. Stale commands must never be issued to switches returning from `UNAVAILABLE` (D-95).
+- **Graceful coexistence with watchdogs:** While an output is `UNAVAILABLE`, do not queue commands. When it reconnects, allow the mismatch tracker and reconcile loop to bring it into alignment.
+
+#### B. Phase P7 (Home Assistant Heartbeat Client)
+- **Script ID discovery:** The endpoint URL requires `<script-id>` (`http://<device>/script/<id>/heartbeat`). P7 should define how HA obtains this ID: either via explicit YAML configuration (e.g. `script_id: 1`) or via automatic discovery using Shelly's `Script.List` RPC method.
+- **Role verification:** HA must ensure the script's reported `role` matches the expected device role (`"valve"` for valve controllers, `"heat_source"` for the heat pump relay).
+- **Parameter check (D-73):** HA will compare `params.heartbeat_timeout_s` against expected values and raise an alert if they diverge.
+
+---
+
+### 4. Readiness Checklist for Phase P5 (HA Adapter)
+- [x] Control core v1 feature set complete (`core/`).
+- [x] Shelly watchdog scripts & tests complete (`shelly_scripts/`, `tests/shelly/`).
+- [ ] **Phase P5 Deliverables:**
+  - [ ] Voluptuous YAML schema validation (`custom_components/floorheat/__init__.py`).
+  - [ ] Input collection (`ZoneInput`, unit conversion, switch states).
+  - [ ] Reconcile loop (`ReconcileInterval` timer tick + sensor change triggers, serialized with an `asyncio.Lock`).
+  - [ ] Output commanding with backoff and shadow mode gating (D-66, D-69).
+  - [ ] State persistence via `homeassistant.helpers.storage.Store`.
+  - [ ] HA test harness scenarios: A21, A22, A25, A27.
 
 ---
 
@@ -67,46 +133,6 @@ Phase P3 is **complete and fully verified**. With this milestone, the **v1 contr
 5. **Acceptance Scenarios & Multi-Day Thermal Simulation:**
    - Scenarios A17, A20, A27 (logic part), and A29 (alert and glitch parts) pass.
    - Multi-day simulation (`test_season_changes`) tests frequent mid-cycle season changes, sensor dropouts, and reminder catch-up across several days without invariant violations.
-
----
-
-### 3. Observations & Recommendations for Next Phases (P4 / P5)
-
-#### A. Event Payload Consistency on Mismatch Recovery
-- **Location:** `custom_components/floorheat/core/alerts.py` (`_output_event`, lines 167–170)
-- **Detail:**
-  When `OUTPUT_MISMATCH` is emitted, `event.data` contains `{"output": output, "desired": desired, "actual": actual.value}`. On `OUTPUT_MISMATCH_RECOVERED`, `event.data` is currently empty (`{}`), relying only on `event.zone_id` (`None` for heat source, zone slug for valves) and `message`.
-- **Note for P6 (Entities & Notifications):** While `zone_id` is sufficient to identify the recovering entity, passing `{"output": output}` in `data` on recovery may simplify event handlers in the adapter that parse structured attributes rather than matching message text. *(Done before P4: the recovery event carries `{"output": ...}`)*
-
-#### B. P4 Alignment: Shelly Power-On Default vs D-95
-- **Location:** `shelly_scripts/` (to be implemented in P4)
-- **Detail:** D-95 relies on the physical Shelly 1 relay having its **power-on default set to OFF**. If the device experiences a true power loss, it boots OFF. When HA reconnects, seeing `OFF` correctly concludes that the heat pump stopped during power loss.
-- **Actionable Note for P4:** Ensure that the documentation and configuration guide in Phase P4 emphasize this device setting requirement for the heat source Shelly. *(Handled in P4: `docs/shelly-scripts.md`, required device settings)*
-
-#### C. P5 Adapter Contract Requirements:
-As planned in `docs/implementation-plan.md`, the adapter implementation in P5 should adhere to:
-1. `Inputs.time_zone`: Pass HA's configured time zone (`dt_util.get_time_zone(...)` or `ZoneInfo(hass.config.time_zone)`).
-2. `Inputs.reconcile_tick`: Set `True` only on scheduled `ReconcileInterval` timer ticks, and `False` on sensor/switch state change triggers.
-3. Valve state completeness: Provide `ZoneInput.valve` for every valved zone (pass `OutputState.UNAVAILABLE` if an entity is missing).
-4. Recompute before commanding: Never command a stale state; always call `step()` with current states before issuing switch commands.
-
-*(All four are listed under P5 "Carried over" in `docs/implementation-plan.md`.)*
-
----
-
-### 4. Readiness Checklist for Phase P4 & P5
-- [x] Control core v1 feature set complete (`core/`).
-- [ ] **Phase P4 (Shelly Watchdogs & Heartbeat Protocol):**
-  - [ ] `docs/heartbeat-protocol.md` spec.
-  - [ ] `shelly_scripts/valve_watchdog.js` (failsafe open after 5h).
-  - [ ] `shelly_scripts/heat_source_watchdog.js` (failsafe OFF after 5h, season flag in KVS, boot = last heartbeat).
-  - [ ] Node.js mock API unit tests with simulated time.
-- [ ] **Phase P5 (HA Adapter - Reconcile, Outputs, Persistence):**
-  - [ ] YAML schema validation per §5.6.
-  - [ ] Input collection & unit conversion (`units.py`).
-  - [ ] Reconcile loop with lock serialization and backoff.
-  - [ ] State persistence via `helpers.storage.Store`.
-  - [ ] Scenarios A21, A22, A25, A27 (HA test harness).
 
 ---
 
