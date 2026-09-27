@@ -137,6 +137,41 @@ def test_no_raise_detected_on_the_first_step() -> None:
 # ---------------------------------------------------------------- rule 6: switch-off
 
 
+def test_setpoint_decrease_ends_the_wait() -> None:
+    """D-94: a lowered SetPoint that leaves RoomTemp above StartTemp ends the wait at once."""
+    sc = Scenario(2, temps={1: 21.0})
+    sc.step()
+    sc.advance(5)
+    assert sc.mode(1) is WAITING
+    sc.set_setpoint(1, 18.0)
+    sc.step()
+    assert sc.mode(1) is IDLE
+    assert sc.reason(1) == "Idle"
+    sc.advance_to("07:00")
+    assert not sc.hp
+
+
+def test_small_setpoint_decrease_keeps_waiting() -> None:
+    """Still at or below the new StartTemp: the wait goes on (D-05 is about readings)."""
+    sc = Scenario(2, temps={1: 21.0})
+    sc.step()
+    sc.advance(5)
+    sc.set_setpoint(1, 21.5)  # StartTemp 21.3 >= RoomTemp 21.0
+    sc.step()
+    assert sc.mode(1) is WAITING
+    assert sc.reason(1) == "Waiting, 25 min left"
+
+
+def test_rising_reading_during_the_wait_does_not_end_it() -> None:
+    """D-05 still holds: only a SetPoint change ends the wait early, not a reading."""
+    sc = Scenario(2, temps={1: 21.8})
+    sc.step()
+    sc.advance(5)
+    sc.temp(1, 23.0)
+    sc.step()
+    assert sc.mode(1) is WAITING
+
+
 def test_setpoint_decrease_switches_off() -> None:
     sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
     sc.step()
@@ -254,6 +289,19 @@ def test_spread_opens_faulty_zones() -> None:
     sc.step()
     assert sc.hp  # min ON until 07:30
     assert sc.open_valves() == {"zone_1", "zone_2", "zone_3"}
+
+
+def test_unvalved_zone_never_shows_the_manual_max_exclusion() -> None:
+    """Review B: water flows through a zone without a valve whenever the HP runs."""
+    sc = Scenario(3, unvalved=[3], temps={1: 21.8, 2: 25.0, 3: 25.0})
+    sc.step()
+    sc.advance_to("06:30")
+    sc.temp(1, 22.2)
+    sc.advance(1)
+    assert sc.hp  # D-20 spread
+    assert sc.reason(2) == "Idle, at or above ManualMaxTemp"
+    assert sc.reason(3) == "Spreading heat (min ON), 59 min left"
+    assert sc.valve(3) is None
 
 
 def test_zone_without_any_reading_stays_closed_during_spread() -> None:
@@ -387,6 +435,15 @@ def test_now_must_be_timezone_aware() -> None:
     sc = Scenario(1)
     with pytest.raises(ValueError, match="time zone"):
         step(sc.config, sc.state, sc.inputs(), datetime(2026, 1, 12, 6, 0))  # noqa: DTZ001
+
+
+def test_last_reported_must_be_timezone_aware() -> None:
+    """Review D: a naive timestamp is rejected with a clear error, not a TypeError."""
+    config = make_config(1)
+    naive = datetime(2026, 1, 12, 6, 0)  # noqa: DTZ001
+    inputs = _inputs({"zone_1": ZoneInput(22.0, naive, OutputState.OFF)}, {"zone_1": ZoneParams()})
+    with pytest.raises(ValueError, match="zone_1: last_reported must carry a time zone"):
+        step(config, CoreState(), inputs, at("06:00"))
 
 
 def test_inputs_must_cover_every_zone() -> None:

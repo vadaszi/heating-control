@@ -164,6 +164,7 @@ Unvalved zones compute state normally; only their output is a no-op.
 2. **Single check at end of wait (D-05).** When WaitTime expires, only the current temperature is checked; readings during the wait are ignored.
    - RoomTemp ≤ StartTemp → `HEATING`. The valve opens immediately. The heat pump request goes ON (subject to §3.5), and the zone becomes the calling zone.
    - Otherwise → `IDLE`.
+   - **SetPoint lowered during the wait (D-94):** if a SetPoint decrease leaves RoomTemp above the new StartTemp, the wait ends at once (`IDLE`). This mirrors rule 4; D-05 still applies to readings.
    - **Held back by HpMinOffTime (D-64):** the zone stays `HEATING` with its valve open until HpMinOffTime elapses, then the request goes ON. If RoomTemp reaches StopTemp in the meantime, the zone goes `IDLE` (rule 6) and nothing starts.
 3. **Join while running (D-14).** If the heat pump is running, any zone with RoomTemp ≤ StartTemp goes to `HEATING` immediately, without WaitTime. This includes zones in `WAITING`. WaitTime exists only to avoid *starting* the heat pump because of a short window opening.
 4. **SetPoint raised (D-26).** If a schedule change, holiday end or user change raises SetPoint so that RoomTemp ≤ StartTemp, the zone goes to `HEATING` immediately, without WaitTime.
@@ -719,9 +720,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-91 | First start with the heat source already ON and no persisted ON time: HpMinOnTime counts from startup |
 | D-92 | Request ON without a calling zone: the HEATING zone with the largest deficit (ties by YAML order) becomes the calling zone |
 | D-93 | No valid reading since startup and none persisted: SensorFaultTimeout counts from startup; the zone is IDLE with no demand until then |
+| D-94 | A SetPoint decrease that leaves RoomTemp above the new StartTemp ends a running WaitTime at once (IDLE) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 after the P2 review.
 
 ---
 

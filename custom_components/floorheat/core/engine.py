@@ -158,6 +158,10 @@ def _check(config: CoreConfig, inputs: Inputs, now: datetime) -> None:
     ]
     if missing:
         raise ValueError(f"inputs lack zones: {', '.join(missing)}")
+    for zone_id, zone_input in inputs.zones.items():
+        reported = zone_input.last_reported
+        if reported is not None and reported.utcoffset() is None:
+            raise ValueError(f"{zone_id}: last_reported must carry a time zone")
 
 
 def _heat_source_times(
@@ -215,9 +219,10 @@ def _set_mode(zone_state: ZoneState, mode: ZoneMode) -> ZoneState:
 def _transition(
     zone_state: ZoneState, zone: _Zone, timed_out: bool, running: bool, now: datetime
 ) -> ZoneState:
-    """§3.3 rules 1 to 4 and 6 for one zone, plus the sensor fault (§3.6)."""
+    """§3.3 rules 1 to 4 and 6 (and D-94) for one zone, plus the sensor fault (§3.6)."""
     previous = zone_state.last_setpoint
     raised = previous is not None and zone.setpoint > previous + _EPS
+    lowered = previous is not None and zone.setpoint < previous - _EPS
     zone_state = dataclasses.replace(zone_state, last_setpoint=zone.setpoint)
     if timed_out:
         if zone_state.mode is _FAULT:
@@ -232,6 +237,8 @@ def _transition(
         return _set_mode(zone_state, _IDLE) if zone.satisfied() else zone_state  # rule 6
     if zone.needs_heat() and (running or raised):  # rules 3 and 4: no WaitTime
         return _set_mode(zone_state, _HEATING)
+    if zone_state.mode is _WAITING and lowered and not zone.needs_heat():
+        return _set_mode(zone_state, _IDLE)  # SetPoint lowered: the wait ends (D-94)
     if zone_state.mode is _IDLE:
         if not zone.needs_heat():
             return zone_state
@@ -346,7 +353,8 @@ def _reason(
             return f"Held by min OFF, {_minutes(min_off_left)} min left"
         return "Calling zone" if zone_id == calling else "Heating"
     if request.spreading:
-        if valve:
+        # Without a valve, water flows through the zone whenever the HP runs.
+        if valve or not zone.config.has_valve:
             return f"Spreading heat (min ON), {_minutes(min_on_left)} min left"
         return "Idle, at or above ManualMaxTemp"
     if zone_state.mode is _WAITING and zone_state.wait_started_at is not None:

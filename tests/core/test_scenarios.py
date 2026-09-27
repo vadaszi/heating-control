@@ -346,3 +346,31 @@ def test_a30_first_start_without_persisted_state() -> None:
     sc.advance_to("06:30")
     assert sc.hp
     assert sc.calling_zone == "zone_1"
+
+
+def test_heat_source_wifi_glitch_no_off_after_it_returns_on() -> None:
+    """Owner requirement: a Wi-Fi glitch (router restart) must not turn a working,
+    running heat pump OFF. While unavailable it counts as OFF (D-66); the OFF request
+    cannot reach the switch. Once it reports ON again, the core wants it ON."""
+    sc = _started_by_zone_1(3)
+    sc.advance_to("06:45")
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(3)
+    assert not sc.hp  # the switch is unreachable: nothing can be sent anyway
+    sc.set_hp_actual(OutputState.ON, follows=True)  # back, still ON: it never stopped
+    sc.step()
+    assert sc.hp
+    assert sc.mode(1) is HEATING
+
+
+def test_heat_source_wifi_glitch_without_demand_keeps_it_on() -> None:
+    """Even with no demand left, a heat pump that reports ON again is not switched OFF
+    at once: its return counts as an ON transition, so min ON applies."""
+    sc = _started_by_zone_1(2, {2: 22.2})
+    sc.advance_to("07:40")  # min ON has elapsed
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.temp(1, 22.2)  # satisfied during the glitch
+    sc.advance(3)
+    sc.set_hp_actual(OutputState.ON, follows=True)
+    sc.step()
+    assert sc.hp

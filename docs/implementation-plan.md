@@ -69,9 +69,8 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests:** A17 (notification and reminder), A20 (season part), A29 (mismatch alert), the mismatch counter (A27 logic part); simulation with season changes.
 - **Carried over (settle in the P3 plan):**
   - *Time zone contract* (review C): `step` needs HA's time zone for local wall-clock rules (the 08:00 reminder now, schedules in P9). Pass a `zoneinfo` time zone in `Inputs` and convert `now` in the core (see test strategy); DST tests.
-  - *SetPoint decrease while `WAITING`* (review A): the owner decides whether it ends the wait at once (`IDLE` when RoomTemp > the new StartTemp), mirroring rule 4. If yes, record a D-number.
-  - *Unvalved zone reason during the D-20 spread* (review B): never show "Idle, at or above ManualMaxTemp" for a zone without a valve (water flows through it whenever the HP runs).
-  - *Naive `last_reported`* (review D): reject it in the input check with a clear `ValueError`, like a naive `now`.
+  - *Heat source unavailable, then back* (review E, owner 2026-09-27): no grace period, unavailable counts as OFF (D-66), because a Shelly that lost power restarts OFF. But a Wi-Fi glitch or router restart must never lead to an OFF command to a Shelly that works and is ON. The core already never wants OFF once the switch reports ON again (tests `test_heat_source_wifi_glitch_*`). **Pending owner decision:** refine D-66 so that a switch coming back ON counts as never having stopped (min ON and the cycle continue), and one coming back OFF counts as OFF since it became unavailable. This removes the side effects of a glitch: min ON starting again, possibly with the D-20 spread, and the calling zone and sync being reset.
+  - *Done after the P2 review (2026-09-27):* SetPoint decrease ends the wait (review A, D-94); unvalved reason text during the spread (review B); naive `last_reported` rejected (review D).
   - *Mismatch counting*: `step` also runs on sensor updates, so the D-67 counter must count reconcile intervals, not steps. Define how the core tells them apart.
 
 ## P4 — Shelly scripts v1 + heartbeat protocol (local, bench)
@@ -89,8 +88,8 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests (HA harness):** A21 (no service calls in shadow; final safe command on switch-off), A22 (restart during WAITING and HP ON), A25 (manual valve change corrected), A27 (unavailable valve → alert once, backoff, recovery), bad YAML → clear errors, all-valved warning.
 - **Carried over:**
   - *Reconcile on heat source change* (P2 summary): also run a reconcile when the heat source switch changes state, so HP transitions are seen without waiting up to one ReconcileInterval (the core scenario times assume this).
-  - *Recompute before commanding* (review E): the reconcile loop always calls `step` with the current actual states before sending commands, never re-sends an older desired state. Otherwise a switch returning from `unavailable` could be sent a stale OFF.
-  - *Short unavailability of the heat source switch* (review E): under D-66 a 60 s Wi-Fi blip counts as OFF and restarts the min ON timer. Ask the owner whether a grace period (e.g. 1–2 intervals) before `unavailable` counts as OFF is wanted; that would amend D-66/A29.
+  - *Recompute before commanding* (review E): the reconcile loop always calls `step` with the current actual states before sending commands, and never re-sends an older desired state. Otherwise a switch returning from `unavailable` could be sent a stale OFF (owner requirement: a Wi-Fi glitch must never switch a working heat pump OFF).
+  - *No commands to unavailable switches*: while a switch is unavailable, do not queue commands for it. Count it for the mismatch alert (D-67) and recompute when it returns. No grace period before `unavailable` counts as OFF (owner, 2026-09-27).
 
 ## P6 — HA entities & notifications
 - Entities per §5.3: climate (heat only), state/reason/effective SetPoint sensors, Hysteresis/WaitTime numbers per zone; global HP binary sensor with ON-duration, mode sensor + shadow attribute (D-79), season and control-active switches, global number entities with §4 ranges, alerts sensor.
@@ -108,7 +107,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Owner (local):** install on the live HA in shadow mode; verify **V6** (`last_reported` moves for BTHome), **V4**, **V5** (wiring), **V1** (actuator power, needed later); run shadow mode for 1–2 weeks next to the Computherm and compare decisions (entity history). Then follow the go-live checklist: remove the Computherm, wire the Shelly 1, set Control active ON.
 - **Carried over:**
   - *`iot_class`* (review F): currently `local_polling`. Re-check before the release (the integration polls the Shellys locally for the heartbeat and pings healthchecks.io; `calculated` would claim no own communication).
-  - *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime after the first start. The owner confirms this is acceptable, or it goes into the go-live checklist.
+  - *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime after the first start. Accepted by the owner (2026-09-27); handled by the owner during the test phase, no code change.
 - **Done when:** v1 is running live, with no open critical issues.
 
 ## P9 — Core schedules & holiday (v1.1)
