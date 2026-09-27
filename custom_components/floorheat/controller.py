@@ -33,6 +33,7 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .core.alerts import active_alerts
 from .core.config import GlobalParams
 from .core.engine import step
 from .core.io import Event as CoreEvent
@@ -103,6 +104,11 @@ class FloorheatController:
     @property
     def pending_off(self) -> frozenset[str]:
         return frozenset(self._pending_off)
+
+    @property
+    def alerts(self) -> list[CoreEvent]:
+        """Alerts active now (the alerts sensor), derived from the state."""
+        return active_alerts(self.config.core, self._state)
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:

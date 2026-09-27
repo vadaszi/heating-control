@@ -11,6 +11,7 @@ Entity existence is checked after HA has started (D-107), not here.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
@@ -23,6 +24,7 @@ from .const import (
     CONF_HEAT_SOURCE_SWITCH,
     CONF_ID,
     CONF_NAME,
+    CONF_NOTIFY,
     CONF_OUTPUT_MISMATCH_ALERT,
     CONF_PLAUSIBLE_MAX,
     CONF_PLAUSIBLE_MIN,
@@ -41,6 +43,8 @@ from .const import (
 from .core.config import ConfigError, CoreConfig, ZoneConfig
 from .core.units import TemperatureUnit, delta_to_celsius, to_celsius
 
+NOTIFY_TARGET = re.compile(r"notify\.[a-z0-9_]+")
+
 
 def _valve(value: Any) -> str | None:
     """A switch entity, or `none` for a zone without a valve."""
@@ -50,6 +54,14 @@ def _valve(value: Any) -> str | None:
         return str(cv.entity_domain("switch")(value))
     except vol.Invalid as err:
         raise vol.Invalid(f"expected a switch entity or '{NO_VALVE}' ({err})") from None
+
+
+def _notify_target(value: Any) -> str:
+    """A notify service or notify entity, written `notify.<name>`."""
+    target = cv.string(value).strip()
+    if not NOTIFY_TARGET.fullmatch(target):
+        raise vol.Invalid(f"expected a notify target like 'notify.mobile_app_phone', got {value!r}")
+    return target
 
 
 ZONE_SCHEMA = vol.Schema(
@@ -104,6 +116,7 @@ FLOORHEAT_SCHEMA = vol.All(
             vol.Optional(CONF_OUTPUT_MISMATCH_ALERT, default=3): vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
+            vol.Optional(CONF_NOTIFY, default=list): vol.All(cv.ensure_list, [_notify_target]),
         }
     ),
     _check_wiring,
@@ -130,6 +143,7 @@ class FloorheatConfig:
     heat_source: str
     zones: tuple[ZoneWiring, ...]
     reconcile_interval: timedelta
+    notify: tuple[str, ...] = ()  # notify services or notify entities
 
     @property
     def valves(self) -> dict[str, str]:
@@ -202,4 +216,5 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig
             for zone in conf[CONF_ZONES]
         ),
         reconcile_interval=timedelta(seconds=conf[CONF_RECONCILE_INTERVAL]),
+        notify=tuple(dict.fromkeys(conf[CONF_NOTIFY])),
     )

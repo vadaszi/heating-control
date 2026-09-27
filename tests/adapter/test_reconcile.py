@@ -7,8 +7,7 @@ import logging
 
 import pytest
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import CoreState, HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import CoreState, HomeAssistant
 
 from custom_components.floorheat.core.io import Event as CoreEvent
 from custom_components.floorheat.core.io import EventKind
@@ -166,10 +165,7 @@ async def test_failed_command_is_logged_and_retried(
     world.setup_entities()
     assert await world.setup()
 
-    async def fail(call: ServiceCall) -> None:
-        raise HomeAssistantError("device offline")
-
-    world.hass.services.async_register("switch", "turn_off", fail)
+    world.failing.add(valve(2))
     world.switch(valve(2), "on")
     await world.hass.async_block_till_done()
     assert "Switching switch.valve_2 OFF failed: device offline" in caplog.text
@@ -181,15 +177,11 @@ async def test_failed_command_is_logged_and_retried(
 async def test_hanging_command_is_cancelled_on_stop(world: World) -> None:
     world.setup_entities()
     assert await world.setup()
-    started = asyncio.Event()
-
-    async def hang(call: ServiceCall) -> None:
-        started.set()
-        await asyncio.Event().wait()
-
-    world.hass.services.async_register("switch", "turn_off", hang)
+    world.hanging.add(valve(2))
     world.switch(valve(2), "on")
-    await started.wait()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert world.calls == [(valve(2), "off")]
     await world.controller.async_stop()
     await world.controller.async_stop()  # idempotent
     world.switch(valve(2), "on")

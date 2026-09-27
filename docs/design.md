@@ -449,6 +449,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - in shadow mode, no output commands.
 - **Persistence:** logic state in HA storage (`helpers.storage.Store`), restored at startup (§3.8).
 - **Notifications:** through the notify services listed in the YAML config.
+  - **Targets (D-117):** YAML `notify` lists `notify.<name>` targets. A legacy notify service of that name is called with title and message; otherwise the notify entity with that id gets `notify.send_message`. Calls run as tasks with a timeout; failures are logged and never stop the control. Titles: "floorheat: sensor fault" / "sensor fault reminder" / "sensor recovered" / "output not following command" / "output recovered"; the message is the core event text. Targets that don't exist are reported after HA has started (warning + persistent notification). Without targets, events are only logged.
 - **Heartbeat and watchdog:**
   - sends the heartbeat to the Shellys (§5.4);
   - pings healthchecks.io every `WatchdogPingInterval` (5 min).
@@ -468,6 +469,14 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - switches: heating season, control active;
   - number entities for the global parameters;
   - alerts sensor (count + list).
+- **Details (D-114 to D-116):**
+  - entity ids are fixed and built from the zone id: `climate.floorheat_<zone>`, `sensor.floorheat_<zone>_state` / `_reason` / `_setpoint`, `number.floorheat_<zone>_hysteresis` / `_wait_time`; global `binary_sensor.floorheat_heat_request`, `sensor.floorheat_mode`, `sensor.floorheat_alerts`, `switch.floorheat_heating_season`, `switch.floorheat_control_active`, `number.floorheat_<parameter>`, `time.floorheat_sensor_fault_reminder`. Unique ids `floorheat_<same key>`; display names use the zone name (D-115). Full list: [`configuration.md`](configuration.md#entities);
+  - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). SensorFaultReminder is a time entity;
+  - the entities are views of the adapter's settings and state (D-106): unavailable until the first reconcile run, except the settings (switches, numbers, time), which can be changed at once;
+  - climate `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*; attributes `zone_state`, `reason`, `valve` (desired), `calling_zone` (D-116);
+  - the heat request binary sensor is ON with the desired request (in shadow mode the simulated one); attributes `on_since` (last actual, or in shadow mode commanded, ON while running) and `on_duration` in minutes, excluded from the recorder (D-116);
+  - temperatures: climate, effective SetPoint and absolute temperature numbers are in °C and converted by HA; temperature differences (Hysteresis, ManualResumeDelta) are converted by the adapter to HA's unit system, because HA converts only absolute temperatures (D-77);
+  - the alerts sensor derives its list from the core state (`active_alerts`): faulty zones and outputs whose mismatch alert was sent.
 - **Holiday (D-79):** HolidayTemp number, end date/time entity, "Holiday active" switch.
 - **Schedules:** managed through integration services (add / delete / list) with validation. The list is exposed as a sensor attribute for the dashboard.
 - **Schedule form entities (D-74):** the integration provides its own draft entities so the dashboard needs no user-created helpers: type (auto/manual) and zone selects, one-shot date or weekday selection, start/end time, temperature, an "Add schedule" button, plus a select of existing schedules and a "Delete schedule" button. The buttons call the same validated logic as the services, and errors (e.g. overlap, D-19) are shown as a persistent notification.
@@ -500,7 +509,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **Switching OFF → ON:** the next reconcile sets all outputs to the desired state.
   - **Going live (D-112):** from then on the real switch states count. If shadow mode had the heat source ON and the real switch is OFF, that is a stop, so HpMinOffTime applies before the first real start. Accepted; noted in the go-live checklist.
 - **Commanded feedback (D-109):** the commanded state is the last desired state. When it changes, `step` runs again at once with the same `now` (not a new reconcile tick), as if the switches had followed. After a restart the heat source starts from the stored last known state, the valves from OFF.
-- **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids.
+- **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids. A new Template switch is `unknown` until it is switched once, and `unknown` counts as unavailable (no commands, D-66), so each stand-in is switched OFF once after it is created (user guide: [`getting-started.md`](getting-started.md)).
 - It is OFF on first install. The owner runs it for 1–2 weeks next to the existing controller, then switches to live.
 
 ### 5.6 Configuration (D-52, D-55)
@@ -792,10 +801,14 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-110 | Control active ON → OFF: the final OFF is repeated (D-108 backoff, persisted across restarts) until each switch has reported OFF once, then nothing more is sent; a switch already OFF gets no command. Refines D-69 |
 | D-111 | YAML keys as in `docs/configuration.md`; `valve` is required (`none` for no valve); a switch may be mapped once; YAML temperatures are in HA's unit system; readings are converted from the sensor's own unit |
 | D-112 | Going live after shadow mode: the real switch states count; a heat source that shadow mode had ON but that reads OFF counts as stopped, so HpMinOffTime applies before the first start. Accepted, noted in the go-live checklist |
-| D-113 | A shadow-mode trial without Shellys uses Template switch helpers without a state template as stand-in switches; the spec stays switch-only |
+| D-113 | A shadow-mode trial without Shellys uses Template switch helpers without a state template as stand-in switches; the spec stays switch-only. `unknown` counts as unavailable, so a new stand-in is switched OFF once after it is created |
+| D-114 | Every §4 global parameter gets its number entity in v1 (P6), also those whose features follow in v1.1/v1.2; the docs name the release each is used from |
+| D-115 | Entity ids are fixed and built from the zone id (`<platform>.floorheat_<zone>_<key>`, global `<platform>.floorheat_<key>`); unique ids `floorheat_<key>`; display names use the zone name |
+| D-116 | Climate `hvac_action` = heating while the request is ON and the zone gets flow (valve open or no valve); heat request binary sensor = desired request with `on_since` / `on_duration` (unrecorded) attributes |
+| D-117 | Notify targets are `notify.<name>`: a legacy notify service, otherwise a notify entity via `notify.send_message`; one title per event kind; failures logged, never blocking; unknown targets reported after start |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan).
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6.
 
 ---
 

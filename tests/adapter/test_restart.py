@@ -29,10 +29,13 @@ async def restarted(
         hass.data.pop(loader.DATA_CUSTOM_COMPONENTS)
         await hass.config.async_set_time_zone("UTC")
         new = World(hass, world.freezer)
+        await new.async_init()
         if prepare is not None:
             prepare(new)
-        yield new
-        await hass.async_stop(force=True)
+        try:
+            yield new
+        finally:
+            await hass.async_stop(force=True)
 
 
 def _stored(hass_storage: dict[str, Any]) -> dict[str, Any]:

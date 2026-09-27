@@ -99,8 +99,9 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Entities per §5.3: climate (heat only), state/reason/effective SetPoint sensors, Hysteresis/WaitTime numbers per zone; global HP binary sensor with ON-duration, mode sensor + shadow attribute (D-79), season and control-active switches, global number entities with §4 ranges, alerts sensor.
 - Notifications through the configured notify services; message texts in English.
 - **Tests:** entities created per zone with stable unique IDs based on the zone id; a number entity rejects values outside its range (e.g. HpMinOnTime 20); a changed parameter reaches the core; the climate target changes BaseSetPoint; events turn into notify calls (captured).
+- *(Done: 2026-09-27; decisions D-114…D-117. Platforms `climate`, `sensor`, `binary_sensor`, `number`, `switch`, `time` loaded from YAML by discovery; `entity.py`, `notifications.py`; `active_alerts` in `core/alerts.py`. Tests in `tests/adapter/` (entities, °F, notifications, a shadow trial with stand-ins, and HA's own Template switches as stand-ins). User docs: `docs/getting-started.md`, entities and notifications in `docs/configuration.md`. Every carried-over item below is done.)*
 
-- **Carried over:**
+- **Carried over (all done in P6):**
   - *Settings through the controller* (D-106): the number, switch and climate entities read and change `FloorheatController.settings` (`async_set_zone_params`, `async_set_global_params`, `async_set_heating_season`, `async_set_control_active`); they do not restore their own state. Temperatures are converted to and from HA's unit system (D-77). Update the entities from `async_add_listener`.
   - *Notify targets*: add the `notify` YAML key (list of notify services) to the schema and `docs/configuration.md`; turn the core events from `async_add_event_handler` into notify calls.
   - *Trial with stand-in switches* (D-113, owner request): the owner installs after P6 on the live HA in shadow mode with the real sensors and Template switch helpers (no state template) as stand-ins for the valves and the heat source, with no Shellys. Make sure that works (nothing in P5/P6 may need a Shelly), and write the user docs for it: installation (manual copy of `custom_components/floorheat`, HACS custom repository), creating the stand-in helpers, a YAML example, what to look at during the shadow run, how to swap in the real switches later.
@@ -130,11 +131,13 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Done when:** v1 is running live, with no open critical issues.
 
 ## P9 — Core schedules & holiday (v1.1)
+- **Carried over (from P6):** the number entities for ManualResumeDelta and HolidayTemp already exist (D-114); use their values from `GlobalParams`. The zone state sensor already lists `forced`.
 - `core/schedule.py`: one-shot and recurring (daily / weekdays) windows in local time, crossing midnight, DST-aware using the passed-in time zone (D-57). Overlap check for auto schedules (D-19). Manual schedules combine as a union (D-58). One-shot schedules are deleted after they end.
 - Precedence (D-16): holiday > manual > auto > base. FORCED state with the ManualMaxTemp cap and resume (D-38). Calling zone in a manually started cycle (D-44). SENSOR_FAULT beats FORCED (D-70). Holiday (D-59). A raised SetPoint at a schedule start or holiday end → immediate HEATING (D-26).
 - **Tests:** A10–A16, A24, A28; DST spring/autumn for 22:00–02:00 and windows inside the skipped/repeated hour; overlap detection against a brute-force minute scan (hypothesis); simulation with a week of schedules keeps the P2 invariants.
 
 ## P10 — HA schedules, holiday, dashboard (v1.1 release)
+- **Carried over (from P6):** the mode sensor shows `holiday` (its options already include it); update the "Used from" column in `docs/configuration.md#entities`.
 - Services add/delete/list with validation errors. The schedule list is a sensor attribute. Schedules are persisted.
 - Form entities (D-74): selects, date/time, weekdays, temperature, Add/Delete buttons; errors appear as a persistent notification.
 - Holiday switch + end datetime + HolidayTemp (D-79). The mode sensor shows holiday.
@@ -142,6 +145,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests:** service validation (the A12 overlap is rejected and nothing stored); a form-entity add/delete round trip; schedules survive a restart; holiday on/off through entities; the dashboard YAML loads (lovelace config parse). Owner: dashboard check on the live HA.
 
 ## P11 — Core failsafe & maintenance features (v1.2)
+- **Carried over (from P6):** the number entities for FailsafeTrigger, ValveExercise duration and LongRunAlarm already exist (D-114); wire them into the features. The mode sensor shows `failsafe`. New alert kinds go into `active_alerts` and `notifications.TITLES`.
 - Failsafe case 1: no valid sensor for > FailsafeTrigger → all valves open + HP ON during FailsafeWindow, heating season only; exits on the first valid reading; notifications.
 - Valve exercise: outside the season, Monday 08:00, valves one after another for 15 min each, HP off; aborted if the season turns ON.
 - Actuator fault check (only if **V1** is positive, otherwise disabled with a doc note), long run alarm at 12 h, overshoot logging (event + attribute, max 6 h).

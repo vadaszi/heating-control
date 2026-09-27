@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
 
@@ -17,12 +18,22 @@ from .const import DATA_CONTROLLER, DOMAIN
 from .controller import FloorheatController
 from .core.config import ConfigError, config_warnings
 from .core.units import TemperatureUnit
+from .notifications import Notifier
 from .schema import CONFIG_SCHEMA, build_config
 from .storage import FloorheatStore
 
 __all__ = ["CONFIG_SCHEMA", "DOMAIN", "async_setup"]
 
 _LOGGER = logging.getLogger(__name__)
+
+PLATFORMS = (
+    Platform.BINARY_SENSOR,
+    Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TIME,
+)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -44,8 +55,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         _LOGGER.warning("%s", warning)
     controller = FloorheatController(hass, floorheat_config, store, stored)
     hass.data[DATA_CONTROLLER] = controller
+    notifier = Notifier(hass, floorheat_config.notify)
+    controller.async_add_event_handler(notifier.async_handle)
+    for platform in PLATFORMS:
+        hass.async_create_task(
+            async_load_platform(hass, platform, DOMAIN, {}, config), f"{DOMAIN} {platform}"
+        )
 
     async def _async_started(_hass: HomeAssistant) -> None:
+        notifier.async_check_targets()
         await controller.async_start()
 
     async def _async_stop(_event: Event) -> None:

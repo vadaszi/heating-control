@@ -26,6 +26,7 @@ CONF_PLAUSIBLE_MIN: Final = "plausible_min"
 CONF_PLAUSIBLE_MAX: Final = "plausible_max"
 CONF_RECONCILE_INTERVAL: Final = "reconcile_interval"
 CONF_OUTPUT_MISMATCH_ALERT: Final = "output_mismatch_alert"
+CONF_NOTIFY: Final = "notify"
 
 NO_VALVE: Final = "none"
 
@@ -43,6 +44,7 @@ COMMAND_BACKOFF: Final = (
 )
 COMMAND_BACKOFF_REPEAT: Final = timedelta(minutes=15)
 COMMAND_TIMEOUT: Final = 30  # s; a switch service call never blocks the loop longer
+NOTIFY_TIMEOUT: Final = 30  # s; per notify call
 
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1

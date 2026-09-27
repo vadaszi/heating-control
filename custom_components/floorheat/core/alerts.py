@@ -8,6 +8,7 @@
 - Output mismatch: counted on reconcile ticks only, at most once per `now`; alert once
   after `output_mismatch_alert` ticks, then a recovery event; inactive in shadow mode
   (D-67, D-99).
+- Active alerts (the alerts sensor): derived from the state, not stored (`active_alerts`).
 """
 
 from __future__ import annotations
@@ -85,6 +86,42 @@ def fault_events(
         )
     )
     return events, today
+
+
+def active_alerts(config: CoreConfig, state: CoreState) -> list[Event]:
+    """Alerts active in `state`: the heat source first, then per zone in YAML order."""
+    alerts: list[Event] = []
+    if state.heat_source_output.alerted:
+        alerts.append(
+            Event(
+                kind=EventKind.OUTPUT_MISMATCH,
+                message="The heat source switch does not follow its command.",
+                data={"output": "heat_source"},
+            )
+        )
+    for zone in config.zones:
+        zone_state = state.zones.get(zone.id)
+        if zone_state is None:
+            continue
+        if zone_state.mode is _FAULT:
+            alerts.append(
+                Event(
+                    kind=EventKind.SENSOR_FAULT_STARTED,
+                    message=f"Sensor fault in {zone.name}.",
+                    zone_id=zone.id,
+                    data={"since": _iso(zone_state.fault_since)},
+                )
+            )
+        if zone_state.valve_output.alerted:
+            alerts.append(
+                Event(
+                    kind=EventKind.OUTPUT_MISMATCH,
+                    message=f"The valve of {zone.name} does not follow its command.",
+                    zone_id=zone.id,
+                    data={"output": "valve"},
+                )
+            )
+    return alerts
 
 
 def track_outputs(

@@ -1,21 +1,30 @@
 """Fixtures for the HA adapter tests (pytest-homeassistant-custom-component).
 
 `World` fakes the user's entities: temperature sensors set through the state machine
-(which maintains `last_reported`), and switches whose `switch.turn_on/turn_off` services
-are recorded and, unless told otherwise, followed. Time is frozen with `freezer`;
+(which maintains `last_reported`), and real switch entities on a `test` platform whose
+commands are recorded and, unless told otherwise, followed (like a Template switch
+stand-in, D-113). Time is frozen with `freezer`;
 `World.advance` moves it minute by minute and fires the timers like HA would.
 """
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from freezegun.api import FrozenDateTimeFactory
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    MockPlatform,
+    async_fire_time_changed,
+    mock_platform,
+)
 
 from custom_components.floorheat.const import DATA_CONTROLLER, DOMAIN
 from custom_components.floorheat.controller import FloorheatController
@@ -53,6 +62,31 @@ def valve(n: int) -> str:
     return f"switch.valve_{n}"
 
 
+class FakeSwitch(SwitchEntity):
+    """A user's switch: follows commands (like a Template switch stand-in) unless told
+    to ignore, fail or hang."""
+
+    _attr_should_poll = False
+
+    def __init__(self, world: World, entity_id: str, state: str) -> None:
+        self.world = world
+        self.entity_id = entity_id
+        self._attr_name = entity_id.split(".")[1]
+        self.set(state, write=False)
+
+    def set(self, state: str, *, write: bool = True) -> None:
+        self._attr_available = state != "unavailable"
+        self._attr_is_on = {"on": True, "off": False}.get(state)
+        if write:
+            self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.world.command(self, "on")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.world.command(self, "off")
+
+
 class World:
     """The fake installation around the integration."""
 
@@ -61,21 +95,34 @@ class World:
         self.freezer = freezer
         self.calls: list[tuple[str, str]] = []  # (entity_id, "on" / "off")
         self.ignoring: set[str] = set()  # switches that ignore commands
-        hass.services.async_register("switch", "turn_on", self._turn_on)
-        hass.services.async_register("switch", "turn_off", self._turn_off)
+        self.failing: set[str] = set()  # switches whose commands raise
+        self.hanging: set[str] = set()  # switches whose commands never return
+        self.switches: dict[str, FakeSwitch] = {}
+        self._add_entities: AddEntitiesCallback | None = None
 
-    async def _turn_on(self, call: ServiceCall) -> None:
-        self._command(call, "on")
+    async def async_init(self) -> None:
+        """Set up HA's switch component with a `test` platform for the user's switches."""
 
-    async def _turn_off(self, call: ServiceCall) -> None:
-        self._command(call, "off")
+        async def setup_platform(
+            hass: HomeAssistant,
+            config: Any,
+            add_entities: AddEntitiesCallback,
+            discovery_info: Any = None,
+        ) -> None:
+            self._add_entities = add_entities
 
-    def _command(self, call: ServiceCall, state: str) -> None:
-        entity_ids = call.data["entity_id"]
-        for entity_id in [entity_ids] if isinstance(entity_ids, str) else entity_ids:
-            self.calls.append((entity_id, state))
-            if entity_id not in self.ignoring:
-                self.hass.states.async_set(entity_id, state)
+        mock_platform(self.hass, "test.switch", MockPlatform(async_setup_platform=setup_platform))
+        assert await async_setup_component(self.hass, "switch", {"switch": {"platform": "test"}})
+        await self.hass.async_block_till_done()
+
+    async def command(self, switch: FakeSwitch, state: str) -> None:
+        self.calls.append((switch.entity_id, state))
+        if switch.entity_id in self.failing:
+            raise HomeAssistantError("device offline")
+        if switch.entity_id in self.hanging:
+            await asyncio.Event().wait()
+        if switch.entity_id not in self.ignoring:
+            switch.set(state)
 
     # ------------------------------------------------------------ entities
 
@@ -86,7 +133,13 @@ class World:
         self.hass.states.async_set(sensor(n), str(value), attributes)
 
     def switch(self, entity_id: str, state: str) -> None:
-        self.hass.states.async_set(entity_id, state)
+        """Set a switch's state, e.g. by hand or when it goes unavailable."""
+        if entity_id in self.switches:
+            self.switches[entity_id].set(state)
+            return
+        assert self._add_entities is not None
+        switch = self.switches[entity_id] = FakeSwitch(self, entity_id, state)
+        self._add_entities([switch])
 
     def setup_entities(self, zones: int = 2, temp: float = 22.0, *, hp: str = "off") -> None:
         for n in range(1, zones + 1):
@@ -101,6 +154,7 @@ class World:
     # ------------------------------------------------------------ integration
 
     async def setup(self, conf: dict[str, Any] | None = None, *, live: bool = True) -> bool:
+        await self.hass.async_block_till_done()  # switches added before are in place
         ok = await async_setup_component(self.hass, DOMAIN, conf or make_conf())
         await self.hass.async_block_till_done()
         if ok and live:
@@ -149,4 +203,6 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 async def world(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> World:
     freezer.move_to(START)
     await hass.config.async_set_time_zone("UTC")
-    return World(hass, freezer)
+    world = World(hass, freezer)
+    await world.async_init()
+    return world

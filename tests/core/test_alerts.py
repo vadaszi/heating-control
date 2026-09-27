@@ -7,6 +7,7 @@ import dataclasses
 from datetime import UTC, date, time, timedelta
 from zoneinfo import ZoneInfo
 
+from custom_components.floorheat.core.alerts import active_alerts
 from custom_components.floorheat.core.config import CoreConfig, GlobalParams, ZoneParams
 from custom_components.floorheat.core.engine import step
 from custom_components.floorheat.core.io import EventKind, OutputState
@@ -367,3 +368,40 @@ def test_mismatch_is_counted_outside_the_season() -> None:
     sc.set_valve_actual(2, OutputState.ON)  # e.g. switched in the Shelly app
     sc.advance(3)
     assert [e.zone_id for e in sc.events_of(MISMATCH)] == ["zone_2"]
+
+
+# ---------------------------------------------------------------- active alerts
+
+
+def test_no_active_alerts_normally() -> None:
+    sc = Scenario(2)
+    sc.step()
+    assert active_alerts(sc.config, sc.state) == []
+
+
+def test_active_alerts_list_faults_and_mismatches() -> None:
+    sc = _faulty_from_0701(3)
+    sc.set_valve_actual(2, OutputState.UNAVAILABLE)
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(3)
+    alerts = active_alerts(sc.config, sc.state)
+    assert [(a.kind, a.zone_id, a.data.get("output")) for a in alerts] == [
+        (EventKind.OUTPUT_MISMATCH, None, "heat_source"),
+        (STARTED, "zone_1", None),
+        (EventKind.OUTPUT_MISMATCH, "zone_2", "valve"),
+    ]
+    assert alerts[0].message == "The heat source switch does not follow its command."
+    assert alerts[1].message == "Sensor fault in Zone 1."
+    assert alerts[1].data == {"since": at("07:01").isoformat()}
+    assert alerts[2].message == "The valve of Zone 2 does not follow its command."
+
+    sc.temp(1, 22.0)
+    sc.set_valve_actual(2, OutputState.OFF, follows=True)
+    sc.set_hp_actual(OutputState.OFF, follows=True)
+    sc.advance(1)
+    assert active_alerts(sc.config, sc.state) == []
+
+
+def test_active_alerts_ignore_state_of_unknown_zones() -> None:
+    config = make_config(1)
+    assert active_alerts(config, CoreState()) == []
