@@ -1,0 +1,711 @@
+# Floor Heating Zone Control — Design Document
+
+> **Status: Spec rev. 1.2 — ground truth for implementation** (2026-09-27; rev. 1.1 of 2026-09-25 reviewed with the owner, see D-64…D-82)
+> Phases: (1) functional spec ✅ → (2) technical design ✅ → (3) implementation with Claude Code
+> "Spec rev." numbers this document; "v1 / v1.1 / v1.2" are the release phases in §5.10.
+> Working name of the integration: `floorheat` (may be renamed before public release)
+
+---
+
+## 🤖 FOR CLAUDE CODE — READ THIS FIRST
+
+You are implementing a Home Assistant custom integration that controls an underfloor heating system zone by zone. This document is the **single source of truth**. Read all of it before writing code.
+
+### How to work
+1. **Mandatory rules in §0 override everything else.** Security and genericity are not negotiable.
+2. **Follow the spec exactly.**
+   - If something is ambiguous, contradictory or missing, **stop and ask the owner**. Do not guess.
+   - Every decision made in a session must be written back into this document (§3–§5 and the decision log §7) in the same pull request.
+3. **Architecture (§5) is fixed:**
+   - a pure-Python control core with no Home Assistant imports;
+   - a thin HA adapter;
+   - a reconcile loop;
+   - Shelly watchdog scripts.
+4. **Test first for the core.**
+   - Every rule in §3 must be covered by unit tests with simulated time.
+   - The acceptance scenarios in §6 are the minimum test set.
+   - The core must never read the system clock itself; time is always passed in.
+5. **Work in phases (§5.10, `docs/implementation-plan.md`).**
+   - Implement one work phase (P0, P1, …) at a time, open a pull request, and stop for owner review.
+   - Do not start the next phase unasked.
+6. **Keep the repo self-explaining:**
+   - `CLAUDE.md` contains §0, the architecture summary and the working rules;
+   - this spec lives in `docs/`;
+   - user documentation is written alongside the code (§5.8).
+7. **Environment.**
+   - You may be running in a cloud sandbox without access to the owner's home network. Never ask for or store credentials to it.
+   - Anything that needs real hardware is marked for the owner to verify (§8).
+
+### First task (when starting from an empty repo)
+Follow `docs/implementation-plan.md`, starting with work phase **P0** (D-82):
+1. **P0:** create the repository skeleton (§5.9), `LICENSE`, `CLAUDE.md` (linking to the implementation plan), `.gitignore`, pre-commit secret scanning, the test setup and CI. This document already lives at `docs/design.md`; keep it there. Open a pull request and stop.
+2. **P1–P3** follow as separate pull requests, one at a time after owner approval: they implement the **v1 control core** (`core/`) with full unit tests, including the §6 scenarios that belong to v1. No HA code yet.
+3. Every pull request summarises any spec questions that came up.
+
+---
+
+## ⚠️ 0. MANDATORY RULES — security & public release
+
+> **These rules apply to every line of code, config and documentation, in every session (cloud and local).**
+
+### 0.1 No secrets in the repository (D-49)
+- **Never commit any secret to GitHub.** This includes:
+  - passwords, API keys, tokens (HA long-lived tokens, healthchecks.io ping URLs/UUIDs, SMTP credentials, Shelly passwords);
+  - Wi-Fi credentials;
+  - IP addresses or hostnames of the private network;
+  - email addresses, personal names.
+- Secrets live only in HA (`secrets.yaml`, integration options) or on the devices. The repository contains only placeholders and examples (e.g. `secrets.example.yaml`).
+- `.gitignore` covers secret files. Secret scanning is enabled on GitHub, plus a pre-commit secret scanner (e.g. gitleaks).
+- The cloud development environment gets **no** credentials to the home system.
+- If a secret is ever committed: rotate it immediately. Deleting the commit is not enough.
+
+### 0.2 Built for other users, not only this house (D-50)
+The integration may be published. Nothing specific to this installation may be hard-coded:
+- **Zones:**
+  - the number of zones is configurable (at least 1), not fixed at 5;
+  - any zone can be marked "no valve".
+- **Entities are user-mapped:** the temperature sensor, valve switch and heat source request switch are *any* HA entity of the right type (`sensor` with temperature device class; `switch`). No entity ID, device name or brand is assumed in the code.
+- **Heat source agnostic:** the heat pump request is just a switch. Nothing Mitsubishi-specific is in the logic.
+- **Parameters:** all have defaults and are user-changeable (§4).
+- **Shelly scripts are generic:** role (valve / heat source), timeouts and failsafe window are set in a configuration block at the top of the script or in device storage, not edited in the logic.
+- **Language and units:** code, comments, docs and entity names in English. Temperatures follow HA's unit system.
+- **License: MIT (D-63).** The `LICENSE` file is added in the first commit. Copyright line: `Copyright (c) 2026 Vadász István (vadaszi)`. This is the only intended exception to the no-personal-names rule in §0.1. The name appears only here (needed to create `LICENSE`) and in `LICENSE`. `CLAUDE.md`, code and other docs must refer to "the copyright holder in `LICENSE`" and must not repeat the name.
+- **Units (D-77):** the core computes in °C. The adapter converts to and from HA's unit system. Parameter defaults and ranges in §4 are in °C.
+- **Hydraulics (D-80):** the logic assumes a flow path exists whenever the heat pump request is ON (unvalved zone, bypass, or buffer/hydraulic separator). This is a documented installation prerequisite (README). The integration logs a startup warning if every configured zone has a valve.
+- **Installation data:** the values in §2 and the defaults in §4 describe **this installation**, not constants.
+
+---
+
+## 1. Goal
+
+Room-temperature-based zone control for underfloor heating fed by an air-to-water heat pump, orchestrated by Home Assistant (HA). The reference installation has 4 valved zones and 1 unvalved zone.
+
+Priorities:
+1. comfort
+2. long heat pump cycles (no short-cycling)
+3. defined behaviour on sensor or HA failure
+4. configurable schedules
+
+---
+
+## 2. Reference installation (as built)
+
+*Context only. The code must not depend on any of this (§0.2).*
+
+### 2.1 Heat source & hydraulics
+| Item | Detail |
+|---|---|
+| Outdoor unit | Mitsubishi SUZ-SWM80VA |
+| Indoor unit | Mitsubishi ERST30D-VM2EDR (cylinder unit, also produces domestic hot water) |
+| Hot water | Scheduled in an afternoon window (≈ 14:00–18:00); a run takes ≈ 1–1.5 h. **The heat pump does not heat the floor water during a hot water run.** Whether the secondary pump keeps running meanwhile is unknown. |
+| Flow temperature | Weather curve (trial) (D-33) |
+| Buffer | Concept ZS buffer tank, used as hydraulic separator (flow-through, no coil), next to the heat pump |
+| Secondary pump | DAB Evosta 2, next to the heat pump, feeds the manifold. **Switched by the heat pump:** runs only while the heat pump runs (D-29). |
+| Circuits | 12 floor circuits, grouped into 5 zones |
+| Zones 1–4 | 230 V normally-closed thermoelectric actuators, opening time a few minutes |
+| Zone 5 | No valve, always open → guaranteed flow path; no valve lead/lag timing needed (D-03) |
+| Hydraulic limitation | The 10–12 m main pipe from the pump to the manifold is undersized for 12 circuits. More open zones means less flow per circuit. This is the reason for the calling-zone priority (D-06). |
+| Existing controls | Computherm thermostat system, to be removed at go-live (D-31) |
+
+### 2.2 Control devices
+| Function | Device | Qty | Notes |
+|---|---|---|---|
+| Valves zones 1–4 | Shelly Plus 2PM (SNSW-002P16EU), Gen2 | 2 | Switch profile; scripting + power metering (D-04) |
+| Heat pump request | Shelly 1 Gen3 or Gen4, standard (to buy; Gen4 in Wi-Fi mode) | 1 | Potential-free contact on the heat pump terminals the Computherm uses today; scripting-capable (D-31, D-32) |
+| Room temperature | Xiaomi LYWSD03MMC, pvvx firmware, BTHome | 5 | Already working in HA; one per zone |
+| Controller | Home Assistant OS on Lenovo ThinkCentre M710q | 1 | Central in the house; built-in Bluetooth receives all sensors |
+| Heat pump data | MELCloud integration | – | Unreliable / stale values: logging only, never used for control |
+
+### 2.3 Installation
+- The Shelly 1 sits next to the heat pump, in the Computherm's current place.
+- The 2PMs go either next to the heat pump (driving the actuators via the existing long cables) or at the manifold (powered via those cables). Wi-Fi coverage decides.
+
+---
+
+## 3. Functional specification
+
+### 3.1 Terms (per zone)
+| Name | Meaning |
+|---|---|
+| `RoomTemp` | Zone temperature: sensor reading + per-zone calibration offset |
+| `BaseSetPoint` | The user's normal desired temperature for the zone |
+| `SetPoint` | Effective desired temperature at this moment, after holiday/schedule rules (§3.4) |
+| `Hysteresis` | Allowed deviation around SetPoint |
+| `StartTemp` | `SetPoint − Hysteresis`: at or below this the zone asks for heat |
+| `StopTemp` | `SetPoint + Hysteresis`: at or above this the zone stops heating |
+| `WaitTime` | Open-window filter: delay before a zone may start the heat pump |
+| Heat pump request | The switch that asks the heat source for heat. "Heat pump running" in this document always means **the heat source switch actually reports ON** (D-66). This is feedback of the request only. The heat pump may still stop its compressor internally, and there is no compressor feedback. An unavailable switch counts as OFF. In shadow mode the commanded state stands in for the actual state (§5.5). |
+| Cycle | The period from heat pump request ON to heat pump request OFF |
+| Calling zone | The zone whose demand switched the heat pump request ON in the current cycle (at most one per cycle) |
+| Unvalved zone | A zone configured without a valve (zone 5 in the reference installation) |
+
+Example: SetPoint 22.0 °C, Hysteresis 0.2 °C → StartTemp 21.8 °C, StopTemp 22.2 °C.
+
+### 3.2 Zone states
+| State | Meaning | Valve |
+|---|---|---|
+| `IDLE` | No demand | closed |
+| `WAITING` | RoomTemp ≤ StartTemp while the heat pump is off; WaitTime running | closed |
+| `HEATING` | Thermostatic demand | open (also while the heat pump request is still held back by HpMinOffTime, D-64) |
+| `FORCED` | Manual schedule active (§3.4) | open, except while at or above ManualMaxTemp (closed, no demand) |
+| `SENSOR_FAULT` | No valid reading for > SensorFaultTimeout | Follows the house: open whenever the heat pump runs; creates no demand itself (D-27). Takes precedence over `FORCED` (D-70) |
+
+Additional valve overrides:
+- the min-ON rule (§3.5);
+- failsafe (§3.6);
+- valve exercise (§3.7).
+
+Unvalved zones compute state normally; only their output is a no-op.
+
+### 3.3 Zone logic
+1. **Call with wait.** If the heat pump is off and RoomTemp ≤ StartTemp, the zone enters `WAITING` and its WaitTime starts.
+2. **Single check at end of wait (D-05).** When WaitTime expires, only the current temperature is checked; readings during the wait are ignored.
+   - RoomTemp ≤ StartTemp → `HEATING`. The valve opens immediately. The heat pump request goes ON (subject to §3.5), and the zone becomes the calling zone.
+   - Otherwise → `IDLE`.
+   - **Held back by HpMinOffTime (D-64):** the zone stays `HEATING` with its valve open until HpMinOffTime elapses, then the request goes ON. If RoomTemp reaches StopTemp in the meantime, the zone goes `IDLE` (rule 6) and nothing starts.
+3. **Join while running (D-14).** If the heat pump is running, any zone with RoomTemp ≤ StartTemp goes to `HEATING` immediately, without WaitTime. This includes zones in `WAITING`. WaitTime exists only to avoid *starting* the heat pump because of a short window opening.
+4. **SetPoint raised (D-26).** If a schedule change, holiday end or user change raises SetPoint so that RoomTemp ≤ StartTemp, the zone goes to `HEATING` immediately, without WaitTime.
+   - HpMinOffTime (§3.5) still applies; the zone waits as in rule 2 (D-64).
+   - If this starts the heat pump, the zone becomes the calling zone.
+   - **Several candidates (D-65):** if more than one zone would become the calling zone in the same step (e.g. WaitTimes expire together, holiday end, a schedule raising several zones, or several zones waiting for HpMinOffTime), the zone with the largest `StartTemp − RoomTemp` becomes the calling zone. Ties go to YAML order. The other zones are simply `HEATING`.
+5. **Sync rule (D-06, D-15).** When the calling zone reaches its SetPoint (RoomTemp ≥ SetPoint), every `IDLE` or `WAITING` zone with a valid sensor and RoomTemp < StopTemp joins `HEATING`.
+   - The rule fires **once per cycle**.
+   - Rationale: because of the thin main pipe, the zone that called gets full flow first. The other zones are topped up afterwards, so every zone ends the cycle near StopTemp and none re-triggers shortly after.
+   - **Cycle started by a manual schedule (D-44):** the forced zone is not a calling zone.
+     - The first zone that joins by temperature during that cycle (rule 3) becomes the calling zone, and the sync rule applies normally.
+     - If no zone joins, there is no sync rule in that cycle.
+   - **Calling zone's sensor fails (D-28):** it counts as having reached SetPoint, so the sync rule fires.
+6. **Switch-off.** `HEATING → IDLE` when RoomTemp ≥ StopTemp. This also applies after a SetPoint decrease.
+7. **Heat pump request.** ON while any zone is `HEATING`, or `FORCED` with demand, subject to §3.5. OFF when none is.
+   - "Heat pump running" in rules 1–3 and all HP timers use the actual switch state (D-66, §3.1).
+8. **Unvalved zone.** Identical logic; it can create demand but its valve output is a no-op.
+
+### 3.4 Modes & schedules
+**Precedence for the effective SetPoint and valve control, highest first (D-16):**
+1. Failsafe
+2. Holiday
+3. Manual schedule
+4. Auto schedule
+5. BaseSetPoint
+
+**Holiday mode (D-09, D-17, D-59)**
+- The user activates it with an end date/time. It starts immediately on activation and can be stopped manually at any time.
+- While active, the effective SetPoint of **all** zones is `HolidayTemp`. BaseSetPoints are not modified, so "restore the previous setup" is automatic when holiday ends.
+- Manual and auto schedules are suspended during holiday.
+- No automatic preheat: the user sets the end time early enough.
+- At holiday end, raised SetPoints start heating immediately (rule 3.3.4).
+
+**Manual schedule (D-18, D-38, D-58)**
+- A manual schedule covers one or more zones plus a time window. The zone is `FORCED`: valve open and heat demand regardless of RoomTemp.
+- One-shot (date + window) or recurring (daily / selected weekdays + window).
+- **Safety cap:** at RoomTemp ≥ `ManualMaxTemp` the forced zone closes and drops its demand. It resumes only when RoomTemp < ManualMaxTemp − `ManualResumeDelta`.
+- While a manual schedule runs the heat pump, other zones with RoomTemp ≤ StartTemp join (rule 3.3.3).
+- Manual schedules for the same zone may overlap; the result is the union of their windows.
+- When the window ends, the zone returns to normal logic immediately.
+- **Faulty sensor (D-70):** a zone in `SENSOR_FAULT` is not forced, because the safety cap cannot be checked. It stays `SENSOR_FAULT` (follows the house, no demand).
+
+**Auto schedule (D-19)**
+- An auto schedule overrides the SetPoint for one or more zones during a time window.
+- One-shot or recurring. Examples:
+  - daily, zone 1, 13:00–17:00 → 23 °C;
+  - Sunday, all zones, 10:00–16:00 → 21 °C.
+- A new auto schedule that overlaps an existing auto schedule for the same zone is **rejected** at creation, with a clear error message.
+- When the window ends, SetPoint returns to BaseSetPoint.
+
+**Schedule times (D-57)**
+- Local wall-clock time in HA's time zone, DST-aware.
+- Windows may cross midnight (e.g. 22:00–02:00).
+- One-shot schedules (manual and auto) are deleted automatically after their window ends.
+
+### 3.5 Heat pump protection (D-07, D-20, D-30, D-39, D-64, D-66, D-68, D-71, D-78)
+- `HpMinOnTime` and `HpMinOffTime` are user-configurable (default 60 / 60 min, range 30–180 min). The purpose is to stop the heat pump switching on or off too often, so neither can be set below 30 min (D-81). The config validation and the number entities enforce this.
+- Both timers count from the **actual** switch transitions (D-66). An unavailable switch counts as OFF, so a switch that becomes unavailable starts the OFF time.
+- **All zones satisfied before HpMinOnTime has elapsed (D-20, D-71):** the request stays ON and all valves open until HpMinOnTime elapses. Zones with RoomTemp ≥ ManualMaxTemp are excluded and stay closed. The remaining heat is spread over the house. Then the request goes OFF and valves follow normal logic.
+- **A zone calls before HpMinOffTime has elapsed:** the request waits until HpMinOffTime has elapsed. The zone is `HEATING` with its valve open in the meantime (D-64).
+- **WaitTime and HpMinOffTime run in parallel.** The request goes ON when both have elapsed and the WaitTime check passed.
+- **Heating season switched OFF (D-68):** the request goes OFF and valves close immediately, even if HpMinOnTime has not elapsed.
+- **First start (D-78):** with no persisted last-OFF time, HpMinOffTime is not applied.
+
+### 3.6 Failure handling
+**Sensor fault (D-08, D-21, D-27, D-28)**
+- No valid reading for > `SensorFaultTimeout` (60 min) → the zone enters `SENSOR_FAULT`, regardless of its previous state.
+  - "Valid" means a numeric, plausible value received within the timeout. The plausibility range is *config*, default 0–40 °C (D-77). Implausible values are ignored, as if nothing had been received.
+  - The last-report time is used, not the last-change time (§5.3).
+- While in fault, the zone follows the house and creates no demand.
+- On a valid reading again → the zone returns to normal logic.
+- **Notifications:** when the fault starts, then a daily reminder at 08:00 while any sensor is faulty, and on recovery.
+  - Outside heating season (D-75): fault start and recovery only; no daily reminder.
+
+**Failsafe mode (D-12, D-22, D-35, D-36, D-37)**
+- **Trigger** (either condition):
+  - no valid temperature from *any* sensor for > 24 h; or
+  - no HA heartbeat for > 24 h (detected on the Shellys).
+
+  As long as at least one sensor is valid, normal control continues.
+- **Action:** all valves open and heat pump request ON daily 10:00–15:00. Only in heating season.
+- **Case 1 — HA alive, all sensors dead:** HA runs the failsafe through its normal control of the outputs. The notification is sent by HA.
+- **Case 2 — HA dead:** each Shelly runs a local script that watches for the HA heartbeat. There is no device-to-device communication.
+  - **Valve Shellys (2PM):** after `HeartbeatTimeout` (5 h) without a heartbeat, switch **all valves ON (open)** and keep them open. No clock or schedule is needed; an open valve with the heat pump off has no effect apart from the actuators' holding power.
+  - **Heat source Shelly (Shelly 1):**
+    - after `HeartbeatTimeout` (5 h) without a heartbeat, switch OFF;
+    - the 5 h timeout is deliberately long: it gives the owner time to fix HA before the Shellys act (D-60);
+    - after `FailsafeTrigger` (24 h) without a heartbeat, request heat daily 10:00–15:00 by its clock (NTP);
+    - if the clock is invalid (power cut and no internet; Shellys have no backup clock), fall back to a cycle based on its own uptime: 5 h ON, 19 h OFF;
+    - **after a reboot without heartbeat (D-72):** the time of the last heartbeat is lost, so the boot time counts as the last heartbeat. The output stays OFF (power-on default) until FailsafeTrigger has passed since boot. Then the clock window applies, or, if there is still no valid time, the uptime cycle starts with its 5 h ON phase at uptime = FailsafeTrigger;
+    - it heats only if the last heartbeat said "heating season ON" (the flag is stored on the device).
+  - The timeouts, failsafe window and uptime cycle used by the scripts are set only in each script's configuration block or device storage (D-73). HA's own FailsafeTrigger/FailsafeWindow (§4) apply only to case 1.
+  - Only the heat source Shelly has time logic, so no time alignment between devices is needed.
+  - The notification comes from the external watchdog (healthchecks.io).
+- **Exit:** as soon as a heartbeat or a valid reading is back, normal operation resumes immediately. The reconcile loop sets all outputs.
+- The Computherm system is rejected as a fallback, because a window opening would trigger it.
+
+**Notifications (D-23)**
+| Event | Channels |
+|---|---|
+| Sensor fault started / daily 08:00 reminder / sensor recovered | push + email |
+| Failsafe entered / left (case 1) | push + email |
+| Heat pump request ON > `LongRunAlarm` | push + email |
+| Actuator fault (§3.9) | push + email |
+| Shelly unreachable / watchdog script not running (§5.4) + recovery | push + email |
+| Output not following command (§3.9) + recovery | push + email |
+| Shelly script parameters differ from HA's expected values (§5.4) | push + email |
+| HA or integration dead | email from healthchecks.io |
+
+Push goes to the HA companion app; email via HA's SMTP notify. The notify targets are user-configured.
+
+### 3.7 Season & maintenance
+- **Heating season (D-24):** a manual on/off switch.
+  - OFF: no heating demand at all.
+  - The failsafe heats only in heating season (D-37).
+  - Switching it OFF mid-cycle stops the heat pump request immediately, ignoring HpMinOnTime (D-68).
+  - Manual and auto schedules create no heating while it is OFF.
+- **Valve exercise (D-10, D-25, D-37):** only outside the heating season.
+  - Weekly, Monday 08:00; each valve opens for 15 min, one after another; heat pump off.
+  - No flow is needed; the goal is mechanical movement of the actuators.
+
+### 3.8 Restart behaviour (D-40)
+- After an HA restart, the control state is restored.
+- Output states (valves, heat pump request) are read back from the switch entities.
+- Logic state lives only in HA and is persisted there, keyed by the zone `id` (D-76):
+  - running timers;
+  - time of the last heat pump request ON/OFF;
+  - calling zone and whether the sync rule has fired;
+  - holiday state and end time;
+  - schedules;
+  - FORCED cap state.
+
+### 3.9 Monitoring
+- **Actuator fault (D-41):** notify if a valve channel is ON but measures < 0.5 W for 10 min. This requires a power sensor mapped to the valve (optional per zone).
+  - **To verify on the bench (§8):** can the Shelly Plus 2PM measure the actuator's small holding power at all? If not, this check is not used.
+- **Output not following command (D-67):** notify if an output's actual state differs from the desired state, or the entity is unavailable, for `OutputMismatchAlert` consecutive reconcile intervals (default 3). Notify again on recovery. The reconcile loop keeps retrying with backoff instead of sending a command every interval. Not active in shadow mode.
+- **Long run alarm (D-42):** notify if the heat pump request is ON > 12 h.
+- **Overshoot logging (D-13):** per zone, track the peak RoomTemp from switch-off until the zone next has demand (at most 6 h). Emit it as an HA event and expose the last value as a zone attribute. This is data for v2.
+
+### 3.10 Hot water production (D-45)
+- No logic change. The heat pump request may stay ON during a hot water run; the heat pump resumes space heating afterwards.
+- **Known effects, accepted:**
+  - zones in `HEATING` take longer to reach StopTemp;
+  - HpMinOnTime also counts time spent on hot water.
+
+### 3.11 Deferred to v2
+- Overshoot learning: switching off early based on the logged overshoot.
+
+---
+
+## 4. Parameters
+
+All are exposed as HA entities (changeable from the UI) unless marked *config* (YAML) or *script config* (the Shelly script's configuration block or device storage, D-73). Values are the defaults. Ranges are the number entity limits (°C; converted by the adapter, D-77).
+
+| Parameter | Scope | Default | Range / step | Notes |
+|---|---|---|---|---|
+| BaseSetPoint | per zone | 22.0 °C | 10–30 °C / 0.1 | climate entity target |
+| Hysteresis | per zone | 0.2 °C | 0.1–1.0 °C / 0.1 | |
+| WaitTime | per zone | 30 min | 0–120 min / 5 | |
+| Sensor offset | per zone | 0.0 °C | −5–+5 °C / 0.1 | *config* |
+| HpMinOnTime | global | 60 min | 30–180 min / 5 | Never below 30 min: protects the heat pump from short-cycling (D-81) |
+| HpMinOffTime | global | 60 min | 30–180 min / 5 | Never below 30 min: protects the heat pump from short-cycling (D-81) |
+| SensorFaultTimeout | global | 60 min | 15–240 min / 5 | |
+| SensorFaultReminder | global | 08:00 daily | time of day | Not sent outside heating season (D-75) |
+| Plausible temperature range | global | 0–40 °C | | *config* (D-77) |
+| ManualMaxTemp | global | 25 °C | 18–30 °C / 0.5 | Also the D-20 exclusion limit (D-71) |
+| ManualResumeDelta | global | 1.0 °C | 0.2–3.0 °C / 0.1 | |
+| HolidayTemp | global | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint |
+| FailsafeTrigger | global | 24 h | 1–72 h / 1 | HA case 1 only; the Shelly value is *script config* (D-73) |
+| FailsafeWindow | global | 10:00–15:00 | time of day | HA case 1 only; the Shelly value is *script config* (D-73) |
+| HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73) |
+| FailsafeTrigger / FailsafeWindow / uptime cycle (Shelly) | Shelly | 24 h / 10:00–15:00 / 5 h ON, 19 h OFF | | *script config* (D-72, D-73) |
+| HeartbeatInterval | global | 5 min | | *config* |
+| HeartbeatFailAlert | global | 3 consecutive failed calls (≈ 15 min) | | *config* |
+| ReconcileInterval | global | 60 s | | *config* |
+| OutputMismatchAlert | global | 3 consecutive reconcile intervals | | *config* (D-67) |
+| WatchdogPingInterval | global | 5 min | | *config*; ping URL is a secret |
+| ValveExercise | global | Mon 08:00, 15 min/valve | weekday, time, 5–30 min / 5 | |
+| ActuatorFaultThreshold | global | < 0.5 W for 10 min | | |
+| LongRunAlarm | global | 12 h | 2–48 h / 1 | |
+| Heating season | global | ON | | switch |
+| Control active (shadow mode) | global | OFF on first install | | switch, §5.5 |
+
+---
+
+## 5. Technical design
+
+### 5.1 What runs where
+| Where | What | Technology |
+|---|---|---|
+| HA (ThinkCentre M710q) | Control logic, entities, notifications, state persistence | Custom HA integration (Python): pure control core + thin HA adapter |
+| HA (built-in) | Sensor reception | Bluetooth + BTHome integration (existing) |
+| HA (built-in) | Output control | Shelly integration (local) via switch entities |
+| Valve Shellys (2PM ×2) | Heartbeat watchdog → open all valves after 5 h without a heartbeat | Shelly script (JavaScript, on device) |
+| Heat source Shelly (Shelly 1) | Heartbeat watchdog → OFF after 5 h; failsafe window after 24 h (uptime fallback) | Shelly script (JavaScript, on device) |
+| healthchecks.io | "HA / integration dead" alert | Hosted push monitor (D-48), pinged by the integration |
+| GitHub | Code, docs, releases; shared memory between Claude Code sessions | Public repo, HACS custom repository (D-46) |
+| ThinkPad T14 (WSL) / Claude Code on the web | Development and tests | Python, pytest |
+
+### 5.2 Why a custom integration (alternatives considered)
+| Option | Verdict | Reason |
+|---|---|---|
+| HA automations (YAML) + helpers | Rejected | Calling zone, sync rule, precedence and persistence become hundreds of lines of YAML/templates; not unit-testable |
+| Node-RED | Rejected | Extra add-on, logic ends up in JavaScript function nodes anyway, weak testing |
+| AppDaemon (Python apps) | Fallback option | Real Python, but entities are not native (no state restore) and time simulation needs a custom harness |
+| External service (MQTT) | Rejected | More moving parts; would still depend on HA for sensors and switches |
+| **Custom integration (Python)** | **Chosen** | Native entities, services, state storage; core testable without HA; Python is HA's native language |
+
+### 5.3 Integration structure
+**Control core (`core/`) — pure Python, no HA imports:**
+- configuration and state models (dataclasses);
+- a single deterministic step function:
+  `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
+  - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
+  - `desired_outputs`: per-zone valve on/off, heat pump request on/off;
+  - `events`: notifications, log entries, reason texts;
+- time is always passed in; the core never reads the clock;
+- fully covered by unit tests (§6).
+
+**Reconcile loop:**
+- Runs every `ReconcileInterval` (60 s) and on every sensor update.
+- Calls `step`, then compares the desired outputs with the actual switch states and corrects any difference. A lost command or a device reboot heals itself within one interval.
+- It is idempotent: running it twice changes nothing.
+- If an output keeps differing from the desired state, retries back off, and the "output not following command" alert fires (D-67, §3.9).
+
+**Adapter (HA side):**
+- **Sensors:** reads sensor state and **`last_reported`** for staleness. `last_updated`/`last_changed` do not move when a value repeats, so a healthy sensor would look dead.
+- **Outputs:**
+  - calls `switch.turn_on/turn_off` only through the reconcile loop;
+  - unvalved zones have no output;
+  - in shadow mode, no output commands.
+- **Persistence:** logic state in HA storage (`helpers.storage.Store`), restored at startup (§3.8).
+- **Notifications:** through the notify services listed in the YAML config.
+- **Heartbeat and watchdog:**
+  - sends the heartbeat to the Shellys (§5.4);
+  - pings healthchecks.io every `WatchdogPingInterval` (5 min).
+  - The check on healthchecks.io is configured with period 5 min and grace ≈ 30 min (D-62). It alerts about 30–35 min after the last ping, so HA updates and restarts (typically 5–20 min) don't cause false alarms. healthchecks.io also notifies when pings resume.
+- **Async only:** the adapter never blocks HA's event loop.
+
+**Entities exposed:**
+- **Per zone:**
+  - climate entity (current temp = RoomTemp, target = BaseSetPoint, hvac_action heating/idle; hvac_modes: `heat` only, no per-zone off);
+  - state sensor (`IDLE`/`WAITING`/…);
+  - reason sensor (text);
+  - effective SetPoint sensor;
+  - Hysteresis and WaitTime number entities.
+- **Global:**
+  - heat pump request binary sensor with ON-duration attribute;
+  - mode sensor (normal / holiday / failsafe). Shadow mode is orthogonal: it is shown by the control-active switch and a `shadow` attribute on the mode sensor (D-79);
+  - switches: heating season, control active;
+  - number entities for the global parameters;
+  - alerts sensor (count + list).
+- **Holiday (D-79):** HolidayTemp number, end date/time entity, "Holiday active" switch.
+- **Schedules:** managed through integration services (add / delete / list) with validation. The list is exposed as a sensor attribute for the dashboard.
+- **Schedule form entities (D-74):** the integration provides its own draft entities so the dashboard needs no user-created helpers: type (auto/manual) and zone selects, one-shot date or weekday selection, start/end time, temperature, an "Add schedule" button, plus a select of existing schedules and a "Delete schedule" button. The buttons call the same validated logic as the services, and errors (e.g. overlap, D-19) are shown as a persistent notification.
+
+### 5.4 Heartbeat mechanism
+- Each Shelly script registers a small local HTTP endpoint.
+- The integration calls every Shelly every `HeartbeatInterval` (5 min). For the heat source Shelly, the call carries the heating-season flag.
+- The integration determines each Shelly's address from HA's device registry (the device of the mapped switch) if that is reliable. Otherwise the addresses come from the YAML config.
+- If Shelly authentication is enabled, the credentials come from `secrets.yaml`.
+- **The Shelly script answers every heartbeat call** with a short status: script running, current watchdog state (normal / timed out / failsafe), stored season flag, and its configured parameter values (HeartbeatTimeout; for the heat source script also FailsafeTrigger, FailsafeWindow and uptime cycle). HA therefore checks two things with the same call: the device is reachable, **and** the watchdog script is running.
+- **Script parameters (D-73):** the script's configuration block or device storage is authoritative. HA never pushes parameter values. HA has *config* entries for the values it expects and alerts once if the reported values differ.
+- **Heartbeat failure alert (D-61):** after `HeartbeatFailAlert` (3 consecutive failed calls, ≈ 15 min), notify "Shelly X unreachable" or "watchdog script not running on Shelly X". A single failed call (Wi-Fi hiccup) never alerts. Also notify when it recovers.
+- The heartbeat is sent whenever the integration runs, **including shadow mode** (D-56).
+- Shelly settings:
+  - power-on default: OFF;
+  - scripts enabled at boot;
+  - valve channels in switch profile.
+- Scripts live in the repo (`shelly_scripts/`) with a configuration block at the top: role, timeouts, failsafe window, uptime fallback.
+
+### 5.5 Shadow mode (D-56)
+- With "Control active" OFF, the integration reads everything, computes decisions, updates its entities and logs, but sends **no output commands**. Heartbeat and watchdog ping continue.
+- **Feedback in shadow mode (D-66):** the real switches are not driven by the integration, so the core gets the commanded states as "actual" states. The simulated decisions stay self-consistent. The output mismatch alert (D-67) is inactive.
+- **Switching Control active ON → OFF (D-69):** the integration sends one final safe command set (heat pump request OFF, all valves OFF) and then stops sending commands. Heartbeats keep the Shelly watchdogs quiet, so without this the heat pump could stay ON indefinitely.
+- **Switching OFF → ON:** the next reconcile sets all outputs to the desired state.
+- It is OFF on first install. The owner runs it for 1–2 weeks next to the existing controller, then switches to live.
+
+### 5.6 Configuration (D-52, D-55)
+- **YAML configuration** is used for setup, also for the public release (at least initially). A UI setup (config flow) is an optional later improvement.
+- **YAML holds only the wiring:**
+  - zones: stable `id` (D-76; key for persisted state, schedules and entity unique IDs, must never change), display `name`, sensor entity, valve switch entity or `none`, optional power sensor entity, sensor offset;
+  - heat source switch entity;
+  - notify targets;
+  - Shelly device addresses if needed;
+  - `!secret` references for the watchdog ping URL and credentials.
+- **All values are changed from the UI and stored by HA:** SetPoints, parameters, holiday, schedules, season.
+- The config is validated at startup with clear error messages (unknown entity, duplicate zone id or name, etc.).
+- Startup warning (not an error) if every zone has a valve, pointing to the hydraulic prerequisite (D-80).
+
+Illustrative example (exact keys defined in implementation):
+```yaml
+floorheat:
+  heat_source_switch: switch.heat_pump_request
+  watchdog_ping_url: !secret floorheat_watchdog_url
+  notify: [notify.mobile_app_phone, notify.email]
+  zones:
+    - id: living_room
+      name: Living room
+      sensor: sensor.living_room_temperature
+      valve: switch.valve_living_room
+      sensor_offset: -0.2
+    - id: bathroom
+      name: Bathroom
+      sensor: sensor.bathroom_temperature
+      valve: none
+```
+
+### 5.7 Dashboard requirements (D-53)
+The visual design (card types, layout, styling) is left to implementation. The dashboard must **show and control**:
+- **Per zone:** RoomTemp, SetPoint (adjustable), state, reason text (e.g. "Calling zone", "Waiting, 12 min left"), valve on/off.
+- **Global:** heat pump request with running time, active mode, heating season switch, control active switch.
+- **Alerts:** visible only when active.
+- **Holiday:** temperature, end date/time, start/stop.
+- **Schedules:** a simple list plus an add/delete form built from the integration's own form entities (D-74).
+- **Parameters:** on a separate settings page, not on the daily view.
+
+Use built-in HA cards only; no custom frontend code in v1/v1.1. An example dashboard YAML is shipped in the repo.
+
+### 5.8 User documentation (D-54)
+The repository must contain **detailed instructions** so another user can install and run the integration without help:
+- **README:** what it does, how the logic works in plain words, and its limitations and safety notes (a heating system is involved), including the hydraulic prerequisite (D-80).
+- **Installation:** via HACS custom repository and manually.
+- **Configuration reference:** every YAML key with type, default and example; every entity and service.
+- **Shelly scripts:** which script goes on which device, how to upload it, how to configure it, and how to test it.
+- **Example dashboard** YAML and screenshots.
+- **Shadow mode and go-live checklist.**
+- **Troubleshooting:** sensor faults, heartbeat, failsafe, logs.
+- **Update notes / changelog** per release.
+
+Docs are updated in the same pull request as the code they describe.
+
+### 5.9 Repository structure (proposal)
+```
+/
+├── CLAUDE.md                   # §0 rules, architecture summary, working rules
+├── README.md
+├── LICENSE                     # MIT (D-63)
+├── hacs.json
+├── .gitignore  .pre-commit-config.yaml
+├── custom_components/floorheat/
+│   ├── manifest.json
+│   ├── __init__.py             # setup, reconcile loop, heartbeat, watchdog
+│   ├── core/                   # pure logic, no HA imports
+│   ├── climate.py  sensor.py  binary_sensor.py  number.py  switch.py ...
+│   └── services.yaml
+├── shelly_scripts/             # valve_watchdog.js, heat_source_watchdog.js
+├── tests/                      # core unit tests (+ adapter tests)
+├── docs/                       # design.md (this file), user docs
+├── examples/                   # configuration.example.yaml, dashboard.example.yaml, secrets.example.yaml
+└── .github/workflows/          # tests; optional check against latest HA
+```
+
+### 5.10 Phasing
+The three releases below are split into smaller **work phases** P0–P12 in `docs/implementation-plan.md` (D-82): P0–P8 = v1, P9–P10 = v1.1, P11–P12 = v1.2. Each work phase ends with a pull request and owner review. The next phase starts only after approval. The release contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
+
+**v1 — replaces the existing controller:**
+- zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
+- heating season switch;
+- entities, notifications, including the output mismatch alert (D-67);
+- shadow mode;
+- persistence and restart (§3.8);
+- heartbeat;
+- both Shelly scripts, with the valve script complete and the heat source script up to "OFF after HeartbeatTimeout";
+- user docs for all of the above.
+
+**v1.1:**
+- auto and manual schedules, holiday;
+- dashboard example.
+
+**v1.2:**
+- 24 h failsafe (HA case and Shelly 1 window with uptime fallback);
+- valve exercise;
+- actuator fault check;
+- long run alarm;
+- healthchecks.io watchdog;
+- overshoot logging.
+
+### 5.11 Development & deployment
+- **Repository and deployment:**
+  - public GitHub repo from the start (D-46); the §0 rules keep it free of secrets;
+  - deployment via HACS custom repository; updates from GitHub releases.
+- **Where work happens (D-47):**
+  - **Claude Code on the web (cloud):** core, tests, integration code, docs.
+  - **Local (T14, WSL):** Shelly scripts on the bench, and anything needing the home network. The cloud sandbox cannot reach HA or the Shellys and gets no credentials.
+- **Coordination (D-51):** the sessions don't talk to each other; the GitHub repo is the single shared memory (`CLAUDE.md`, `docs/`, code, history, pull requests). Every session starts from the latest main.
+- **HA update safety:**
+  - Breakage is detected automatically: the heartbeat and watchdog ping come from the integration itself, so a broken integration triggers the Shelly watchdogs and healthchecks.io.
+  - Use only long-standing, stable HA APIs, and watch for deprecation warnings.
+  - Update routine: wait for the .1/.2 patch release, avoid major updates in deep winter, rely on HA's pre-update backup for rollback.
+  - Optional CI: a GitHub Action runs the tests against the latest HA release.
+
+---
+
+## 6. Acceptance scenarios (minimum test set)
+
+Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" = heat pump request.
+
+| # | Scenario | Expected |
+|---|---|---|
+| A1 | HP off; zone 1 drops to StartTemp at 06:00 and stays there | `WAITING` 06:00; `HEATING` + HP ON at 06:30; zone 1 = calling zone |
+| A2 | As A1, but zone 1 is back above StartTemp at 06:30 (window closed) | `IDLE` at 06:30; HP stays OFF |
+| A3 | As A1, but RoomTemp goes above and back below StartTemp during the wait; ≤ StartTemp at 06:30 | `HEATING` at 06:30 (only the expiry check counts) |
+| A4 | HP ON for zone 1; zone 2 drops to StartTemp | zone 2 `HEATING` immediately, no wait |
+| A5 | Zone 2 is `WAITING` when zone 1 starts the HP | zone 2 joins immediately |
+| A6 | Zone 1 (calling) reaches SetPoint; zone 3 at SetPoint − 0.1 (above StartTemp) | zone 3 joins; sync rule doesn't fire again in this cycle |
+| A7 | Sync fired; zone 3 reaches StopTemp | zone 3 `IDLE`; HP stays ON while any zone heats |
+| A8 | All zones reach StopTemp 40 min after HP ON; zone 4 is at 25 °C (≥ ManualMaxTemp) | all valves except zone 4 open until 60 min; then HP OFF, valves by normal logic |
+| A9 | HP went OFF at 08:00; zone 2 hits StartTemp at 08:10 | WaitTime 08:10–08:40; if the check at 08:40 passed: zone 2 `HEATING`, valve opens at 08:40, HP ON at 09:00 (min OFF); if zone 2 reaches StopTemp before 09:00 → `IDLE`, HP stays OFF |
+| A10 | Auto schedule raises zone 1 SetPoint 22 → 23 at 13:00; RoomTemp 22.1 | `HEATING` immediately (no wait), subject to min OFF; zone 1 = calling zone if it starts the HP |
+| A11 | Auto schedule ends; SetPoint back to 22; RoomTemp 22.5 | zone stops (≥ StopTemp) |
+| A12 | New auto schedule overlaps an existing one for the same zone | rejected with error; nothing stored |
+| A13 | Manual schedule zone 2, 04:00–06:00; all zones satisfied | zone 2 `FORCED`, HP ON; no calling zone; HP OFF at 06:00 (min ON satisfied) |
+| A14 | As A13; zone 3 drops to StartTemp at 05:00 | zone 3 joins and becomes the calling zone; sync rule fires when zone 3 reaches SetPoint |
+| A15 | Forced zone reaches 25 °C | valve closes, no demand; resumes below 24 °C within the window |
+| A16 | Holiday active until Sunday 15:00 | all effective SetPoints 18 °C; schedules ignored; at 15:00 BaseSetPoints apply and zones below StartTemp start immediately |
+| A17 | Zone 4 sensor silent for 60 min | `SENSOR_FAULT`; valve opens only when HP runs; no demand; notification; 08:00 reminder next day |
+| A18 | Calling zone's sensor fails mid-cycle | counts as reached SetPoint → sync rule fires; zone becomes `SENSOR_FAULT` |
+| A19 | All sensors silent for 24 h, HA alive, heating season ON | failsafe: all valves open + HP ON 10:00–15:00 daily; notification; exits on the first valid reading |
+| A20 | Heating season OFF (also switched OFF 20 min into a cycle) | HP OFF and valves closed immediately, min ON ignored; no demand; no failsafe heating; valve exercise on Monday 08:00; sensor fault notified without daily reminder |
+| A21 | Shadow mode | decisions and entities update using commanded states as feedback; no switch commands sent; heartbeat still sent; switching Control active ON → OFF sends one final HP OFF + valves OFF, then nothing |
+| A22 | HA restart during `WAITING` (10 min left) and HP ON for 20 min | after restart: wait continues with ~10 min left; min ON counts from the original start |
+| A23 | Unvalved zone drops to StartTemp | behaves like A1 (can start the HP); no output command |
+| A24 | Schedule window 22:00–02:00 across a DST change | correct local start/end times |
+| A25 | Actual valve state differs from desired (e.g. switched in the Shelly app) | corrected within one reconcile interval |
+| A26 | HP off; zones 1 and 2 WaitTime expire in the same step; zone 1 at StartTemp − 0.1, zone 2 at StartTemp − 0.3 | both `HEATING`; zone 2 = calling zone (largest deficit); equal deficits → first in YAML order |
+| A27 | A valve switch stays unavailable (or ignores commands) for 3 reconcile intervals | "output not following command" notified once; retries with backoff; recovery notified |
+| A28 | Manual schedule active for zone 2, but zone 2 is in `SENSOR_FAULT` | zone 2 stays `SENSOR_FAULT` (follows the house, no demand); no HP start because of it |
+| A29 | Heat source switch becomes unavailable while ON | counts as HP OFF: min OFF starts; zones do not join by rule 3; mismatch alert per A27 |
+| A30 | First start, no persisted state | outputs read back; HpMinOffTime not applied; a zone at StartTemp enters `WAITING` and starts the HP after WaitTime |
+
+**Shelly scripts (bench tests, shortened timeouts):**
+
+| # | Scenario | Expected |
+|---|---|---|
+| S1 | Valve Shelly: heartbeat stops | all channels ON after HeartbeatTimeout |
+| S2 | Heat source Shelly: heartbeat stops | OFF after HeartbeatTimeout; failsafe window after FailsafeTrigger (season ON) |
+| S3 | Heat source Shelly: reboot, no heartbeat, no valid time | OFF until FailsafeTrigger after boot; then uptime cycle starting with 5 h ON, then 19 h OFF (season flag ON) |
+| S4 | Heartbeat returns | scripts stop acting; HA's reconcile sets outputs |
+| S5 | Last heartbeat said season OFF | heat source Shelly never heats in failsafe |
+| S6 | Heartbeat call to a running script | answered with status (script running, watchdog state, season flag, configured parameter values); HA alerts if the values differ from its expected config |
+| S7 | Script stopped / device offline for 3 calls | HA alerts once; alerts recovery when calls succeed again |
+
+---
+
+## 7. Decision log
+
+| # | Decision |
+|---|---|
+| D-01 | SetPoints are per zone |
+| D-02 | Unvalved zone: dummy output, full participation in logic |
+| D-03 | No valve lead/lag timing (buffer + always-open zone) |
+| D-04 | Shelly Plus 2PM (Gen2) for valves |
+| D-05 | WaitTime: single temperature check at expiry |
+| D-06 | Sync rule triggers when the calling zone reaches SetPoint |
+| D-07 | Configurable HpMinOnTime / HpMinOffTime |
+| D-08 | Sensor fault detection with notification |
+| D-09 | No holiday preheat automation |
+| D-10 | Valve exercise: yes |
+| D-11 | *(withdrawn — merged into D-27)* |
+| D-12 | Failsafe duty cycle after 24 h; Computherm fallback rejected |
+| D-13 | Overshoot learning deferred to v2; v1 logs data |
+| D-14 | No WaitTime when heat pump is already running |
+| D-15 | Sync rule fires on the first calling zone, once per cycle |
+| D-16 | Precedence: failsafe > holiday > manual > auto > base |
+| D-17 | Holiday: one temperature for all zones; schedules suspended |
+| D-18 | Manual schedule: ManualMaxTemp cap; other zones may join |
+| D-19 | Overlapping auto schedules (same zone) rejected at creation |
+| D-20 | All zones satisfied before min ON elapsed → all valves open until it elapses |
+| D-21 | Sensor fault notification after 60 min |
+| D-22 | Failsafe: all sensors invalid or HA lost > 24 h → all valves + HP 10:00–15:00; immediate return to normal |
+| D-23 | Notifications: push + email; external watchdog (see D-48) |
+| D-24 | Heating season: manual switch |
+| D-25 | Valve exercise weekly, Monday 08:00 |
+| D-26 | SetPoint raised → start immediately, no WaitTime |
+| D-27 | Faulty-sensor zone follows the house; daily 08:00 reminder |
+| D-28 | Sensor lost during HEATING → same fault rule; faulty calling zone fires the sync rule |
+| D-29 | Secondary pump is switched by the heat pump (reference installation) |
+| D-30 | HpMinOnTime 60 min, HpMinOffTime 60 min |
+| D-31 | Computherm removed at go-live; Shelly 1 takes its terminals |
+| D-32 | Shelly 1 Gen3 or Gen4 (standard, not mini) for heat pump request |
+| D-33 | Heat pump flow temperature: weather curve (trial) |
+| D-34 | Develop against the live HA (shadow mode first) |
+| D-35 | Failsafe without HA: valve Shellys open all valves after heartbeat loss; only the heat source Shelly runs the time window (NTP, uptime fallback); no Shelly-to-Shelly sync |
+| D-36 | On HeartbeatTimeout: heat source Shelly → OFF, valve Shellys → all valves open (timeout value: D-60) |
+| D-37 | Failsafe only in heating season; valve exercise only outside it |
+| D-38 | Manual schedule resumes below ManualMaxTemp − 1.0 °C |
+| D-39 | WaitTime and HpMinOffTime run in parallel |
+| D-40 | State restored after HA restart: outputs read back, logic state persisted in HA |
+| D-41 | Actuator fault detection via power measurement (if measurable) |
+| D-42 | Long run alarm at 12 h |
+| D-43 | *(superseded by D-53)* |
+| D-44 | Manually started cycle: first zone joining by temperature becomes the calling zone; otherwise no sync rule |
+| D-45 | Hot water runs pause floor heating; no logic change, effects accepted |
+| D-46 | Public GitHub repo from the start, deployment via HACS custom repository *(amended 2026-09-27; was: private repo)* |
+| D-47 | Cloud Claude Code for core + integration; local for Shelly scripts and home-network work |
+| D-48 | External "HA dead" watchdog: healthchecks.io |
+| D-49 | No secrets in the repository (§0.1) |
+| D-50 | Generic, publishable design (§0.2) |
+| D-51 | GitHub repo is the shared memory between Claude Code sessions |
+| D-52 | All daily functions via HA UI |
+| D-53 | Dashboard: requirements fixed (§5.7), visual design left to implementation, built-in cards only |
+| D-54 | Detailed user documentation in the repo (§5.8) |
+| D-55 | YAML configuration also for public release (at least initially); config flow optional later |
+| D-56 | Shadow mode: no output commands; heartbeat and watchdog ping continue |
+| D-57 | Schedule times are local wall-clock (HA time zone, DST-aware); windows may cross midnight |
+| D-58 | Manual schedules for the same zone may overlap (union); manual vs auto resolved by precedence |
+| D-59 | Holiday overrides the effective SetPoint only; BaseSetPoints untouched; starts on activation, manual stop possible |
+| D-60 | HeartbeatTimeout 5 h (was 1 h), same for valve and heat source Shellys: owner gets time to react on HA side; heartbeat interval stays 5 min. Not split (2026-09-27): HP OFF also stops the secondary pump, so valves and HP cannot be separated usefully, and running on keeps heat in the house during a longer outage |
+| D-61 | Heartbeat calls are answered with script status; alert after 3 consecutive failures |
+| D-62 | healthchecks.io: period 5 min, grace ≈ 30 min |
+| D-63 | License: MIT; copyright line as given in §0.2 and `LICENSE` only |
+| D-64 | Demand held back by HpMinOffTime: zone `HEATING`, valve opens immediately; HP request ON when min OFF elapses; `IDLE` if StopTemp reached meanwhile |
+| D-65 | Several calling-zone candidates in one step: largest (StartTemp − RoomTemp) wins; ties by YAML order |
+| D-66 | "HP running" = actual heat source switch state (request feedback, not compressor); unavailable = OFF; HP timers from actual transitions; shadow mode uses commanded state as feedback |
+| D-67 | Alert "output not following command" after 3 reconcile intervals of mismatch/unavailability; reconcile retries with backoff |
+| D-68 | Heating season OFF mid-cycle stops the HP request immediately, overriding min ON |
+| D-69 | Control active ON → OFF: one final safe command set (HP OFF, valves OFF), then no commands |
+| D-70 | `SENSOR_FAULT` takes precedence over `FORCED` |
+| D-71 | D-20 spread excludes zones with RoomTemp ≥ ManualMaxTemp |
+| D-72 | Heat source Shelly reboot without heartbeat: boot = last heartbeat; OFF until FailsafeTrigger; uptime cycle starts with 5 h ON at uptime = FailsafeTrigger |
+| D-73 | Shelly-side parameters live only in the script config/KVS; reported in the heartbeat status; HA alerts on mismatch; HA's FailsafeTrigger/Window apply to case 1 only |
+| D-74 | Schedule add/delete form entities are provided by the integration; no user helpers needed |
+| D-75 | Outside heating season: sensor fault start/recovery notified, no daily reminder |
+| D-76 | Zones have a stable YAML `id`; `name` is display only |
+| D-77 | Core computes in °C; adapter converts units; plausibility range is config (default 0–40 °C) |
+| D-78 | First start without persisted state: HpMinOffTime not applied |
+| D-79 | Holiday UI: "Holiday active" switch + end date/time; shadow mode shown separately from the mode sensor |
+| D-80 | Hydraulic prerequisite (flow path whenever HP request ON) documented; startup warning if every zone has a valve |
+| D-81 | HpMinOnTime / HpMinOffTime configurable 30–180 min; never below 30 min (short-cycling protection) |
+| D-82 | Releases are split into work phases P0–P12 (`docs/implementation-plan.md`), one pull request each; the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 |
+| – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
+
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2).
+
+---
+
+## 8. Items to verify on real hardware (owner)
+
+| # | Item | Impact if negative |
+|---|---|---|
+| V1 | Shelly Plus 2PM measures the actuator holding power reliably (stable, non-zero) | Actuator fault check (D-41) not used |
+| V2 | Shelly script HTTP endpoint for the heartbeat works on 2PM Gen2 and Shelly 1 Gen3/Gen4 | Alternative heartbeat transport needed |
+| V3 | Shelly device address can be derived from the HA device registry | Addresses listed in YAML |
+| V4 | Whether the secondary pump runs during hot water production | Documentation only |
+| V5 | The heat pump reacts correctly to the Shelly 1 contact on the former Computherm terminals | Wiring check before go-live |
+| V6 | BTHome/pvvx sensor entities update `last_reported` when the same value repeats | Sensor fault detection (§3.6) would misfire; needs another staleness source |
