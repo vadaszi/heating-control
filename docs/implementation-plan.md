@@ -68,7 +68,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Output mismatch detection in the core: the counter over N consecutive steps where actual ≠ desired or unavailable → alert event + recovery (D-67). Inactive in shadow mode.
 - **Tests:** A17 (notification and reminder), A20 (season part), A29 (mismatch alert), the mismatch counter (A27 logic part); simulation with season changes.
 - **Carried over (settle in the P3 plan):**
-  - *Time zone contract* (review C): `step` needs HA's time zone for local wall-clock rules (the 08:00 reminder now, schedules in P9). Pass a `zoneinfo` time zone in `Inputs` and convert `now` in the core (see test strategy); DST tests.
+  - *Time zone contract* (review C): done in P3 as D-96 (`Inputs.time_zone`; the core converts `now`; DST tests).
   - *Done after the P2 review (2026-09-27):* SetPoint decrease ends the wait (review A, D-94); unvalved reason text during the spread (review B); naive `last_reported` rejected (review D); heat source unavailable, then back (review E, D-95; owner: no grace period, a Wi-Fi glitch must never switch a working heat pump OFF).
   - *Mismatch counting*: `step` also runs on sensor updates, so the D-67 counter must count reconcile intervals, not steps. Define how the core tells them apart.
 
@@ -88,6 +88,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Carried over:**
   - *Reconcile on heat source change* (P2 summary): also run a reconcile when the heat source switch changes state, so HP transitions are seen without waiting up to one ReconcileInterval (the core scenario times assume this).
   - *Recompute before commanding* (review E): the reconcile loop always calls `step` with the current actual states before sending commands, and never re-sends an older desired state. Otherwise a switch returning from `unavailable` could be sent a stale OFF (owner requirement: a Wi-Fi glitch must never switch a working heat pump OFF).
+  - *Time zone* (D-96): pass HA's configured time zone (`zoneinfo`) as `Inputs.time_zone`; follow changes of HA's time zone setting.
   - *No commands to unavailable switches*: while a switch is unavailable, do not queue commands for it. Count it for the mismatch alert (D-67) and recompute when it returns. No grace period before `unavailable` counts as OFF (owner, 2026-09-27).
 
 ## P6 — HA entities & notifications

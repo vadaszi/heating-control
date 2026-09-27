@@ -395,6 +395,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - a single deterministic step function:
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
+  - `inputs` also carry HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
   - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
@@ -727,9 +728,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-93 | No valid reading since startup and none persisted: SensorFaultTimeout counts from startup; the zone is IDLE with no demand until then |
 | D-94 | A SetPoint decrease that leaves RoomTemp above the new StartTemp ends a running WaitTime at once (IDLE) |
 | D-95 | Heat source switch unavailable, then back: back ON after ON means it never stopped (min ON and the cycle continue); back OFF means OFF since it became unavailable; the cycle is kept while unavailable. Refines D-66; relies on the Shelly power-on default OFF |
+| D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 during P3.
 
 ---
 

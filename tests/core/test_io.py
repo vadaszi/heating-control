@@ -39,6 +39,8 @@ def test_inputs_carry_everything_step_needs() -> None:
         global_params=GlobalParams(),
         heating_season=True,
         control_active=False,
+        time_zone=UTC,
+        reconcile_tick=False,
     )
     assert inputs.zones["bathroom"].valve is None  # unvalved zone
     assert not inputs.heat_source.is_on

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -484,6 +485,8 @@ def _inputs(zones: dict[str, ZoneInput], params: dict[str, ZoneParams]) -> Input
         global_params=GlobalParams(),
         heating_season=True,
         control_active=True,
+        time_zone=UTC,
+        reconcile_tick=True,
     )
 
 
@@ -499,6 +502,21 @@ def test_last_reported_must_be_timezone_aware() -> None:
     naive = datetime(2026, 1, 12, 6, 0)  # noqa: DTZ001
     inputs = _inputs({"zone_1": ZoneInput(22.0, naive, OutputState.OFF)}, {"zone_1": ZoneParams()})
     with pytest.raises(ValueError, match="zone_1: last_reported must carry a time zone"):
+        step(config, CoreState(), inputs, at("06:00"))
+
+
+def test_time_zone_is_required() -> None:
+    """D-96: HA's time zone comes with the inputs."""
+    sc = Scenario(1)
+    inputs = dataclasses.replace(sc.inputs(), time_zone=None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="time_zone must be a tzinfo"):
+        step(sc.config, sc.state, inputs, sc.now)
+
+
+def test_valved_zone_needs_its_valve_state() -> None:
+    config = make_config(1)
+    inputs = _inputs({"zone_1": ZoneInput(22.0, None, None)}, {"zone_1": ZoneParams()})
+    with pytest.raises(ValueError, match="zone_1: the valve state is missing"):
         step(config, CoreState(), inputs, at("06:00"))
 
 

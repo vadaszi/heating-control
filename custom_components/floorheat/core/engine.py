@@ -21,7 +21,7 @@ import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
 from .io import Event, Inputs, Outputs, OutputState, ZoneInput, ZoneReport
@@ -173,6 +173,8 @@ def step(
 def _check(config: CoreConfig, inputs: Inputs, now: datetime) -> None:
     if now.utcoffset() is None:
         raise ValueError("now must carry a time zone")
+    if not isinstance(inputs.time_zone, tzinfo):
+        raise ValueError(f"time_zone must be a tzinfo, got {inputs.time_zone!r}")  # D-96
     missing = [
         zone_id
         for zone_id in config.zone_ids
@@ -184,6 +186,9 @@ def _check(config: CoreConfig, inputs: Inputs, now: datetime) -> None:
         reported = zone_input.last_reported
         if reported is not None and reported.utcoffset() is None:
             raise ValueError(f"{zone_id}: last_reported must carry a time zone")
+    for zone in config.zones:
+        if zone.has_valve and inputs.zones[zone.id].valve is None:
+            raise ValueError(f"{zone.id}: the valve state is missing")  # D-99
 
 
 def _heat_source(state: CoreState, actual: OutputState, now: datetime) -> _HeatSource:

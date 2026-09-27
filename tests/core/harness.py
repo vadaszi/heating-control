@@ -1,11 +1,13 @@
 """Scenario harness for core tests: simulated time, inputs and a perfect reconcile loop.
 
 A `Scenario` owns the config, the core state and the simulated world (sensor readings,
-actual switch states). `step()` runs `step` at the current time. Like the reconcile loop,
-it makes the actual switches follow the commanded state and, when the heat source
-changed, steps again at the same time, so transitions are seen without delay. Every
-call checks that `step` is idempotent: running it again on its own result changes
-nothing.
+actual switch states). `step()` runs `step` at the current time as a reconcile tick.
+Like the reconcile loop, it makes the actual switches follow the commanded state and,
+when the heat source changed, steps again at the same time, so transitions are seen
+without delay. Every call checks that `step` is idempotent: running it again on its own
+result changes nothing and emits no further events.
+
+Times are given as local wall-clock times in the scenario's time zone (UTC by default).
 """
 
 from __future__ import annotations
@@ -13,11 +15,18 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Mapping, Sequence
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from custom_components.floorheat.core.config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
 from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import Event, Inputs, Outputs, OutputState, ZoneInput
+from custom_components.floorheat.core.io import (
+    Event,
+    EventKind,
+    Inputs,
+    Outputs,
+    OutputState,
+    ZoneInput,
+)
 from custom_components.floorheat.core.state import CoreState, ZoneMode, load_state
 
 DAY = date(2026, 1, 12)  # a Monday in the heating season
@@ -39,8 +48,8 @@ def make_config(zones: int = 2, *, unvalved: Sequence[int] = ()) -> CoreConfig:
     )
 
 
-def at(hhmm: str, day: date = DAY) -> datetime:
-    return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=UTC)
+def at(hhmm: str, day: date = DAY, tz: tzinfo = UTC) -> datetime:
+    return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=tz)
 
 
 class Scenario:
@@ -51,6 +60,8 @@ class Scenario:
         unvalved: Sequence[int] = (),
         temps: float | Mapping[ZoneRef, float | None] = 22.0,
         start: str = "06:00",
+        day: date = DAY,
+        tz: tzinfo = UTC,
         hp_on: bool = False,
         params: GlobalParams | None = None,
         zone_params: ZoneParams | None = None,
@@ -60,7 +71,9 @@ class Scenario:
             zones if isinstance(zones, CoreConfig) else make_config(zones, unvalved=unvalved)
         )
         ids = self.config.zone_ids
-        self.now = at(start)
+        self.tz = tz
+        self.day = day
+        self.now = at(start, day, tz).astimezone(UTC)  # UTC: minute steps across DST
         self.state = state if state is not None else CoreState.initial(self.config)
         self.global_params = params or GlobalParams()
         self.zone_params = {z: zone_params or ZoneParams() for z in ids}
@@ -72,7 +85,9 @@ class Scenario:
         self.hp_actual = OutputState.ON if hp_on else OutputState.OFF
         self.hp_follows = True
         self.valves_actual = {z.id: OutputState.OFF for z in self.config.zones if z.has_valve}
+        self.valves_follow = dict.fromkeys(self.valves_actual, True)
         self.heating_season = True
+        self.control_active = True
         self.outputs: Outputs | None = None
         self.events: list[Event] = []
 
@@ -95,6 +110,14 @@ class Scenario:
         """Override the actual heat source switch state (e.g. unavailable)."""
         self.hp_actual = value
         self.hp_follows = follows
+
+    def set_valve_actual(self, zone: ZoneRef, value: OutputState, *, follows: bool = False) -> None:
+        """Override a valve's actual state (e.g. unavailable, or ignoring commands)."""
+        self.valves_actual[zone_id(zone)] = value
+        self.valves_follow[zone_id(zone)] = follows
+
+    def set_season(self, on: bool) -> None:
+        self.heating_season = on
 
     def restart(self, downtime: int = 0) -> None:
         """HA restart: persist, reload through JSON, and continue after `downtime` min."""
@@ -122,14 +145,16 @@ class Scenario:
             zone_params=dict(self.zone_params),
             global_params=self.global_params,
             heating_season=self.heating_season,
-            control_active=True,
+            control_active=self.control_active,
+            time_zone=self.tz,
+            reconcile_tick=True,
         )
 
     def _step_once(self) -> Outputs:
         inputs = self.inputs()
         outputs, new_state, events = step(self.config, self.state, inputs, self.now)
         again = step(self.config, new_state, inputs, self.now)
-        assert again == (outputs, new_state, events), f"step is not idempotent at {self.now}"
+        assert again == (outputs, new_state, []), f"step is not idempotent at {self.now}"
         self.state, self.outputs = new_state, outputs
         self.events.extend(events)
         return outputs
@@ -139,7 +164,8 @@ class Scenario:
         for _ in range(3):
             outputs = self._step_once()
             for z, on in outputs.valves.items():
-                self.valves_actual[z] = OutputState.ON if on else OutputState.OFF
+                if self.valves_follow[z]:
+                    self.valves_actual[z] = OutputState.ON if on else OutputState.OFF
             desired = OutputState.ON if outputs.heat_source_on else OutputState.OFF
             if not self.hp_follows or self.hp_actual is desired:
                 return outputs
@@ -152,8 +178,9 @@ class Scenario:
             self.now += timedelta(minutes=1)
             self.step()
 
-    def advance_to(self, hhmm: str, day: date = DAY) -> None:
-        target = at(hhmm, day)
+    def advance_to(self, hhmm: str, day: date | None = None) -> None:
+        """Advance to a local wall-clock time (on the start day unless `day` is given)."""
+        target = at(hhmm, day or self.day, self.tz)
         assert target >= self.now, f"{target} is before {self.now}"
         self.advance(int((target - self.now) / timedelta(minutes=1)))
 
@@ -186,6 +213,12 @@ class Scenario:
 
     def room_temp(self, zone: ZoneRef) -> float | None:
         return self._out().zones[zone_id(zone)].room_temp
+
+    def events_of(self, kind: EventKind) -> list[Event]:
+        return [event for event in self.events if event.kind is kind]
+
+    def local_now(self) -> datetime:
+        return self.now.astimezone(self.tz)
 
     @property
     def calling_zone(self) -> str | None:

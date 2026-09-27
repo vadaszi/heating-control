@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, tzinfo
 from enum import StrEnum
 
 from .config import GlobalParams, ZoneParams
@@ -43,7 +43,14 @@ class ZoneInput:
 class Inputs:
     """Everything `step` reads besides config, state and time.
 
-    Keyed by zone id (D-76). Schedules and holiday are added in P9.
+    Keyed by zone id (D-76); every valved zone carries its valve state. Schedules and
+    holiday are added in P9.
+
+    - `time_zone`: HA's configured time zone. `now` may be in any time zone; the core
+      converts it for local wall-clock rules (D-96).
+    - `reconcile_tick`: True only for the run started by the ReconcileInterval timer, not
+      for runs on sensor updates or heat source changes. The mismatch counter counts
+      these ticks (D-67, D-99).
     """
 
     zones: Mapping[str, ZoneInput]
@@ -52,6 +59,8 @@ class Inputs:
     global_params: GlobalParams
     heating_season: bool
     control_active: bool
+    time_zone: tzinfo
+    reconcile_tick: bool
 
 
 @dataclass(frozen=True)
