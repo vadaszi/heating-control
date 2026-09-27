@@ -357,6 +357,7 @@ def test_heat_source_mismatch_message() -> None:
     [recovered] = sc.events_of(MISMATCH_RECOVERED)
     assert recovered.message == "The heat source switch follows its command again."
     assert recovered.zone_id is None
+    assert recovered.data == {"output": "heat_source"}
 
 
 def test_mismatch_is_counted_outside_the_season() -> None:

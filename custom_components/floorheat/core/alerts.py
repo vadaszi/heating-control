@@ -166,7 +166,12 @@ def _output_event(
     limit: int,
 ) -> Event:
     if kind is EventKind.OUTPUT_MISMATCH_RECOVERED:
-        return Event(kind=kind, message=f"{name} follows its command again.", zone_id=zone_id)
+        return Event(
+            kind=kind,
+            message=f"{name} follows its command again.",
+            zone_id=zone_id,
+            data={"output": output},
+        )
     desired = bool(tracking.last_desired)
     shown = "unavailable" if actual is OutputState.UNAVAILABLE else actual.value.upper()
     return Event(

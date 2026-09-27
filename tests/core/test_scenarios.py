@@ -530,6 +530,7 @@ def test_a27_unavailable_valve_alerts_once_then_recovery() -> None:
     [recovered] = sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)
     assert recovered.zone_id == "zone_1"
     assert recovered.message == "The valve of Zone 1 follows its command again."
+    assert recovered.data == {"output": "valve"}
     sc.advance(10)
     assert len(sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)) == 1
 
