@@ -68,9 +68,10 @@ class CoreState:
     """Global logic state (§3.8). Alerts are derived from these fields."""
 
     zones: dict[str, ZoneState] = field(default_factory=dict)
-    hp_actual_on: bool | None = None  # last seen actual switch state; None = never seen
+    hp_actual_on: bool | None = None  # last known actual switch state; None = never seen
     hp_last_on_at: datetime | None = None  # actual transitions (D-66)
     hp_last_off_at: datetime | None = None  # None: first start, no min OFF (D-78)
+    hp_unavailable_since: datetime | None = None  # switch unavailable since (D-95)
     calling_zone: str | None = None
     sync_fired: bool = False
     heat_source_output: OutputTracking = OutputTracking()
@@ -89,6 +90,7 @@ class CoreState:
             "hp_actual_on": self.hp_actual_on,
             "hp_last_on_at": _dt_to_str(self.hp_last_on_at),
             "hp_last_off_at": _dt_to_str(self.hp_last_off_at),
+            "hp_unavailable_since": _dt_to_str(self.hp_unavailable_since),
             "calling_zone": self.calling_zone,
             "sync_fired": self.sync_fired,
             "heat_source_output": _tracking_to_dict(self.heat_source_output),
@@ -119,6 +121,7 @@ class CoreState:
             hp_actual_on=reader.opt_bool("hp_actual_on"),
             hp_last_on_at=reader.opt_datetime("hp_last_on_at"),
             hp_last_off_at=reader.opt_datetime("hp_last_off_at"),
+            hp_unavailable_since=reader.opt_datetime("hp_unavailable_since"),
             calling_zone=reader.opt_str("calling_zone"),
             sync_fired=reader.boolean("sync_fired", default=False),
             heat_source_output=_tracking_from(reader.child("heat_source_output")),

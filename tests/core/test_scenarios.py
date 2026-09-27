@@ -313,16 +313,20 @@ def test_a26_equal_deficits_go_to_yaml_order() -> None:
 
 
 def test_a29_heat_source_unavailable_counts_as_off() -> None:
-    """Core part of A29 (the mismatch alert is P3)."""
+    """Core part of A29 (the mismatch alert is P3), with D-95: while unavailable the
+    heat source counts as OFF, min OFF counts from when it became unavailable, and the
+    cycle is kept until the switch reports again."""
     sc = _started_by_zone_1(3)
     sc.advance_to("06:45")
     sc.set_hp_actual(OutputState.UNAVAILABLE)
     sc.step()
-    assert sc.state.hp_last_off_at == sc.now  # min OFF starts
-    assert not sc.hp  # held by min OFF
+    assert sc.state.hp_unavailable_since == sc.now
+    assert sc.state.hp_actual_on is True  # last known state
+    assert not sc.hp  # held by min OFF, counted from 06:45 (the command cannot be sent)
     assert sc.mode(1) is HEATING
     assert sc.valve(1) is True
-    assert sc.calling_zone is None
+    assert sc.reason(1) == "Heating, heat source unavailable"
+    assert sc.calling_zone == "zone_1"  # the cycle is kept while unknown (D-95)
 
     sc.advance_to("06:50")
     sc.temp(2, 21.7)
@@ -332,8 +336,8 @@ def test_a29_heat_source_unavailable_counts_as_off() -> None:
     sc.advance_to("07:44")
     assert not sc.hp
     sc.advance_to("07:45")
-    assert sc.hp  # min OFF elapsed; the request is repeated
-    assert sc.calling_zone == "zone_2"  # both held HEATING; zone 2 has the larger deficit
+    assert sc.hp  # min OFF (from 06:45) elapsed; the request is repeated
+    assert sc.calling_zone == "zone_1"
 
 
 def test_a30_first_start_without_persisted_state() -> None:
@@ -349,10 +353,14 @@ def test_a30_first_start_without_persisted_state() -> None:
 
 
 def test_heat_source_wifi_glitch_no_off_after_it_returns_on() -> None:
-    """Owner requirement: a Wi-Fi glitch (router restart) must not turn a working,
-    running heat pump OFF. While unavailable it counts as OFF (D-66); the OFF request
-    cannot reach the switch. Once it reports ON again, the core wants it ON."""
-    sc = _started_by_zone_1(3)
+    """Owner requirement (D-95): a Wi-Fi glitch or router restart must not turn a
+    working, running heat pump OFF. Back ON means it never stopped: min ON, the calling
+    zone and the sync flag carry on."""
+    sc = _started_by_zone_1(3, {2: 21.9})
+    sc.advance_to("06:40")
+    sc.temp(1, 22.0)
+    sc.step()
+    assert sc.sync_fired
     sc.advance_to("06:45")
     sc.set_hp_actual(OutputState.UNAVAILABLE)
     sc.advance(3)
@@ -361,16 +369,51 @@ def test_heat_source_wifi_glitch_no_off_after_it_returns_on() -> None:
     sc.step()
     assert sc.hp
     assert sc.mode(1) is HEATING
+    assert sc.state.hp_last_on_at == sc.now.replace(hour=6, minute=30)  # not restarted
+    assert sc.state.hp_last_off_at is None
+    assert sc.state.hp_unavailable_since is None
+    assert sc.calling_zone == "zone_1"
+    assert sc.sync_fired  # the same cycle: no second sync
 
 
-def test_heat_source_wifi_glitch_without_demand_keeps_it_on() -> None:
-    """Even with no demand left, a heat pump that reports ON again is not switched OFF
-    at once: its return counts as an ON transition, so min ON applies."""
+def test_heat_source_wifi_glitch_does_not_restart_min_on() -> None:
+    """Back ON within min ON and nothing needs heat: the D-20 spread ends at the
+    original min ON (07:30), not 60 min after the glitch."""
     sc = _started_by_zone_1(2, {2: 22.2})
-    sc.advance_to("07:40")  # min ON has elapsed
+    sc.advance_to("07:10")
+    sc.temp(1, 22.2)
+    sc.step()
+    assert sc.hp  # spread until 07:30
     sc.set_hp_actual(OutputState.UNAVAILABLE)
-    sc.temp(1, 22.2)  # satisfied during the glitch
-    sc.advance(3)
+    sc.advance(5)
     sc.set_hp_actual(OutputState.ON, follows=True)
     sc.step()
     assert sc.hp
+    sc.advance_to("07:29")
+    assert sc.hp
+    sc.advance_to("07:30")
+    assert not sc.hp
+
+
+def test_heat_source_back_off_after_power_loss() -> None:
+    """D-95: back OFF after being ON means it really stopped (a Shelly restarts OFF),
+    counted from when it became unavailable; the cycle has ended."""
+    sc = _started_by_zone_1(3)
+    sc.advance_to("06:45")
+    unavailable_at = sc.now
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.step()
+    sc.advance(5)
+    sc.temp(2, 21.7)
+    sc.step()
+    sc.set_hp_actual(OutputState.OFF, follows=True)
+    sc.step()
+    assert sc.state.hp_last_off_at == unavailable_at
+    assert sc.state.hp_actual_on is False
+    assert sc.calling_zone is None  # held by min OFF: a new cycle follows
+    assert not sc.hp
+    sc.advance_to("07:44")
+    assert not sc.hp
+    sc.advance_to("07:45")
+    assert sc.hp
+    assert sc.calling_zone == "zone_2"  # new cycle: zone 2 has the larger deficit

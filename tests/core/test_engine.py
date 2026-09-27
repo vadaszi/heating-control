@@ -333,6 +333,62 @@ def test_min_off_counts_from_the_actual_off_transition() -> None:
     assert sc.hp
 
 
+# ---------------------------------------------------------------- D-95 heat source unavailable
+
+
+def test_heat_source_off_before_outage_stays_off_with_its_old_off_time() -> None:
+    sc = Scenario(2, start="07:00", hp_on=True)
+    sc.step()
+    sc.advance_to("08:00")  # OFF at 08:00 (D-91 min ON from startup)
+    sc.advance_to("08:10")
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(5)
+    sc.set_hp_actual(OutputState.OFF, follows=True)
+    sc.step()
+    assert sc.state.hp_last_off_at == sc.now.replace(hour=8, minute=0)
+
+
+def test_heat_source_off_before_outage_back_on_is_a_new_start() -> None:
+    """It was OFF and reports ON (switched on elsewhere): an ON transition now."""
+    sc = Scenario(2, start="07:00", hp_on=True)
+    sc.step()
+    sc.advance_to("08:10")
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(5)
+    sc.set_hp_actual(OutputState.ON)
+    sc.step()
+    assert sc.state.hp_last_on_at == sc.now
+
+
+def test_heat_source_unavailable_at_first_start() -> None:
+    """Nothing known yet: no min OFF (D-78); back ON counts from then (D-91)."""
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.step()
+    assert sc.state.hp_actual_on is None
+    assert sc.hp  # demand, no known OFF time: the request is ON (not deliverable yet)
+    sc.advance(3)
+    sc.set_hp_actual(OutputState.ON)
+    sc.step()
+    assert sc.state.hp_last_on_at == sc.now
+
+
+def test_restart_during_outage_keeps_the_outage() -> None:
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.step()
+    sc.advance(10)
+    started = sc.state.hp_last_on_at
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.step()
+    outage = sc.now
+    sc.restart(downtime=5)
+    sc.step()
+    assert sc.state.hp_unavailable_since == outage
+    sc.set_hp_actual(OutputState.ON, follows=True)
+    sc.step()
+    assert sc.state.hp_last_on_at == started  # never stopped
+
+
 # ---------------------------------------------------------------- §3.6 readings and fault
 
 

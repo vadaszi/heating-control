@@ -6,7 +6,7 @@ the same inputs and the same `now` returns the same result, so the reconcile loo
 run it as often as it likes.
 
 Order within a step:
-1. heat source transitions from the actual switch state (D-66, D-78, D-91);
+1. heat source transitions from the actual switch state (D-66, D-78, D-91, D-95);
 2. readings and sensor fault (§3.6, D-88, D-93);
 3. zone transitions (§3.3 rules 1 to 4 and 6);
 4. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
-from .io import Event, Inputs, Outputs, ZoneInput, ZoneReport
+from .io import Event, Inputs, Outputs, OutputState, ZoneInput, ZoneReport
 from .state import CoreState, ZoneMode, ZoneState
 
 # Absorbs float noise in comparisons such as "RoomTemp at or below StartTemp"
@@ -65,6 +65,20 @@ class _Zone:
 
 
 @dataclass(frozen=True)
+class _HeatSource:
+    """The heat source as seen in this step (D-66, D-95)."""
+
+    running: bool  # actually ON; unavailable counts as OFF
+    available: bool
+    known_on: bool | None  # last known actual state, kept while unavailable
+    last_on: datetime | None
+    last_off: datetime | None
+    unavailable_since: datetime | None
+    off_since: datetime | None  # OFF time used for min OFF in this step
+    stopped: bool  # an actual ON -> OFF transition was seen in this step
+
+
+@dataclass(frozen=True)
 class _Request:
     on: bool
     spreading: bool  # all zones satisfied before HpMinOnTime (D-20)
@@ -77,10 +91,10 @@ def step(
     """Compute the desired outputs and the next state (§5.3)."""
     _check(config, inputs, now)
     params = inputs.global_params
-    running = inputs.heat_source.is_on
-    last_on, last_off = _heat_source_times(state, running, now)
+    source = _heat_source(state, inputs.heat_source, now)
+    running, last_on, off_since = source.running, source.last_on, source.off_since
     min_on_left = last_on + params.hp_min_on_time - now if running and last_on else _ZERO
-    min_off_left = last_off + params.hp_min_off_time - now if not running and last_off else _ZERO
+    min_off_left = off_since + params.hp_min_off_time - now if not running and off_since else _ZERO
 
     zones: dict[str, _Zone] = {}
     zone_states: dict[str, ZoneState] = {}
@@ -100,11 +114,17 @@ def step(
 
     # A calling zone only exists while the request is ON, so it continues the cycle.
     calling = state.calling_zone if state.calling_zone in zones else None
-    zone_states, sync_fired = _sync(calling, state.sync_fired, zones, zone_states)
+    sync_fired = state.sync_fired
+    if source.stopped:
+        calling, sync_fired = None, False  # the heat pump stopped: the cycle is over
+    if source.available:
+        zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
     request = _request(zone_states, running, min_on_left, min_off_left)
-    if not request.on:
+    # While the switch is unavailable it is unknown whether the heat pump still runs:
+    # the cycle stays as it is until the switch reports again (D-95).
+    if source.available and not request.on:
         calling, sync_fired = None, False  # the cycle is over (or held by min OFF)
-    elif calling is None:
+    elif source.available and calling is None:
         calling = _choose_calling_zone(zones, zone_states)
         zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
         request = _request(zone_states, running, min_on_left, min_off_left)
@@ -122,6 +142,7 @@ def step(
                 valves[zone_id],
                 calling,
                 request,
+                source.available,
                 min_on_left,
                 min_off_left,
                 now,
@@ -139,9 +160,10 @@ def step(
     new_state = dataclasses.replace(
         state,
         zones=zone_states,
-        hp_actual_on=running,
+        hp_actual_on=source.known_on,
         hp_last_on_at=last_on,
-        hp_last_off_at=last_off,
+        hp_last_off_at=source.last_off,
+        hp_unavailable_since=source.unavailable_since,
         calling_zone=calling,
         sync_fired=sync_fired,
     )
@@ -164,20 +186,30 @@ def _check(config: CoreConfig, inputs: Inputs, now: datetime) -> None:
             raise ValueError(f"{zone_id}: last_reported must carry a time zone")
 
 
-def _heat_source_times(
-    state: CoreState, running: bool, now: datetime
-) -> tuple[datetime | None, datetime | None]:
-    """Last actual ON/OFF transitions (D-66).
+def _heat_source(state: CoreState, actual: OutputState, now: datetime) -> _HeatSource:
+    """Actual ON/OFF transitions of the heat source (D-66, D-95).
 
-    A switch seen ON for the first time (first start, D-91) counts as switched ON now;
-    one seen OFF for the first time leaves the OFF time unknown, so no min OFF (D-78).
+    - Seen ON for the first time (first start, D-91): switched ON now. Seen OFF for the
+      first time: the OFF time stays unknown, so no min OFF (D-78).
+    - Unavailable: counts as OFF, and min OFF counts from when it became unavailable if
+      it was ON. The last known state and the stored times are kept, because the switch
+      may still be ON.
+    - Back ON after being ON: it never stopped (a Shelly that lost power restarts OFF),
+      so nothing changes. Back OFF after being ON: it stopped when it became unavailable.
     """
+    known = state.hp_actual_on
     last_on, last_off = state.hp_last_on_at, state.hp_last_off_at
-    if running and not (state.hp_actual_on and last_on):
+    if actual is OutputState.UNAVAILABLE:
+        since = state.hp_unavailable_since or now
+        off_since = since if known else last_off
+        return _HeatSource(False, False, known, last_on, last_off, since, off_since, False)
+    running = actual.is_on
+    stopped = not running and known is True
+    if running and not (known and last_on):
         last_on = now
-    if not running and state.hp_actual_on:
-        last_off = now
-    return last_on, last_off
+    if stopped:
+        last_off = state.hp_unavailable_since or now
+    return _HeatSource(running, True, running, last_on, last_off, None, last_off, stopped)
 
 
 def _read_sensor(
@@ -339,6 +371,7 @@ def _reason(
     valve: bool,
     calling: str | None,
     request: _Request,
+    source_available: bool,
     min_on_left: timedelta,
     min_off_left: timedelta,
     now: datetime,
@@ -349,6 +382,8 @@ def _reason(
     if zone.room is None:
         return "Waiting for a sensor reading"
     if zone_state.mode is _HEATING:
+        if not source_available:
+            return "Heating, heat source unavailable"
         if request.held:
             return f"Held by min OFF, {_minutes(min_off_left)} min left"
         return "Calling zone" if zone_id == calling else "Heating"

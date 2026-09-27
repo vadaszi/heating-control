@@ -136,7 +136,7 @@ Priorities:
 | `StartTemp` | `SetPoint − Hysteresis`: at or below this the zone asks for heat |
 | `StopTemp` | `SetPoint + Hysteresis`: at or above this the zone stops heating |
 | `WaitTime` | Open-window filter: delay before a zone may start the heat pump |
-| Heat pump request | The switch that asks the heat source for heat. "Heat pump running" in this document always means **the heat source switch actually reports ON** (D-66). This is feedback of the request only. The heat pump may still stop its compressor internally, and there is no compressor feedback. An unavailable switch counts as OFF. In shadow mode the commanded state stands in for the actual state (§5.5). |
+| Heat pump request | The switch that asks the heat source for heat. "Heat pump running" in this document always means **the heat source switch actually reports ON** (D-66). This is feedback of the request only. The heat pump may still stop its compressor internally, and there is no compressor feedback. An unavailable switch counts as OFF while it is unavailable; when it reports again, D-95 decides whether it ever stopped. In shadow mode the commanded state stands in for the actual state (§5.5). |
 | Cycle | The period from heat pump request ON to heat pump request OFF |
 | Calling zone | The zone whose demand switched the heat pump request ON in the current cycle (at most one per cycle) |
 | Unvalved zone | A zone configured without a valve (zone 5 in the reference installation) |
@@ -226,6 +226,11 @@ Unvalved zones compute state normally; only their output is a no-op.
 ### 3.5 Heat pump protection (D-07, D-20, D-30, D-39, D-64, D-66, D-68, D-71, D-78)
 - `HpMinOnTime` and `HpMinOffTime` are user-configurable (default 60 / 60 min, range 30–180 min). The purpose is to stop the heat pump switching on or off too often, so neither can be set below 30 min (D-81). The config validation and the number entities enforce this.
 - Both timers count from the **actual** switch transitions (D-66). An unavailable switch counts as OFF, so a switch that becomes unavailable starts the OFF time.
+- **Switch unavailable, then back (D-95):** a Wi-Fi glitch or router restart must never switch a working heat pump OFF.
+  - While unavailable: the switch counts as OFF (no join by rule 3, min OFF counted from when it became unavailable). The calling zone and the sync flag are kept, because the heat pump may still run. Commands cannot reach the switch.
+  - Back **ON** after being ON: it never stopped, because a Shelly that lost power restarts OFF (power-on default, §5.4). HpMinOnTime and the cycle continue unchanged.
+  - Back **OFF** after being ON: it stopped when it became unavailable. That is the OFF time, and the cycle has ended.
+  - Back ON after being OFF: a normal ON transition at that moment.
 - **All zones satisfied before HpMinOnTime has elapsed (D-20, D-71):** the request stays ON and all valves open until HpMinOnTime elapses. Zones with RoomTemp ≥ ManualMaxTemp are excluded and stay closed. The remaining heat is spread over the house. Then the request goes OFF and valves follow normal logic.
 - **A zone calls before HpMinOffTime has elapsed:** the request waits until HpMinOffTime has elapsed. The zone is `HEATING` with its valve open in the meantime (D-64).
 - **WaitTime and HpMinOffTime run in parallel.** The request goes ON when both have elapsed and the WaitTime check passed.
@@ -442,7 +447,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **Heartbeat failure alert (D-61):** after `HeartbeatFailAlert` (3 consecutive failed calls, ≈ 15 min), notify "Shelly X unreachable" or "watchdog script not running on Shelly X". A single failed call (Wi-Fi hiccup) never alerts. Also notify when it recovers.
 - The heartbeat is sent whenever the integration runs, **including shadow mode** (D-56).
 - Shelly settings:
-  - power-on default: OFF;
+  - power-on default: OFF (D-95 relies on it for the heat source Shelly);
   - scripts enabled at boot;
   - valve channels in switch profile.
 - Scripts live in the repo (`shelly_scripts/`) with a configuration block at the top: role, timeouts, failsafe window, uptime fallback.
@@ -606,7 +611,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | A26 | HP off; zones 1 and 2 WaitTime expire in the same step; zone 1 at StartTemp − 0.1, zone 2 at StartTemp − 0.3 | both `HEATING`; zone 2 = calling zone (largest deficit); equal deficits → first in YAML order |
 | A27 | A valve switch stays unavailable (or ignores commands) for 3 reconcile intervals | "output not following command" notified once; retries with backoff; recovery notified |
 | A28 | Manual schedule active for zone 2, but zone 2 is in `SENSOR_FAULT` | zone 2 stays `SENSOR_FAULT` (follows the house, no demand); no HP start because of it |
-| A29 | Heat source switch becomes unavailable while ON | counts as HP OFF: min OFF starts; zones do not join by rule 3; mismatch alert per A27 |
+| A29 | Heat source switch becomes unavailable while ON | counts as HP OFF: min OFF starts; zones do not join by rule 3; mismatch alert per A27. Back ON: it never stopped (min ON and the cycle continue); back OFF: OFF since it became unavailable (D-95) |
 | A30 | First start, no persisted state | outputs read back; HpMinOffTime not applied; a zone at StartTemp enters `WAITING` and starts the HP after WaitTime |
 
 **Shelly scripts (bench tests, shortened timeouts):**
@@ -721,9 +726,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-92 | Request ON without a calling zone: the HEATING zone with the largest deficit (ties by YAML order) becomes the calling zone |
 | D-93 | No valid reading since startup and none persisted: SensorFaultTimeout counts from startup; the zone is IDLE with no demand until then |
 | D-94 | A SetPoint decrease that leaves RoomTemp above the new StartTemp ends a running WaitTime at once (IDLE) |
+| D-95 | Heat source switch unavailable, then back: back ON after ON means it never stopped (min ON and the cycle continue); back OFF means OFF since it became unavailable; the cycle is kept while unavailable. Refines D-66; relies on the Shelly power-on default OFF |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 after the P2 review.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review.
 
 ---
 
