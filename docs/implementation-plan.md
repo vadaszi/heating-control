@@ -51,6 +51,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - `core/io.py`: `Inputs` (temps + last_reported, actual outputs, params, season, control_active) and `Outputs` / `Event` types.
 - `core/units.py`: °C conversion helpers for the adapter (D-77).
 - **Tests:** validation edge cases (every range boundary, including 29/30 min rejected/accepted); state serialisation round-trip (hypothesis); unknown schema version handled.
+- Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87.)*
 
 ## P2 — Core zone logic & HP protection (`step`)
 - `core/engine.py`: `step(config, state, inputs, now) -> (outputs, new_state, events)`.
@@ -112,6 +113,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Failsafe case 1: no valid sensor for > FailsafeTrigger → all valves open + HP ON during FailsafeWindow, heating season only; exits on the first valid reading; notifications.
 - Valve exercise: outside the season, Monday 08:00, valves one after another for 15 min each, HP off; aborted if the season turns ON.
 - Actuator fault check (only if **V1** is positive, otherwise disabled with a doc note), long run alarm at 12 h, overshoot logging (event + attribute, max 6 h).
+- Add the parameters deferred from P1 to `GlobalParams`: FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold.
 - **Tests:** A19, A20 (exercise part); an actuator fault after 10 min < 0.5 W; the long run alarm fires once; overshoot peak tracking; simulation: all sensors die for 30 h and the failsafe schedule is correct.
 
 ## P12 — Heat source failsafe script, watchdog ping, v1.2 release

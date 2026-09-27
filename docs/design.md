@@ -295,6 +295,11 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - holiday state and end time;
   - schedules;
   - FORCED cap state.
+- **Persistence format (D-87):**
+  - the stored data carries a schema version; datetimes are stored as ISO 8601 in UTC;
+  - new fields get a default when missing, so adding one needs no version bump; a breaking change bumps the version and adds a migration;
+  - data from a newer version (e.g. after a downgrade) or corrupt data is discarded with a logged warning, and the integration starts as on a first start (D-78);
+  - stored state of zones that are no longer configured is dropped (with a warning), new zones start `IDLE`, and a calling zone that is no longer configured is cleared.
 
 ### 3.9 Monitoring
 - **Actuator fault (D-41):** notify if a valve channel is ON but measures < 0.5 W for 10 min. This requires a power sensor mapped to the valve (optional per zone).
@@ -316,7 +321,7 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
 
 ## 4. Parameters
 
-All are exposed as HA entities (changeable from the UI) unless marked *config* (YAML) or *script config* (the Shelly script's configuration block or device storage, D-73). Values are the defaults. Ranges are the number entity limits (°C; converted by the adapter, D-77).
+All are exposed as HA entities (changeable from the UI) unless marked *config* (YAML) or *script config* (the Shelly script's configuration block or device storage, D-73). Values are the defaults. Ranges are the number entity limits (°C; converted by the adapter, D-77). Validation checks the inclusive range only; the step is the number entities' UI granularity, and off-step values (e.g. 32 min) are accepted (D-86).
 
 | Parameter | Scope | Default | Range / step | Notes |
 |---|---|---|---|---|
@@ -446,6 +451,8 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **YAML configuration** is used for setup, also for the public release (at least initially). A UI setup (config flow) is an optional later improvement.
 - **YAML holds only the wiring:**
   - zones: stable `id` (D-76; key for persisted state, schedules and entity unique IDs, must never change), display `name`, sensor entity, valve switch entity or `none`, optional power sensor entity, sensor offset;
+    - the `id` is an HA-style slug: lowercase letters, digits and `_`, starting with a letter (e.g. `living_room`). An invalid id is rejected with a suggested slug (D-84);
+    - zone names must be unique, compared case-insensitively after trimming spaces (D-85);
   - heat source switch entity;
   - notify targets;
   - Shelly device addresses if needed;
@@ -696,9 +703,13 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-81 | HpMinOnTime / HpMinOffTime configurable 30–180 min; never below 30 min (short-cycling protection) |
 | D-82 | Releases are split into work phases P0–P12 (`docs/implementation-plan.md`); the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 *(amended by D-83; was: one pull request each)* |
 | D-83 | From P1 on, work is committed directly to `main`; no branches, pull requests or PR reviews. `main` stays green (local checks before push, CI on every push). Each phase still ends with a summary to the owner, and the next phase starts only when asked |
+| D-84 | Zone `id` is an HA-style slug (`[a-z][a-z0-9_]*`); invalid ids are rejected with a suggested slug |
+| D-85 | Duplicate zone names are detected case-insensitively after trimming |
+| D-86 | Parameter validation checks the inclusive §4 range only (plus finite numbers); the §4 step is UI granularity |
+| D-87 | Persisted core state is versioned; additive fields get defaults, breaking changes bump the version; newer-version or corrupt data is discarded and the integration starts as on a first start (D-78); state of removed zones is dropped |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-87 were added on 2026-09-27 during P1.
 
 ---
 
