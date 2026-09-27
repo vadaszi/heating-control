@@ -54,6 +54,8 @@ def core_states(dts: st.SearchStrategy[datetime]) -> st.SearchStrategy[CoreState
         fault_since=opt_dt,
         forced_capped=st.booleans(),
         valve_output=trackings,
+        last_setpoint=st.none() | finite_floats,
+        awaiting_reading_since=opt_dt,
     )
     return st.builds(
         CoreState,
@@ -154,6 +156,11 @@ def test_integral_reading_is_read_as_float() -> None:
             "last_valid_value",
         ),
         ({"schema_version": 1, "zones": {"a": {"forced_capped": 1}}}, "forced_capped"),
+        ({"schema_version": 1, "zones": {"a": {"last_setpoint": "22"}}}, "last_setpoint"),
+        (
+            {"schema_version": 1, "zones": {"a": {"awaiting_reading_since": "x"}}},
+            "awaiting_reading_since",
+        ),
         ({"schema_version": 1, "zones": {"a": {"valve_output": 3}}}, "valve_output"),
         (
             {"schema_version": 1, "zones": {"a": {"valve_output": {"mismatch_count": -1}}}},

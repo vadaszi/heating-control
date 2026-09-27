@@ -55,11 +55,21 @@ class Inputs:
 
 
 @dataclass(frozen=True)
+class ZoneReport:
+    """What the adapter shows for one zone (D-89)."""
+
+    reason: str  # e.g. "Calling zone", "Waiting, 12 min left"
+    room_temp: float | None  # RoomTemp, °C; None while unknown or faulty
+    setpoint: float  # effective SetPoint, °C
+
+
+@dataclass(frozen=True)
 class Outputs:
     """Desired output states; `valves` has entries for valved zones only."""
 
     heat_source_on: bool
     valves: Mapping[str, bool]
+    zones: Mapping[str, ZoneReport] = field(default_factory=dict)
 
 
 class EventKind(StrEnum):

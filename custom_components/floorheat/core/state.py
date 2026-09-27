@@ -59,6 +59,8 @@ class ZoneState:
     fault_since: datetime | None = None  # SENSOR_FAULT start (§3.6)
     forced_capped: bool = False  # FORCED zone at or above ManualMaxTemp (§3.4)
     valve_output: OutputTracking = OutputTracking()
+    last_setpoint: float | None = None  # effective SetPoint of the last step (rule 4)
+    awaiting_reading_since: datetime | None = None  # no valid reading ever yet (D-93)
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,8 @@ def _zone_to_dict(zone: ZoneState) -> dict[str, Any]:
         "fault_since": _dt_to_str(zone.fault_since),
         "forced_capped": zone.forced_capped,
         "valve_output": _tracking_to_dict(zone.valve_output),
+        "last_setpoint": zone.last_setpoint,
+        "awaiting_reading_since": _dt_to_str(zone.awaiting_reading_since),
     }
 
 
@@ -196,6 +200,8 @@ def _zone_from(reader: _Reader) -> ZoneState:
         fault_since=reader.opt_datetime("fault_since"),
         forced_capped=reader.boolean("forced_capped", default=False),
         valve_output=_tracking_from(reader.child("valve_output")),
+        last_setpoint=reader.opt_float("last_setpoint"),
+        awaiting_reading_since=reader.opt_datetime("awaiting_reading_since"),
     )
 
 

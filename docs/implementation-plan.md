@@ -8,8 +8,8 @@
 |---|---|---|---|---|
 | P0 | Repository bootstrap | v1 | cloud | CI runs, secret scanning works |
 | P1 | Core models, config validation, persistence format | v1 | cloud | unit tests |
-| P2 | Core zone logic & HP protection | v1 | cloud | A1–A9, A18, A23, A26, A30 + simulation |
-| P3 | Core sensor fault, season, events | v1 | cloud | A17, A20 (v1 part), A29 + simulation |
+| P2 | Core zone logic, sensor validity & HP protection | v1 | cloud | A1–A9, A18, A23, A26, A29, A30 + simulation |
+| P3 | Core season, fault notifications, mismatch | v1 | cloud | A17, A20 (v1 part), A29 (alert) + simulation |
 | P4 | Shelly scripts v1 + heartbeat protocol | v1 | local (bench) | JS unit tests, bench S1, S4, S6 |
 | P5 | HA adapter: config, reconcile, outputs, persistence | v1 | cloud | A21, A22, A25, A27 (HA test harness) |
 | P6 | HA entities & notifications | v1 | cloud | entity/notify tests |
@@ -53,19 +53,20 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests:** validation edge cases (every range boundary, including 29/30 min rejected/accepted); state serialisation round-trip (hypothesis); unknown schema version handled.
 - Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87; D-88/D-89 settled for P2/P3.)*
 
-## P2 — Core zone logic & HP protection (`step`)
+## P2 — Core zone logic, sensor validity & HP protection (`step`)
 - `core/engine.py`: `step(config, state, inputs, now) -> (outputs, new_state, events)`.
 - Implements the IDLE/WAITING/HEATING state machine (§3.2–3.3): single check at the end of the wait (D-05), join while running (D-14), SetPoint raise (D-26), sync rule once per cycle (D-06/15), calling zone and tie-break (D-65), switch-off, unvalved zone (no output).
 - HP protection (§3.5): min ON/OFF from actual transitions (D-66), D-20 spread excluding zones ≥ ManualMaxTemp (D-71), demand held back by min OFF with the valve open (D-64), WaitTime ∥ min OFF (D-39), first start (D-78).
+- Sensor validity (D-90): plausibility range on the raw reading before the offset (D-88), `last_reported` age, the last valid reading during a short dropout, timeout from startup without any reading (D-93); SENSOR_FAULT enter/exit (§3.6), a faulty calling zone fires the sync rule (D-28), the fault follows the house. First start with the HP ON (D-91), calling zone while the request is ON without one (D-92).
 - Reason texts per zone ("Calling zone", "Waiting, 12 min left", "Held by min OFF, 8 min left"), returned in `Outputs` (D-89).
-- **Tests:** A1–A9, A18 (sync part), A23, A26, A30; unit tests per rule; the simulation harness is introduced here with the invariants above; idempotency test.
+- **Tests:** A1–A9, A18, A23, A26, A29 (core part), A30, A22 (core part: persistence round trip); unit tests per rule; the simulation harness is introduced here with the invariants above (including a sensor dropout mid-run); idempotency is checked on every simulated step. *(Done: 2026-09-27; decisions D-90…D-93.)*
 
-## P3 — Core sensor fault, season, events
-- Sensor validity (plausibility range on the raw reading before the offset, D-88; `last_reported` age), SENSOR_FAULT enter/exit (§3.6), a faulty calling zone fires the sync rule (D-28), the fault follows the house.
+## P3 — Core season, fault notifications, mismatch
+- Sensor validity and SENSOR_FAULT moved to P2 (D-90).
 - Heating season OFF: no demand, immediate stop (D-68).
 - Notification events: fault start / daily reminder at SensorFaultReminder / recovery; no reminder outside the season (D-75).
 - Output mismatch detection in the core: the counter over N consecutive steps where actual ≠ desired or unavailable → alert event + recovery (D-67). Inactive in shadow mode.
-- **Tests:** A17, A18 (fault part), A20 (season part), A29, the mismatch counter (A27 logic part); simulation: a sensor drops out mid-run and the invariants still hold.
+- **Tests:** A17 (notification and reminder), A20 (season part), A29 (mismatch alert), the mismatch counter (A27 logic part); simulation with season changes.
 
 ## P4 — Shelly scripts v1 + heartbeat protocol (local, bench)
 - `docs/heartbeat-protocol.md`: endpoint path, request (season flag), response JSON (script running, watchdog state, season flag, parameter values — D-73), auth notes.

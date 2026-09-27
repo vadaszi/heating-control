@@ -170,6 +170,7 @@ Unvalved zones compute state normally; only their output is a no-op.
    - HpMinOffTime (§3.5) still applies; the zone waits as in rule 2 (D-64).
    - If this starts the heat pump, the zone becomes the calling zone.
    - **Several candidates (D-65):** if more than one zone would become the calling zone in the same step (e.g. WaitTimes expire together, holiday end, a schedule raising several zones, or several zones waiting for HpMinOffTime), the zone with the largest `StartTemp − RoomTemp` becomes the calling zone. Ties go to YAML order. The other zones are simply `HEATING`.
+   - A raise is detected by comparing the effective SetPoint with the one of the previous step, which is kept in the logic state. With no previous value (first start), rule 1 applies.
 5. **Sync rule (D-06, D-15).** When the calling zone reaches its SetPoint (RoomTemp ≥ SetPoint), every `IDLE` or `WAITING` zone with a valid sensor and RoomTemp < StopTemp joins `HEATING`.
    - The rule fires **once per cycle**.
    - Rationale: because of the thin main pipe, the zone that called gets full flow first. The other zones are topped up afterwards, so every zone ends the cycle near StopTemp and none re-triggers shortly after.
@@ -177,6 +178,8 @@ Unvalved zones compute state normally; only their output is a no-op.
      - The first zone that joins by temperature during that cycle (rule 3) becomes the calling zone, and the sync rule applies normally.
      - If no zone joins, there is no sync rule in that cycle.
    - **Calling zone's sensor fails (D-28):** it counts as having reached SetPoint, so the sync rule fires.
+   - **Cycle bookkeeping:** the calling zone and the "sync fired" flag are cleared whenever the request is OFF, including while demand is held back by HpMinOffTime. When HpMinOffTime elapses, the waiting `HEATING` zones compete as in D-65.
+   - **No calling zone while the request is ON (D-92):** e.g. first start with the heat pump already running, or after the stored state was discarded. The `HEATING` zone with the largest `StartTemp − RoomTemp` (ties by YAML order) becomes the calling zone. D-44 applies the same rule to a manually started cycle.
 6. **Switch-off.** `HEATING → IDLE` when RoomTemp ≥ StopTemp. This also applies after a SetPoint decrease.
 7. **Heat pump request.** ON while any zone is `HEATING`, or `FORCED` with demand, subject to §3.5. OFF when none is.
    - "Heat pump running" in rules 1–3 and all HP timers use the actual switch state (D-66, §3.1).
@@ -227,14 +230,17 @@ Unvalved zones compute state normally; only their output is a no-op.
 - **WaitTime and HpMinOffTime run in parallel.** The request goes ON when both have elapsed and the WaitTime check passed.
 - **Heating season switched OFF (D-68):** the request goes OFF and valves close immediately, even if HpMinOnTime has not elapsed.
 - **First start (D-78):** with no persisted last-OFF time, HpMinOffTime is not applied.
+- **First start with the heat source already ON (D-91):** with no persisted last-ON time, HpMinOnTime counts from startup. If no zone has demand, the D-20 spread runs until it elapses.
 
 ### 3.6 Failure handling
 **Sensor fault (D-08, D-21, D-27, D-28)**
 - No valid reading for > `SensorFaultTimeout` (60 min) → the zone enters `SENSOR_FAULT`, regardless of its previous state.
   - "Valid" means a numeric, plausible value received within the timeout. The plausibility range is *config*, default 0–40 °C (D-77). It is checked against the raw sensor reading, before the per-zone offset (D-88). Implausible values are ignored, as if nothing had been received.
   - The last-report time is used, not the last-change time (§5.3).
+  - Until the timeout, RoomTemp is the last valid reading (plus offset). A short dropout therefore changes nothing.
+  - **No valid reading since startup (D-93):** with nothing persisted either, the timeout counts from startup. Until then the zone is `IDLE` with no demand (reason "Waiting for a sensor reading").
 - While in fault, the zone follows the house and creates no demand.
-- On a valid reading again → the zone returns to normal logic.
+- On a valid reading again → the zone returns to normal logic (`IDLE`, then evaluated in the same step).
 - **Notifications:** when the fault starts, then a daily reminder at 08:00 while any sensor is faulty, and on recovery.
   - Outside heating season (D-75): fault start and recovery only; no daily reminder.
 
@@ -709,9 +715,13 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-87 | Persisted core state is versioned; additive fields get defaults, breaking changes bump the version; newer-version or corrupt data is discarded and the integration starts as on a first start (D-78); state of removed zones is dropped |
 | D-88 | The plausibility range (§3.6) is checked against the raw sensor reading, before the per-zone offset |
 | D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events |
+| D-90 | Reading validity and the SENSOR_FAULT state machine are implemented with the zone logic in P2; P3 keeps fault notifications, season OFF and the mismatch counter |
+| D-91 | First start with the heat source already ON and no persisted ON time: HpMinOnTime counts from startup |
+| D-92 | Request ON without a calling zone: the HEATING zone with the largest deficit (ties by YAML order) becomes the calling zone |
+| D-93 | No valid reading since startup and none persisted: SensorFaultTimeout counts from startup; the zone is IDLE with no demand until then |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2.
 
 ---
 
