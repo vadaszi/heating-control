@@ -50,11 +50,11 @@ Repository layout: spec §5.9.
 ## Working rules
 
 - **Follow the spec exactly.** If something is ambiguous, contradictory or missing: stop and ask the owner. Do not guess.
-- **Write decisions back:** every decision made in a session goes into `docs/design.md` (§3–§5 and the decision log §7) in the same pull request.
-- **One work phase at a time** (`docs/implementation-plan.md`): one branch per phase (`p0-bootstrap`, `p1-core-models`, …), one pull request into `main`, then stop for owner review. Never push directly to `main`. Do not start the next phase unasked.
+- **Write decisions back:** every decision made in a session goes into `docs/design.md` (§3–§5 and the decision log §7) in the same change.
+- **One work phase at a time** (`docs/implementation-plan.md`), committed **directly to `main`** (D-83): no branches, no pull requests. `main` must stay green: run ruff, mypy, pytest (pre-commit runs on commit) before every push, check CI after pushing, and fix a red run immediately. At the end of a phase, give the owner a summary and stop. Do not start the next phase unasked.
 - **Test first for the core.** Every §3 rule is covered by unit tests with simulated time; the §6 acceptance scenarios are the minimum set (`test_a01_...`). Core branch coverage ≥ 95 % is enforced.
-- **Docs with code:** user docs (§5.8) are updated in the same PR as the code they describe.
-- **Every PR** summarises the spec questions that came up.
+- **Docs with code:** user docs (§5.8) are updated in the same commit(s) as the code they describe.
+- **Every phase summary** lists the spec questions that came up.
 - **Hardware:** anything that needs real devices is marked for the owner to verify (spec §8). Never ask for or store credentials to the home network.
 - **HA APIs:** use only long-standing, stable APIs; watch for deprecation warnings.
 

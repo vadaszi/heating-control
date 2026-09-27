@@ -15,7 +15,7 @@ You are implementing a Home Assistant custom integration that controls an underf
 1. **Mandatory rules in §0 override everything else.** Security and genericity are not negotiable.
 2. **Follow the spec exactly.**
    - If something is ambiguous, contradictory or missing, **stop and ask the owner**. Do not guess.
-   - Every decision made in a session must be written back into this document (§3–§5 and the decision log §7) in the same pull request.
+   - Every decision made in a session must be written back into this document (§3–§5 and the decision log §7) in the same change (commit on `main`, D-83).
 3. **Architecture (§5) is fixed:**
    - a pure-Python control core with no Home Assistant imports;
    - a thin HA adapter;
@@ -26,7 +26,9 @@ You are implementing a Home Assistant custom integration that controls an underf
    - The acceptance scenarios in §6 are the minimum test set.
    - The core must never read the system clock itself; time is always passed in.
 5. **Work in phases (§5.10, `docs/implementation-plan.md`).**
-   - Implement one work phase (P0, P1, …) at a time, open a pull request, and stop for owner review.
+   - Implement one work phase (P0, P1, …) at a time, committing directly to `main` (D-83). No feature branches or pull requests.
+   - `main` must stay green: run the local checks before every push, and fix a red CI run immediately.
+   - At the end of a phase, summarise it for the owner (what was done, how it was verified, spec questions) and stop.
    - Do not start the next phase unasked.
 6. **Keep the repo self-explaining:**
    - `CLAUDE.md` contains §0, the architecture summary and the working rules;
@@ -38,9 +40,9 @@ You are implementing a Home Assistant custom integration that controls an underf
 
 ### First task (when starting from an empty repo)
 Follow `docs/implementation-plan.md`, starting with work phase **P0** (D-82):
-1. **P0:** create the repository skeleton (§5.9), `LICENSE`, `CLAUDE.md` (linking to the implementation plan), `.gitignore`, pre-commit secret scanning, the test setup and CI. This document already lives at `docs/design.md`; keep it there. Open a pull request and stop.
-2. **P1–P3** follow as separate pull requests, one at a time after owner approval: they implement the **v1 control core** (`core/`) with full unit tests, including the §6 scenarios that belong to v1. No HA code yet.
-3. Every pull request summarises any spec questions that came up.
+1. **P0:** create the repository skeleton (§5.9), `LICENSE`, `CLAUDE.md` (linking to the implementation plan), `.gitignore`, pre-commit secret scanning, the test setup and CI. This document already lives at `docs/design.md`; keep it there. *(Done: PR #1.)*
+2. **P1–P3** follow one at a time, each started by the owner and committed directly to `main` (D-83): they implement the **v1 control core** (`core/`) with full unit tests, including the §6 scenarios that belong to v1. No HA code yet.
+3. Every phase summary lists any spec questions that came up.
 
 ---
 
@@ -492,7 +494,7 @@ The repository must contain **detailed instructions** so another user can instal
 - **Troubleshooting:** sensor faults, heartbeat, failsafe, logs.
 - **Update notes / changelog** per release.
 
-Docs are updated in the same pull request as the code they describe.
+Docs are updated in the same commit(s) as the code they describe.
 
 ### 5.9 Repository structure (proposal)
 ```
@@ -516,7 +518,7 @@ Docs are updated in the same pull request as the code they describe.
 ```
 
 ### 5.10 Phasing
-The three releases below are split into smaller **work phases** P0–P12 in `docs/implementation-plan.md` (D-82): P0–P8 = v1, P9–P10 = v1.1, P11–P12 = v1.2. Each work phase ends with a pull request and owner review. The next phase starts only after approval. The release contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
+The three releases below are split into smaller **work phases** P0–P12 in `docs/implementation-plan.md` (D-82): P0–P8 = v1, P9–P10 = v1.1, P11–P12 = v1.2. Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The release contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
@@ -547,7 +549,7 @@ The three releases below are split into smaller **work phases** P0–P12 in `doc
 - **Where work happens (D-47):**
   - **Claude Code on the web (cloud):** core, tests, integration code, docs.
   - **Local (T14, WSL):** Shelly scripts on the bench, and anything needing the home network. The cloud sandbox cannot reach HA or the Shellys and gets no credentials.
-- **Coordination (D-51):** the sessions don't talk to each other; the GitHub repo is the single shared memory (`CLAUDE.md`, `docs/`, code, history, pull requests). Every session starts from the latest main.
+- **Coordination (D-51):** the sessions don't talk to each other; the GitHub repo is the single shared memory (`CLAUDE.md`, `docs/`, code, commit history). Every session starts from the latest main.
 - **HA update safety:**
   - Breakage is detected automatically: the heartbeat and watchdog ping come from the integration itself, so a broken integration triggers the Shelly watchdogs and healthchecks.io.
   - Use only long-standing, stable HA APIs, and watch for deprecation warnings.
@@ -692,10 +694,11 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-79 | Holiday UI: "Holiday active" switch + end date/time; shadow mode shown separately from the mode sensor |
 | D-80 | Hydraulic prerequisite (flow path whenever HP request ON) documented; startup warning if every zone has a valve |
 | D-81 | HpMinOnTime / HpMinOffTime configurable 30–180 min; never below 30 min (short-cycling protection) |
-| D-82 | Releases are split into work phases P0–P12 (`docs/implementation-plan.md`), one pull request each; the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 |
+| D-82 | Releases are split into work phases P0–P12 (`docs/implementation-plan.md`); the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 *(amended by D-83; was: one pull request each)* |
+| D-83 | From P1 on, work is committed directly to `main`; no branches, pull requests or PR reviews. `main` stays green (local checks before push, CI on every push). Each phase still ends with a summary to the owner, and the next phase starts only when asked |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2).
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0.
 
 ---
 

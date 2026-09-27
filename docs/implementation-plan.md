@@ -1,7 +1,7 @@
 # Implementation Plan — `floorheat`
 
 > Source of truth: `docs/design.md` (Spec rev. 1.2). If this plan and the spec disagree, the spec wins; fix the plan.
-> Rules: one work phase = one PR = owner review before the next phase starts. Docs are updated in the same PR. The §0 rules apply everywhere.
+> Rules: one work phase at a time, committed directly to `main` (D-83); each phase ends with a summary to the owner, and the next phase starts only when the owner asks. Docs are updated in the same commit(s) as the code. `main` must stay green. The §0 rules apply everywhere.
 
 ## Overview
 | Phase | Name | Release | Where | Main tests |
@@ -43,7 +43,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - `pyproject.toml` (ruff, mypy, pytest, coverage), `requirements_test.txt`, `.pre-commit-config.yaml` (gitleaks, ruff).
 - CI workflow: lint, tests, gitleaks, hassfest, HACS action. GitHub secret scanning ON.
 - **Tests:** a placeholder core test passes in CI; the pre-commit hook rejects a fake token in a scratch commit (checked manually, then discarded).
-- **Done when:** CI is green and the owner has reviewed the repo layout.
+- **Done when:** CI is green and the owner has reviewed the repo layout. *(Done: PR #1, 2026-09-27.)*
 
 ## P1 — Core models, config validation, persistence format
 - `core/config.py`: `ZoneConfig` (id, name, has_valve, offset), `GlobalParams`. Ranges from §4 (BaseSetPoint 10–30, HpMin On/Off 30–180 D-81, HolidayTemp 10–25, …). Validation errors are clear (duplicate id/name, out of range). Warning if every zone has a valve (D-80).
