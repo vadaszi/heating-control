@@ -330,6 +330,13 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
 - **Actuator fault (D-41):** notify if a valve channel is ON but measures < 0.5 W for 10 min. This requires a power sensor mapped to the valve (optional per zone).
   - **To verify on the bench (§8):** can the Shelly Plus 2PM measure the actuator's small holding power at all? If not, this check is not used.
 - **Output not following command (D-67):** notify if an output's actual state differs from the desired state, or the entity is unavailable, for `OutputMismatchAlert` consecutive reconcile intervals (default 3). Notify again on recovery. The reconcile loop keeps retrying with backoff instead of sending a command every interval. Not active in shadow mode.
+  - **Counting (D-99):** the core counts reconcile ticks, not steps. The adapter marks the run started by the ReconcileInterval timer (`reconcile_tick`); runs on sensor updates or heat source changes do not count, and a repeated step at the same time counts once. Per output (heat source, each valve), on each tick:
+    - unavailable → counts;
+    - actual ≠ desired, with the same desired state as at the previous tick → counts (the command had a full interval);
+    - actual ≠ desired right after the desired state changed → count 0 (a new command that has not been sent yet), so normal switching never alerts;
+    - available and equal → count 0, and a recovery notification if the alert was sent.
+  - The alert is sent once when the count reaches OutputMismatchAlert. The heat source counts while unavailable although D-95 keeps the cycle.
+  - In shadow mode the counters are reset without notifications.
 - **Long run alarm (D-42):** notify if the heat pump request is ON > 12 h.
 - **Overshoot logging (D-13):** per zone, track the peak RoomTemp from switch-off until the zone next has demand (at most 6 h). Emit it as an HA event and expose the last value as a zone attribute. This is data for v2.
 
@@ -408,7 +415,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - a single deterministic step function:
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
-  - `inputs` also carry HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
+  - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
   - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
@@ -744,9 +751,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence |
 | D-97 | Heating season OFF: zones without a fault are IDLE, the cycle ends, request OFF and all valves closed at once (faulty zones too); fault detection and SetPoint tracking continue; season ON is not a SetPoint raise (normal rules, WaitTime); HpMinOffTime counts from the actual OFF |
 | D-98 | Sensor fault notifications: start/recovery on the state change (not repeated after a restart; also in shadow mode); one daily reminder per local day for zones faulty since an earlier day, due from SensorFaultReminder to midnight with catch-up, heating season only |
+| D-99 | Output mismatch counted on reconcile ticks only (flag from the adapter; once per `now`); unavailable always counts, a differing state counts only if the desired state is unchanged since the previous tick; alert once at OutputMismatchAlert, recovery when following again; reset silently in shadow mode |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-98 during P3.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3.
 
 ---
 

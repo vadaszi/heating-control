@@ -39,7 +39,10 @@ utc_datetimes = st.datetimes(_MIN_DT, _MAX_DT, timezones=st.just(UTC))
 finite_floats = st.floats(allow_nan=False, allow_infinity=False)
 zone_ids = st.from_regex(r"[a-z][a-z0-9_]{0,15}", fullmatch=True)
 trackings = st.builds(
-    OutputTracking, mismatch_count=st.integers(min_value=0, max_value=10_000), alerted=st.booleans()
+    OutputTracking,
+    mismatch_count=st.integers(min_value=0, max_value=10_000),
+    alerted=st.booleans(),
+    last_desired=st.none() | st.booleans(),
 )
 
 
@@ -68,6 +71,7 @@ def core_states(dts: st.SearchStrategy[datetime]) -> st.SearchStrategy[CoreState
         sync_fired=st.booleans(),
         heat_source_output=trackings,
         last_fault_reminder_on=st.none() | st.dates(),
+        reconcile_tick_at=opt_dt,
     )
 
 
@@ -169,6 +173,8 @@ def test_integral_reading_is_read_as_float() -> None:
         ),
         ({"schema_version": 1, "heat_source_output": {"mismatch_count": True}}, "mismatch_count"),
         ({"schema_version": 1, "heat_source_output": {"alerted": "no"}}, "alerted"),
+        ({"schema_version": 1, "heat_source_output": {"last_desired": 1}}, "last_desired"),
+        ({"schema_version": 1, "reconcile_tick_at": "noon"}, "reconcile_tick_at"),
         ({"schema_version": 1, "hp_actual_on": "on"}, "hp_actual_on"),
         ({"schema_version": 1, "hp_unavailable_since": 5}, "hp_unavailable_since"),
         ({"schema_version": 1, "hp_last_off_at": "2026-13-01T00:00:00+00:00"}, "hp_last_off_at"),

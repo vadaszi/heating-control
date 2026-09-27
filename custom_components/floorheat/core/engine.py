@@ -13,7 +13,7 @@ Order within a step:
 4. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
    outside the season the request is OFF at once, overriding min ON (D-68);
 5. valves and reason texts (D-20, D-27, D-64, D-71, D-89);
-6. notification events (`alerts`: D-75, D-98).
+6. notification events and output mismatch tracking (`alerts`: D-67, D-75, D-98, D-99).
 
 Schedules and holiday follow in P9.
 """
@@ -26,7 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 
-from .alerts import fault_events
+from .alerts import fault_events, track_outputs
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
 from .io import Event, Inputs, Outputs, OutputState, ZoneInput, ZoneReport
 from .state import CoreState, ZoneMode, ZoneState
@@ -166,6 +166,15 @@ def step(
         now,
         inputs.time_zone,
     )
+    heat_source_output, valve_outputs, tick_at, output_events = track_outputs(
+        config, state, inputs, outputs, now
+    )
+    zone_states = {
+        zone_id: dataclasses.replace(zone_state, valve_output=valve_outputs[zone_id])
+        if zone_id in valve_outputs
+        else zone_state
+        for zone_id, zone_state in zone_states.items()
+    }
     new_state = dataclasses.replace(
         state,
         zones=zone_states,
@@ -175,9 +184,11 @@ def step(
         hp_unavailable_since=source.unavailable_since,
         calling_zone=calling,
         sync_fired=sync_fired,
+        heat_source_output=heat_source_output,
         last_fault_reminder_on=reminder_on,
+        reconcile_tick_at=tick_at,
     )
-    return outputs, new_state, events
+    return outputs, new_state, events + output_events
 
 
 def _cycle(

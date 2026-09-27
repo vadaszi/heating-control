@@ -5,6 +5,9 @@
   already in the stored state is therefore not notified again after a restart.
 - Daily reminder: one event per local day while a zone is faulty since an earlier local
   day, from SensorFaultReminder until midnight, only in the heating season (D-75, D-98).
+- Output mismatch: counted on reconcile ticks only, at most once per `now`; alert once
+  after `output_mismatch_alert` ticks, then a recovery event; inactive in shadow mode
+  (D-67, D-99).
 """
 
 from __future__ import annotations
@@ -14,8 +17,8 @@ from collections.abc import Mapping
 from datetime import date, datetime, timedelta, tzinfo
 
 from .config import CoreConfig, GlobalParams
-from .io import Event, EventKind
-from .state import ZoneMode, ZoneState
+from .io import Event, EventKind, Inputs, Outputs, OutputState
+from .state import CoreState, OutputTracking, ZoneMode, ZoneState
 
 _FAULT = ZoneMode.SENSOR_FAULT
 
@@ -82,6 +85,99 @@ def fault_events(
         )
     )
     return events, today
+
+
+def track_outputs(
+    config: CoreConfig, state: CoreState, inputs: Inputs, outputs: Outputs, now: datetime
+) -> tuple[OutputTracking, dict[str, OutputTracking], datetime | None, list[Event]]:
+    """Mismatch tracking of the heat source and every valve (D-67, D-99).
+
+    Returns the heat source tracking, the valve tracking per valved zone, the time of
+    the last counted tick and the events.
+    """
+    valved = [zone for zone in config.zones if zone.has_valve]
+    old_valves = {zone.id: state.zones.get(zone.id, ZoneState()).valve_output for zone in valved}
+    if not inputs.control_active:  # shadow mode: inactive, reset without events
+        return OutputTracking(), dict.fromkeys(old_valves, OutputTracking()), None, []
+    last_tick = state.reconcile_tick_at
+    if not inputs.reconcile_tick or (last_tick is not None and now <= last_tick):
+        return state.heat_source_output, old_valves, last_tick, []
+
+    limit = config.output_mismatch_alert
+    events: list[Event] = []
+    heat_source, kind = _track(
+        state.heat_source_output, outputs.heat_source_on, inputs.heat_source, limit
+    )
+    if kind is not None:
+        events.append(
+            _output_event(
+                kind,
+                "The heat source switch",
+                "heat_source",
+                None,
+                heat_source,
+                inputs.heat_source,
+                limit,
+            )
+        )
+    valves: dict[str, OutputTracking] = {}
+    for zone in valved:
+        actual = inputs.zones[zone.id].valve
+        assert actual is not None  # checked by `step`
+        valves[zone.id], kind = _track(old_valves[zone.id], outputs.valves[zone.id], actual, limit)
+        if kind is not None:
+            events.append(
+                _output_event(
+                    kind,
+                    f"The valve of {zone.name}",
+                    "valve",
+                    zone.id,
+                    valves[zone.id],
+                    actual,
+                    limit,
+                )
+            )
+    return heat_source, valves, now, events
+
+
+def _track(
+    tracking: OutputTracking, desired: bool, actual: OutputState, limit: int
+) -> tuple[OutputTracking, EventKind | None]:
+    """One reconcile tick for one output."""
+    if actual is not OutputState.UNAVAILABLE and actual.is_on == desired:
+        kind = EventKind.OUTPUT_MISMATCH_RECOVERED if tracking.alerted else None
+        return OutputTracking(last_desired=desired), kind
+    if actual is OutputState.UNAVAILABLE or tracking.last_desired == desired:
+        count = min(tracking.mismatch_count + 1, limit)
+    else:
+        count = 0  # a new command: it has not had a full interval yet
+    alert = count >= limit and not tracking.alerted
+    tracking = OutputTracking(count, tracking.alerted or alert, desired)
+    return tracking, EventKind.OUTPUT_MISMATCH if alert else None
+
+
+def _output_event(
+    kind: EventKind,
+    name: str,
+    output: str,
+    zone_id: str | None,
+    tracking: OutputTracking,
+    actual: OutputState,
+    limit: int,
+) -> Event:
+    if kind is EventKind.OUTPUT_MISMATCH_RECOVERED:
+        return Event(kind=kind, message=f"{name} follows its command again.", zone_id=zone_id)
+    desired = bool(tracking.last_desired)
+    shown = "unavailable" if actual is OutputState.UNAVAILABLE else actual.value.upper()
+    return Event(
+        kind=kind,
+        message=(
+            f"{name} does not follow its command: it should be {'ON' if desired else 'OFF'} "
+            f"but is {shown} ({limit} reconcile intervals)."
+        ),
+        zone_id=zone_id,
+        data={"output": output, "desired": desired, "actual": actual.value},
+    )
 
 
 def _local_date(value: datetime | None, time_zone: tzinfo, today: date) -> date:

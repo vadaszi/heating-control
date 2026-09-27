@@ -5,7 +5,8 @@ actual switch states). `step()` runs `step` at the current time as a reconcile t
 Like the reconcile loop, it makes the actual switches follow the commanded state and,
 when the heat source changed, steps again at the same time, so transitions are seen
 without delay. Every call checks that `step` is idempotent: running it again on its own
-result changes nothing and emits no further events.
+result changes nothing and emits no further events. A second `step()` at the same time
+(after changing the world) is not a new reconcile tick for the mismatch counter (D-99).
 
 Times are given as local wall-clock times in the scenario's time zone (UTC by default).
 """

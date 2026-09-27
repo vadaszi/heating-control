@@ -509,3 +509,61 @@ def test_a20_fault_notified_without_reminder() -> None:
     sc.temp(1, 22.0)
     sc.step()
     assert len(sc.events_of(EventKind.SENSOR_FAULT_RECOVERED)) == 1
+
+
+def test_a27_unavailable_valve_alerts_once_then_recovery() -> None:
+    """A27 (logic part): the retry backoff is the adapter's job (P5)."""
+    sc = Scenario(2)
+    sc.step()
+    sc.set_valve_actual(1, OutputState.UNAVAILABLE)
+    sc.advance(2)
+    assert sc.events_of(EventKind.OUTPUT_MISMATCH) == []
+    sc.advance(1)
+    [alert] = sc.events_of(EventKind.OUTPUT_MISMATCH)
+    assert alert.zone_id == "zone_1"
+    assert alert.data == {"output": "valve", "desired": False, "actual": "unavailable"}
+    sc.advance(30)
+    assert len(sc.events_of(EventKind.OUTPUT_MISMATCH)) == 1  # notified once
+
+    sc.set_valve_actual(1, OutputState.OFF, follows=True)
+    sc.advance(1)
+    [recovered] = sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)
+    assert recovered.zone_id == "zone_1"
+    assert recovered.message == "The valve of Zone 1 follows its command again."
+    sc.advance(10)
+    assert len(sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)) == 1
+
+
+def test_a27_valve_ignoring_commands_alerts_once() -> None:
+    sc = _started_by_zone_1(2)
+    sc.temp(2, 21.8)
+    sc.set_valve_actual(2, OutputState.OFF)  # stays OFF whatever is commanded
+    sc.advance(1)
+    assert sc.valve(2) is True
+    sc.advance(2)
+    assert sc.events_of(EventKind.OUTPUT_MISMATCH) == []
+    sc.advance(1)
+    assert [e.zone_id for e in sc.events_of(EventKind.OUTPUT_MISMATCH)] == ["zone_2"]
+    sc.advance(20)
+    assert len(sc.events_of(EventKind.OUTPUT_MISMATCH)) == 1
+
+
+def test_a29_heat_source_unavailable_alerts_mismatch() -> None:
+    """A29 (alert part): unavailable counts as a mismatch although the cycle is kept
+    (D-67, D-95); back ON is a recovery."""
+    sc = _started_by_zone_1(3)
+    sc.advance_to("06:45")
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(2)
+    assert sc.events_of(EventKind.OUTPUT_MISMATCH) == []
+    sc.advance(1)
+    [alert] = sc.events_of(EventKind.OUTPUT_MISMATCH)
+    assert alert.zone_id is None
+    assert alert.data["output"] == "heat_source"
+    assert alert.data["actual"] == "unavailable"
+    assert sc.calling_zone == "zone_1"  # the cycle is kept (D-95)
+
+    sc.set_hp_actual(OutputState.ON, follows=True)  # back ON: it never stopped
+    sc.advance(1)
+    assert sc.hp
+    assert len(sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)) == 1

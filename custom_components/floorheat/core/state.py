@@ -41,11 +41,12 @@ class ZoneMode(StrEnum):
 
 @dataclass(frozen=True)
 class OutputTracking:
-    """Consecutive steps an output did not follow its command, and whether that was
-    notified (D-67)."""
+    """Consecutive reconcile ticks an output did not follow its command, whether that
+    was notified, and the desired state at the last tick (D-67, D-99)."""
 
     mismatch_count: int = 0
     alerted: bool = False
+    last_desired: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ class CoreState:
     sync_fired: bool = False
     heat_source_output: OutputTracking = OutputTracking()
     last_fault_reminder_on: date | None = None  # local date of the last daily reminder
+    reconcile_tick_at: datetime | None = None  # `now` of the last counted tick (D-99)
 
     @classmethod
     def initial(cls, config: CoreConfig) -> CoreState:
@@ -99,6 +101,7 @@ class CoreState:
                 if self.last_fault_reminder_on is None
                 else self.last_fault_reminder_on.isoformat()
             ),
+            "reconcile_tick_at": _dt_to_str(self.reconcile_tick_at),
         }
 
     @classmethod
@@ -126,6 +129,7 @@ class CoreState:
             sync_fired=reader.boolean("sync_fired", default=False),
             heat_source_output=_tracking_from(reader.child("heat_source_output")),
             last_fault_reminder_on=reader.opt_date("last_fault_reminder_on"),
+            reconcile_tick_at=reader.opt_datetime("reconcile_tick_at"),
         )
 
 
@@ -168,7 +172,11 @@ def _dt_to_str(value: datetime | None) -> str | None:
 
 
 def _tracking_to_dict(tracking: OutputTracking) -> dict[str, Any]:
-    return {"mismatch_count": tracking.mismatch_count, "alerted": tracking.alerted}
+    return {
+        "mismatch_count": tracking.mismatch_count,
+        "alerted": tracking.alerted,
+        "last_desired": tracking.last_desired,
+    }
 
 
 def _zone_to_dict(zone: ZoneState) -> dict[str, Any]:
@@ -191,6 +199,7 @@ def _tracking_from(reader: _Reader | None) -> OutputTracking:
     return OutputTracking(
         mismatch_count=reader.integer("mismatch_count", default=0, minimum=0),
         alerted=reader.boolean("alerted", default=False),
+        last_desired=reader.opt_bool("last_desired"),
     )
 
 

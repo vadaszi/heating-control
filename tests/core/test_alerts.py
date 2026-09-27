@@ -3,15 +3,16 @@ D-75, D-98) and the output mismatch alert (§3.9, D-67, D-99)."""
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, date, time, timedelta
 from zoneinfo import ZoneInfo
 
-from custom_components.floorheat.core.config import GlobalParams
+from custom_components.floorheat.core.config import CoreConfig, GlobalParams, ZoneParams
 from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import EventKind
-from custom_components.floorheat.core.state import CoreState, ZoneMode, ZoneState
+from custom_components.floorheat.core.io import EventKind, OutputState
+from custom_components.floorheat.core.state import CoreState, OutputTracking, ZoneMode, ZoneState
 
-from .harness import DAY, Scenario, at
+from .harness import DAY, Scenario, at, make_config
 
 STARTED = EventKind.SENSOR_FAULT_STARTED
 REMINDER = EventKind.SENSOR_FAULT_REMINDER
@@ -246,3 +247,122 @@ def test_now_in_any_time_zone_gives_the_same_result() -> None:
     in_local = step(sc.config, sc.state, inputs, sc.now.astimezone(BERLIN))
     assert in_utc == in_local
     assert [e.kind for e in in_utc[2]] == [REMINDER]
+
+
+# ---------------------------------------------------------------- output mismatch (D-67, D-99)
+
+MISMATCH = EventKind.OUTPUT_MISMATCH
+MISMATCH_RECOVERED = EventKind.OUTPUT_MISMATCH_RECOVERED
+
+
+def _config(zones: int = 2, alert: int = 3) -> CoreConfig:
+    return CoreConfig(zones=make_config(zones).zones, output_mismatch_alert=alert)
+
+
+def test_first_tick_after_a_new_command_is_not_counted() -> None:
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.set_valve_actual(1, OutputState.OFF)  # ignores the command
+    sc.step()
+    assert sc.valve(1) is True
+    assert sc.state.zones["zone_1"].valve_output == OutputTracking(0, False, True)
+    sc.advance(2)
+    assert sc.state.zones["zone_1"].valve_output.mismatch_count == 2
+    assert sc.events_of(MISMATCH) == []
+    sc.advance(1)  # three full intervals after the command
+    [alert] = sc.events_of(MISMATCH)
+    assert alert.zone_id == "zone_1"
+    assert alert.message == (
+        "The valve of Zone 1 does not follow its command: it should be ON but is OFF "
+        "(3 reconcile intervals)."
+    )
+    assert alert.data == {"output": "valve", "desired": True, "actual": "off"}
+
+
+def test_normal_operation_never_alerts_even_with_an_alert_after_one_interval() -> None:
+    """Outputs follow within one interval: a new command is never a mismatch."""
+    sc = Scenario(_config(3, alert=1), temps={1: 21.8, 2: 22.2, 3: 22.2})
+    sc.step()
+    sc.advance_to("06:30")
+    assert sc.hp
+    sc.temp(1, 22.2)
+    sc.advance_to("08:00")
+    assert not sc.hp
+    assert sc.events_of(MISMATCH) == []
+
+
+def test_alert_after_one_interval() -> None:
+    sc = Scenario(_config(2, alert=1))
+    sc.step()
+    sc.set_valve_actual(2, OutputState.ON)
+    sc.advance(1)
+    assert len(sc.events_of(MISMATCH)) == 1
+
+
+def test_only_reconcile_ticks_count() -> None:
+    sc = Scenario(2)
+    sc.step()
+    sc.set_valve_actual(1, OutputState.UNAVAILABLE)
+    sc.now += timedelta(minutes=1)
+    inputs = dataclasses.replace(sc.inputs(), reconcile_tick=False)  # a sensor update
+    _, state, events = step(sc.config, sc.state, inputs, sc.now)
+    assert events == []
+    assert state.zones["zone_1"].valve_output == sc.state.zones["zone_1"].valve_output
+    assert state.reconcile_tick_at == sc.state.reconcile_tick_at
+
+
+def test_a_repeated_tick_at_the_same_time_counts_once() -> None:
+    sc = Scenario(2)
+    sc.step()
+    sc.set_valve_actual(1, OutputState.UNAVAILABLE)
+    sc.advance(1)
+    sc.step()  # same `now`
+    sc.step()
+    assert sc.state.zones["zone_1"].valve_output.mismatch_count == 1
+
+
+def test_inactive_in_shadow_mode() -> None:
+    sc = Scenario(2)
+    sc.step()
+    sc.set_valve_actual(1, OutputState.UNAVAILABLE)
+    sc.advance(3)
+    assert len(sc.events_of(MISMATCH)) == 1
+    sc.control_active = False
+    sc.advance(10)
+    assert sc.state.zones["zone_1"].valve_output == OutputTracking()  # reset silently
+    assert sc.state.heat_source_output == OutputTracking()
+    assert sc.events_of(MISMATCH_RECOVERED) == []
+    assert len(sc.events_of(MISMATCH)) == 1
+
+    sc.control_active = True  # still unavailable: a fresh count from here
+    sc.advance(2)
+    assert len(sc.events_of(MISMATCH)) == 1
+    sc.advance(1)
+    assert len(sc.events_of(MISMATCH)) == 2
+
+
+def test_heat_source_mismatch_message() -> None:
+    sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
+    sc.set_hp_actual(OutputState.OFF)  # ignores the ON command
+    sc.step()
+    sc.advance(3)
+    [alert] = sc.events_of(MISMATCH)
+    assert alert.zone_id is None
+    assert alert.message == (
+        "The heat source switch does not follow its command: it should be ON but is OFF "
+        "(3 reconcile intervals)."
+    )
+    assert alert.data == {"output": "heat_source", "desired": True, "actual": "off"}
+    sc.set_hp_actual(OutputState.ON, follows=True)
+    sc.advance(1)
+    [recovered] = sc.events_of(MISMATCH_RECOVERED)
+    assert recovered.message == "The heat source switch follows its command again."
+    assert recovered.zone_id is None
+
+
+def test_mismatch_is_counted_outside_the_season() -> None:
+    sc = Scenario(2)
+    sc.set_season(False)
+    sc.step()
+    sc.set_valve_actual(2, OutputState.ON)  # e.g. switched in the Shelly app
+    sc.advance(3)
+    assert [e.zone_id for e in sc.events_of(MISMATCH)] == ["zone_2"]
