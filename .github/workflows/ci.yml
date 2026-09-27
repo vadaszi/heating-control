@@ -31,6 +31,20 @@ jobs:
       - name: pytest (core branch coverage >= 95 %)
         run: .venv/bin/pytest --cov --cov-report=term-missing
 
+  shelly-js:
+    name: Shelly script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install test dependencies
+        run: npm ci
+      - name: node --test (simulated time, language subset check)
+        run: npm test
+
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

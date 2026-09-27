@@ -15,6 +15,8 @@ Later releases add schedules, holiday mode, a dashboard example (v1.1), and a 24
 
 ## Documentation
 - Design and functional specification: [`docs/design.md`](docs/design.md)
+- Shelly watchdog scripts (which device, upload, configure, bench tests): [`docs/shelly-scripts.md`](docs/shelly-scripts.md)
+- Heartbeat protocol between the integration and the scripts: [`docs/heartbeat-protocol.md`](docs/heartbeat-protocol.md)
 - Installation, configuration and safety notes will be added with the v1 release.
 
 ## License

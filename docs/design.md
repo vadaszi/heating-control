@@ -265,13 +265,16 @@ Unvalved zones compute state normally; only their output is a no-op.
 - **Case 1 — HA alive, all sensors dead:** HA runs the failsafe through its normal control of the outputs. The notification is sent by HA.
 - **Case 2 — HA dead:** each Shelly runs a local script that watches for the HA heartbeat. There is no device-to-device communication.
   - **Valve Shellys (2PM):** after `HeartbeatTimeout` (5 h) without a heartbeat, switch **all valves ON (open)** and keep them open. No clock or schedule is needed; an open valve with the heat pump off has no effect apart from the actuators' holding power.
+    - "All valves" = every switch component of the device, unless the script's configuration lists the channels (D-104).
+    - After a reboot or a script restart without a heartbeat, the start counts as the last heartbeat, as in D-72: the valves stay at the power-on default (closed) until HeartbeatTimeout has passed since the start (D-102).
   - **Heat source Shelly (Shelly 1):**
     - after `HeartbeatTimeout` (5 h) without a heartbeat, switch OFF;
     - the 5 h timeout is deliberately long: it gives the owner time to fix HA before the Shellys act (D-60);
     - after `FailsafeTrigger` (24 h) without a heartbeat, request heat daily 10:00–15:00 by its clock (NTP);
     - if the clock is invalid (power cut and no internet; Shellys have no backup clock), fall back to a cycle based on its own uptime: 5 h ON, 19 h OFF;
     - **after a reboot without heartbeat (D-72):** the time of the last heartbeat is lost, so the boot time counts as the last heartbeat. The output stays OFF (power-on default) until FailsafeTrigger has passed since boot. Then the clock window applies, or, if there is still no valid time, the uptime cycle starts with its 5 h ON phase at uptime = FailsafeTrigger;
-    - it heats only if the last heartbeat said "heating season ON" (the flag is stored on the device).
+    - it heats only if the last heartbeat said "heating season ON" (the flag is stored on the device). A flag that was never set counts as OFF (D-105).
+  - **Timed out (D-103):** a script that has timed out re-asserts its safe outputs (valves ON, heat source OFF) at every check if something else switched them. When a heartbeat returns, it stops acting at once and switches nothing; the reconcile loop sets the outputs.
   - The timeouts, failsafe window and uptime cycle used by the scripts are set only in each script's configuration block or device storage (D-73). HA's own FailsafeTrigger/FailsafeWindow (§4) apply only to case 1.
   - Only the heat source Shelly has time logic, so no time alignment between devices is needed.
   - The notification comes from the external watchdog (healthchecks.io).
@@ -371,7 +374,8 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | HolidayTemp | global | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint |
 | FailsafeTrigger | global | 24 h | 1–72 h / 1 | HA case 1 only; the Shelly value is *script config* (D-73) |
 | FailsafeWindow | global | 10:00–15:00 | time of day | HA case 1 only; the Shelly value is *script config* (D-73) |
-| HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73) |
+| HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73, D-101) |
+| Watchdog check interval (Shelly) | Shelly | 60 s | | *script config*; the timeout is acted on within one check (D-102) |
 | FailsafeTrigger / FailsafeWindow / uptime cycle (Shelly) | Shelly | 24 h / 10:00–15:00 / 5 h ON, 19 h OFF | | *script config* (D-72, D-73) |
 | HeartbeatInterval | global | 5 min | | *config* |
 | HeartbeatFailAlert | global | 3 consecutive failed calls (≈ 15 min) | | *config* |
@@ -459,19 +463,24 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **Schedule form entities (D-74):** the integration provides its own draft entities so the dashboard needs no user-created helpers: type (auto/manual) and zone selects, one-shot date or weekday selection, start/end time, temperature, an "Add schedule" button, plus a select of existing schedules and a "Delete schedule" button. The buttons call the same validated logic as the services, and errors (e.g. overlap, D-19) are shown as a persistent notification.
 
 ### 5.4 Heartbeat mechanism
-- Each Shelly script registers a small local HTTP endpoint.
+- Each Shelly script registers a small local HTTP endpoint. **Protocol v1 (D-100):** [`heartbeat-protocol.md`](heartbeat-protocol.md).
+  - `POST /script/<id>/heartbeat` is the heartbeat (JSON body; the heat source's carries `season`); `GET` on the same path returns the status without counting as a heartbeat.
+  - The response carries a protocol version `v`. Added fields never change it and both sides ignore unknown fields; a breaking change raises it.
+  - A request that is not valid (e.g. a heat source heartbeat without a boolean `season`) gets `400` and is not a heartbeat (D-105).
 - The integration calls every Shelly every `HeartbeatInterval` (5 min). For the heat source Shelly, the call carries the heating-season flag.
 - The integration determines each Shelly's address from HA's device registry (the device of the mapped switch) if that is reliable. Otherwise the addresses come from the YAML config.
 - If Shelly authentication is enabled, the credentials come from `secrets.yaml`.
 - **The Shelly script answers every heartbeat call** with a short status: script running, current watchdog state (normal / timed out / failsafe), stored season flag, and its configured parameter values (HeartbeatTimeout; for the heat source script also FailsafeTrigger, FailsafeWindow and uptime cycle). HA therefore checks two things with the same call: the device is reachable, **and** the watchdog script is running.
 - **Script parameters (D-73):** the script's configuration block or device storage is authoritative. HA never pushes parameter values. HA has *config* entries for the values it expects and alerts once if the reported values differ.
+  - **Refined (D-101):** the configuration block at the top of each script is the only source of parameters. Device storage (KVS) holds only runtime state: the heat source's season flag, written only when it changes.
+- **Timing (D-102):** each script checks the time since the last heartbeat every `check_interval_s` (60 s) against its uptime, so long timeouts (5 h, 24 h) need no long timers and no valid clock. The script start (boot or restart) counts as the last heartbeat for both scripts.
 - **Heartbeat failure alert (D-61):** after `HeartbeatFailAlert` (3 consecutive failed calls, ≈ 15 min), notify "Shelly X unreachable" or "watchdog script not running on Shelly X". A single failed call (Wi-Fi hiccup) never alerts. Also notify when it recovers.
 - The heartbeat is sent whenever the integration runs, **including shadow mode** (D-56).
 - Shelly settings:
   - power-on default: OFF (D-95 relies on it for the heat source Shelly);
   - scripts enabled at boot;
   - valve channels in switch profile.
-- Scripts live in the repo (`shelly_scripts/`) with a configuration block at the top: role, timeouts, failsafe window, uptime fallback.
+- Scripts live in the repo (`shelly_scripts/`) with a configuration block at the top: timeouts, channels, failsafe window, uptime fallback. The role is given by the script file (`valve_watchdog.js`, `heat_source_watchdog.js`), not by a configuration key (D-100).
 
 ### 5.5 Shadow mode (D-56)
 - With "Control active" OFF, the integration reads everything, computes decisions, updates its entities and logs, but sends **no output commands**. Heartbeat and watchdog ping continue.
@@ -551,8 +560,9 @@ Docs are updated in the same commit(s) as the code they describe.
 │   ├── climate.py  sensor.py  binary_sensor.py  number.py  switch.py ...
 │   └── services.yaml
 ├── shelly_scripts/             # valve_watchdog.js, heat_source_watchdog.js
-├── tests/                      # core unit tests (+ adapter tests)
-├── docs/                       # design.md (this file), user docs
+├── tests/                      # core unit tests (+ adapter tests); tests/shelly/: JS tests of the scripts
+├── package.json                # Node test runner + JS subset check (acorn) for shelly_scripts/
+├── docs/                       # design.md (this file), heartbeat-protocol.md, user docs
 ├── examples/                   # configuration.example.yaml, dashboard.example.yaml, secrets.example.yaml
 └── .github/workflows/          # tests; optional check against latest HA
 ```
@@ -752,9 +762,15 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-97 | Heating season OFF: zones without a fault are IDLE, the cycle ends, request OFF and all valves closed at once (faulty zones too); fault detection and SetPoint tracking continue; season ON is not a SetPoint raise (normal rules, WaitTime); HpMinOffTime counts from the actual OFF |
 | D-98 | Sensor fault notifications: start/recovery on the state change (not repeated after a restart; also in shadow mode); one daily reminder per local day for zones faulty since an earlier day, due from SensorFaultReminder to midnight with catch-up, heating season only |
 | D-99 | Output mismatch counted on reconcile ticks only (flag from the adapter; once per `now`); unavailable always counts, a differing state counts only if the desired state is unchanged since the previous tick; alert once at OutputMismatchAlert, recovery when following again; reset silently in shadow mode |
+| D-100 | Heartbeat protocol v1 (`docs/heartbeat-protocol.md`): `POST /script/<id>/heartbeat` = heartbeat with a JSON body, `GET` = status only; JSON status with protocol version `v`, role, state (`normal`/`timed_out`; `failsafe` from v1.2), heartbeat age, uptime, season flag, switch outputs and `params`; additive changes keep `v`, both sides ignore unknown fields. The role is fixed by the script file |
+| D-101 | Shelly script parameters live only in each script's CONFIG block; KVS holds only runtime state (the season flag), written only on change. Refines D-73 |
+| D-102 | Scripts measure the heartbeat timeout with their uptime in a periodic check (60 s), not with long timers or the clock. Script start (boot or restart) counts as the last heartbeat for both scripts; outputs are not touched at start. Extends D-72 to the valve script |
+| D-103 | A timed-out script re-asserts its safe outputs at every check (only if they differ); a returning heartbeat ends the timeout at once and the script switches nothing |
+| D-104 | The valve script manages every switch component of its device by default; the CONFIG block can list the channels instead |
+| D-105 | Heat source heartbeat must carry a boolean `season`, otherwise `400` and no heartbeat; a season flag never set counts as OFF and is reported as `null`; a heartbeat during the boot-time KVS read wins over the stored value |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check).
 
 ---
 

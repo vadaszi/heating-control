@@ -78,6 +78,8 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - `shelly_scripts/heat_source_watchdog.js`: config block; OFF after HeartbeatTimeout; stores the season flag in KVS; boot = last heartbeat (D-72); answers status. No failsafe window yet (P12).
 - **Tests:** JS unit tests with the mock API and simulated time (timeouts, heartbeat reset, status content, KVS persistence across a simulated reboot). Bench (owner): S1, S4, S6 with timeouts shortened to minutes; verifies **V2** (HTTP endpoint on 2PM Gen2 and Shelly 1 Gen3/4).
 - The docs section "Shelly scripts: upload, configure, test" is written here.
+- *(Done: 2026-09-27; decisions D-100…D-105. `docs/heartbeat-protocol.md`, `docs/shelly-scripts.md`; JS tests in `tests/shelly/` run with `npm test` and in CI. The mock enforces the documented script limits; an acorn AST check keeps the scripts inside the engine's language subset. Bench S1, S4, S6 and V2 are for the owner.)*
+- **Before P4 (review A of the P3 review):** the output mismatch recovery event carries `{"output": ...}` like the alert.
 
 ## P5 — HA adapter: config, reconcile, outputs, persistence
 - `__init__.py`: YAML schema (voluptuous) per §5.6 including zone `id` (D-76). Startup validation with clear errors.
@@ -104,6 +106,12 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Address from the device registry (the mapped switch's Shelly config entry), otherwise from YAML (V3). Credentials from `secrets.yaml`. Async aiohttp calls every HeartbeatInterval, always including in shadow mode (D-56).
 - Parses the status: unreachable / script not running after 3 consecutive failures → one alert, recovery alert (D-61); script parameter values ≠ expected config → one alert (D-73).
 - **Tests:** mocked HTTP: 2 failures give no alert, 3 give one, recovery is notified (S7); the parameter-mismatch alert; heartbeat still sent in shadow mode; timeouts never block the event loop. Local check (owner): heartbeat reaches the bench Shellys and **V3** is answered.
+- **Carried over (from P4):**
+  - *Protocol:* speak v1 as in `docs/heartbeat-protocol.md` (D-100): `POST` with `{"v": 1}` (valve) or `{"v": 1, "season": <heating season>}` (heat source). A non-200 answer, a timeout or a body that is not the status JSON counts as a failed call (D-61). Alert when `v` is not supported.
+  - *Script id:* the endpoint path contains the device's script slot id. Decide how HA finds it: a YAML key per Shelly, or `Script.List` by script name (needs the RPC to be reachable with the same credentials).
+  - *Which device is which:* HA must know which Shellys run the valve script and which the heat source script (from the mapped switch entities' devices, V3), and expect the matching `role`.
+  - *Parameter check (D-73, D-101):* compare `params.heartbeat_timeout_s` (and `check_interval_s` if configured) with the expected *config* values; alert once on a difference. Ignore params HA has no expectation for.
+  - *Optional:* a response with `state: "timed_out"` or a small `uptime_s` shows that the watchdog acted or the device rebooted; log it (a notification is a P7 decision).
 
 ## P8 — v1 docs, release, shadow run, go-live
 - Docs per §5.8 for all of v1: README (logic in plain words, limitations, safety, hydraulic prerequisite D-80), installation (HACS + manual), configuration reference, entities, Shelly guide, troubleshooting, shadow mode and go-live checklist, CHANGELOG. `examples/configuration.example.yaml`.
@@ -135,6 +143,11 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 
 ## P12 — Heat source failsafe script, watchdog ping, v1.2 release
 - `heat_source_watchdog.js`: after FailsafeTrigger, the daily window by NTP time; with no valid time, the uptime cycle (D-72); only with the season flag ON.
+- **Carried over (from P4):**
+  - Add the `failsafe` state in `computeState()` and its output in `targetOutput()` (the hooks exist); new CONFIG keys and `params` for FailsafeTrigger, the window and the uptime cycle (additive, protocol stays `v: 1`, D-100).
+  - Season flag: heat only with `true`; never set (`null`) counts as OFF (D-105).
+  - The time comes from `Shelly.getComponentStatus("sys")` (`unixtime`/`time` are `null` without NTP); decide how a clock that becomes valid during the uptime cycle is handled (spec question for P12).
+  - Extend the mock with a settable clock (`sys.unixtime`, `sys.time`) for S2, S3, S5.
 - HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); failsafe/exercise/actuator/long-run entities and notifications wired up; docs for healthchecks setup (period 5 min, grace 30 min, D-62).
 - **Tests:** JS with simulated time: S2, S3 (reboot, no clock), S5 (season OFF never heats); adapter: the ping is sent on schedule and a failure never blocks. Bench (owner): S2, S3, S5 with shortened timeouts; stop HA for real and check that the healthchecks alert arrives. Tag `v1.2.0`.
 

@@ -41,7 +41,9 @@ If the spec and anything else (this file, the plan, the code) disagree, the spec
    - Both rules are enforced by `tests/core/test_core_purity.py`. mypy is strict for the core.
 2. **Thin HA adapter** — the rest of `custom_components/floorheat/`: YAML config, input collection (sensor `last_reported`, unavailable switch = OFF), entities, services, notifications, persistence via `helpers.storage.Store`. Async only; never block the event loop.
 3. **Reconcile loop** — every `ReconcileInterval` (60 s) and on sensor updates: call `step`, compare desired vs actual outputs, correct differences with backoff. Idempotent. No commands in shadow mode (§5.5).
-4. **Shelly watchdog scripts** — `shelly_scripts/` (JavaScript on the devices): heartbeat endpoint, failsafe on heartbeat loss (§3.6, §5.4).
+4. **Shelly watchdog scripts** — `shelly_scripts/` (JavaScript on the devices): heartbeat endpoint, failsafe on heartbeat loss (§3.6, §5.4). Protocol: `docs/heartbeat-protocol.md`; user guide: `docs/shelly-scripts.md`.
+   - Only the Shelly engine's JavaScript subset: `let`/`var`, named top-level functions declared before use, no arrow functions, `const`, classes, template literals, destructuring, promises. `tests/shelly/subset.test.mjs` enforces it (acorn AST check).
+   - Tests load the same files that go on the device into a mock Shelly runtime with simulated time (`tests/shelly/shelly_mock.mjs`).
 
 Repository layout: spec §5.9.
 
@@ -51,7 +53,7 @@ Repository layout: spec §5.9.
 
 - **Follow the spec exactly.** If something is ambiguous, contradictory or missing: stop and ask the owner. Do not guess.
 - **Write decisions back:** every decision made in a session goes into `docs/design.md` (§3–§5 and the decision log §7) in the same change.
-- **One work phase at a time** (`docs/implementation-plan.md`), committed **directly to `main`** (D-83): no branches, no pull requests. `main` must stay green: run ruff, mypy, pytest (pre-commit runs on commit) before every push, check CI after pushing, and fix a red run immediately. At the end of a phase, give the owner a summary and stop. Do not start the next phase unasked.
+- **One work phase at a time** (`docs/implementation-plan.md`), committed **directly to `main`** (D-83): no branches, no pull requests. `main` must stay green: run ruff, mypy, pytest and `npm test` (pre-commit runs on commit) before every push, check CI after pushing, and fix a red run immediately. At the end of a phase, give the owner a summary and stop. Do not start the next phase unasked.
 - **Test first for the core.** Every §3 rule is covered by unit tests with simulated time; the §6 acceptance scenarios are the minimum set (`test_a01_...`). Core branch coverage ≥ 95 % is enforced.
 - **Docs with code:** user docs (§5.8) are updated in the same commit(s) as the code they describe.
 - **Every phase summary** lists the spec questions that came up.
@@ -73,6 +75,8 @@ pre-commit install                  # gitleaks + ruff on every commit
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy
 .venv/bin/pytest --cov              # fails below 95 % branch coverage of core/
+
+npm ci && npm test                  # Shelly script tests (Node >= 24, node:test)
 ```
 
-CI (`.github/workflows/ci.yml`): ruff, mypy, pytest + coverage, gitleaks (full history), hassfest, HACS validation. JS tests for the Shelly scripts are added in P4.
+CI (`.github/workflows/ci.yml`): ruff, mypy, pytest + coverage, Shelly script tests (`npm test`), gitleaks (full history), hassfest, HACS validation.
