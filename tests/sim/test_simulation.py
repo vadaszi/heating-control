@@ -1,27 +1,43 @@
 """Multi-day simulations of the core against a thermal model (implementation plan, P2).
 
 Invariants checked on every run:
-- the actual HP request never changes within HpMinOnTime / HpMinOffTime;
+- the actual HP request never changes within HpMinOnTime / HpMinOffTime, except that
+  switching the heating season OFF ends an ON period at once (D-68);
+- the request is never ON while the heating season is OFF;
 - after warm-up, every valved zone stays within StartTemp - lower .. StopTemp + upper,
   with the bounds derived from the house model (see `bounds`); an unvalved zone gets
   heat whenever the HP runs, so only its lower bound is checked;
 - no zone waits longer than WaitTime;
 - at most one calling zone and at most one sync per cycle;
+- notifications: no output mismatch with a perfect reconcile loop, sensor fault start
+  and recovery alternate per zone, no reminder outside the season (P3);
 - `step` is idempotent (checked by the harness on every step).
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import timedelta
 from itertools import pairwise
 
 import pytest
 
 from custom_components.floorheat.core.config import GlobalParams, ZoneParams
+from custom_components.floorheat.core.io import EventKind
 from custom_components.floorheat.core.state import ZoneMode
 
 from ..core.harness import Scenario
-from .thermal import Dropout, Trace, Window, ZoneModel, duration, periods, random_windows, simulate
+from .thermal import (
+    Dropout,
+    SeasonOff,
+    Trace,
+    Window,
+    ZoneModel,
+    duration,
+    periods,
+    random_windows,
+    simulate,
+)
 
 DAYS = 3
 MINUTES = DAYS * 24 * 60
@@ -62,24 +78,33 @@ def check_invariants(
     house: dict[str, ZoneModel],
     *,
     skip: dict[str, range] | None = None,
+    skip_all: Sequence[range] = (),
 ) -> None:
     samples = trace.samples
     skip = skip or {}
 
-    # HP min ON / min OFF from actual transitions.
+    # HP min ON / min OFF from actual transitions; season OFF ends an ON period at once.
     runs = periods(samples, "hp_running")
     for index, (running, run) in enumerate(runs[:-1]):  # the last run is incomplete
         if running:
-            assert duration(run) >= PARAMS.hp_min_on_time, f"short ON period at {run[0].now}"
+            season_off = not runs[index + 1][1][0].season
+            short = duration(run) < PARAMS.hp_min_on_time
+            assert season_off or not short, f"short ON period at {run[0].now}"
         elif index > 0:  # the first OFF period has no known start (D-78)
             assert duration(run) >= PARAMS.hp_min_off_time, f"short OFF period at {run[0].now}"
+
+    # Nothing heats outside the season (D-24, D-68).
+    for sample in samples:
+        if not sample.season:
+            assert not sample.request, f"request ON at {sample.now}"
+            assert not sample.hp_running, f"heat pump running at {sample.now}"
 
     # Temperature bounds after warm-up.
     has_valve = {z.id: z.has_valve for z in sc.config.zones}
     limits = {zone: bounds(model) for zone, model in house.items()}
     for minute, sample in enumerate(samples[WARM_UP:], start=WARM_UP):
         for zone, temp in sample.temps.items():
-            if zone in skip and minute in skip[zone]:
+            if (zone in skip and minute in skip[zone]) or any(minute in r for r in skip_all):
                 continue
             low, high = limits[zone]
             assert temp >= low, f"{zone} too cold ({temp:.2f} < {low:.2f}) at {sample.now}"
@@ -102,6 +127,24 @@ def check_invariants(
         assert len(callers) <= 1, f"several calling zones in one cycle at {run[0].now}"
         syncs = sum(1 for a, b in pairwise(run) if b.sync_fired and not a.sync_fired)
         assert syncs <= 1
+
+    # Notifications.
+    events = [(sample, event) for sample in samples for event in sample.events]
+    kinds = {event.kind for _, event in events}
+    assert EventKind.OUTPUT_MISMATCH not in kinds, "perfect reconcile: no mismatch"
+    for sample, event in events:
+        if event.kind is EventKind.SENSOR_FAULT_REMINDER:
+            assert sample.season, f"reminder outside the season at {sample.now}"
+    for zone in sc.config.zone_ids:
+        faults = [
+            event.kind
+            for _, event in events
+            if event.zone_id == zone
+            and event.kind in (EventKind.SENSOR_FAULT_STARTED, EventKind.SENSOR_FAULT_RECOVERED)
+        ]
+        assert faults == [EventKind.SENSOR_FAULT_STARTED, EventKind.SENSOR_FAULT_RECOVERED] * (
+            len(faults) // 2
+        ) + [EventKind.SENSOR_FAULT_STARTED] * (len(faults) % 2), f"{zone}: {faults}"
 
 
 def _cycles(trace: Trace) -> int:
@@ -160,7 +203,73 @@ def test_sensor_dropout_mid_run() -> None:
     assert faulty, "the dropout must cause a sensor fault"
     first = trace.samples.index(faulty[0])
     assert first == dropout.start + 60  # > SensorFaultTimeout after the last reading
+    events = [e for s in trace.samples for e in s.events]
+    assert [(e.kind, e.zone_id) for e in events] == [
+        (EventKind.SENSOR_FAULT_STARTED, "zone_3"),
+        (EventKind.SENSOR_FAULT_RECOVERED, "zone_3"),
+    ]  # 01:00 to 03:00 on day 2: no reminder for a fault of the same day
     # The faulty zone follows the house; its temperature is not controlled meanwhile.
     check_invariants(
         sc, trace, house, skip={"zone_3": range(dropout.start, dropout.start + 6 * 60)}
+    )
+
+
+def test_long_dropout_is_reminded_once() -> None:
+    """A fault from 21:00 on day 1 to 10:00 on day 2 gets one reminder at 08:00."""
+    dropout = Dropout("zone_2", start=20 * 60, minutes=14 * 60)
+    sc = Scenario(5, unvalved=[5], start="00:00")
+    house = _reference_house()
+    trace = simulate(sc, house, 2 * 24 * 60, dropouts=[dropout])
+    reminders = [
+        (s.now, e)
+        for s in trace.samples
+        for e in s.events
+        if e.kind is EventKind.SENSOR_FAULT_REMINDER
+    ]
+    assert [(now.hour, now.minute, e.data) for now, e in reminders] == [
+        (8, 0, {"zone_ids": "zone_2"})
+    ]
+    check_invariants(
+        sc, trace, house, skip={"zone_2": range(dropout.start, dropout.start + 18 * 60)}
+    )
+
+
+RECOVERY = 8 * 60  # minutes after the season is back ON before the bounds apply again
+
+
+def test_season_changes() -> None:
+    """Season OFF blocks, several of them in the middle of a cycle, keep the invariants.
+    A sensor faulty since day 1 is not reminded during the OFF morning of day 2; the
+    reminder is caught up when the season is switched ON again (D-98)."""
+    offs = [
+        SeasonOff(start=10 * 60 + 7, minutes=6 * 60),
+        SeasonOff(start=27 * 60 + 13, minutes=12 * 60),  # day 2, 03:13 to 15:13
+        SeasonOff(start=50 * 60 + 29, minutes=3 * 60),
+        SeasonOff(start=60 * 60 + 41, minutes=20),
+    ]
+    dropout = Dropout("zone_4", start=20 * 60, minutes=22 * 60)  # faulty day 1 21:00 to day 2 18:00
+    sc = Scenario(5, unvalved=[5], start="00:00")
+    house = _reference_house()
+    trace = simulate(sc, house, MINUTES, dropouts=[dropout], season_off=offs)
+    samples = trace.samples
+
+    mid_cycle = [off for off in offs if samples[off.start - 1].hp_running]
+    assert len(mid_cycle) >= 2, "the run must switch the season OFF during a cycle"
+    for off in mid_cycle:
+        assert not samples[off.start].hp_running  # OFF at once, even within min ON
+        assert not any(samples[off.start].modes[z] is ZoneMode.HEATING for z in sc.config.zone_ids)
+    assert _cycles(trace) >= 5
+    reminders = [
+        (s.now, e) for s in samples for e in s.events if e.kind is EventKind.SENSOR_FAULT_REMINDER
+    ]
+    assert [(now.day, now.hour, now.minute, e.data) for now, e in reminders] == [
+        (13, 15, 13, {"zone_ids": "zone_4"})  # caught up on day 2 when the season is ON
+    ]
+
+    check_invariants(
+        sc,
+        trace,
+        house,
+        skip={"zone_4": range(dropout.start, dropout.start + dropout.minutes + 6 * 60)},
+        skip_all=[range(off.start, off.start + off.minutes + RECOVERY) for off in offs],
     )

@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from custom_components.floorheat.core.io import OutputState
+from custom_components.floorheat.core.io import Event, OutputState
 from custom_components.floorheat.core.state import ZoneMode
 
 from ..core.harness import Scenario
@@ -50,6 +50,17 @@ class Dropout:
 
 
 @dataclass(frozen=True)
+class SeasonOff:
+    """The heating season is switched OFF for `minutes`."""
+
+    start: int
+    minutes: int
+
+    def __contains__(self, minute: int) -> bool:
+        return self.start <= minute < self.start + self.minutes
+
+
+@dataclass(frozen=True)
 class Sample:
     now: datetime
     hp_running: bool
@@ -58,6 +69,8 @@ class Sample:
     sync_fired: bool
     modes: dict[str, ZoneMode]
     temps: dict[str, float]
+    season: bool = True
+    events: tuple[Event, ...] = ()  # emitted in this minute
 
 
 @dataclass
@@ -77,6 +90,7 @@ def simulate(
     *,
     windows: Sequence[Window] = (),
     dropouts: Sequence[Dropout] = (),
+    season_off: Sequence[SeasonOff] = (),
 ) -> Trace:
     """Run the core against `house` for `minutes`, one reconcile step per minute."""
     has_valve = {z.id: z.has_valve for z in sc.config.zones}
@@ -90,6 +104,8 @@ def simulate(
                 w.dip for w in windows if w.zone == zone and w.start <= minute < w.start + w.minutes
             )
             sc.temp(zone, round(model.temp - dip, 2))
+        sc.set_season(not any(minute in off for off in season_off))
+        seen = len(sc.events)
         if minute == 0:
             sc.step()
         else:
@@ -107,6 +123,8 @@ def simulate(
                 sync_fired=sc.sync_fired,
                 modes=sc.modes(),
                 temps={z: m.temp for z, m in house.items()},
+                season=sc.heating_season,
+                events=tuple(sc.events[seen:]),
             )
         )
     return trace

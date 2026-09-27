@@ -65,8 +65,8 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Sensor validity and SENSOR_FAULT moved to P2 (D-90).
 - Heating season OFF: no demand, immediate stop (D-68).
 - Notification events: fault start / daily reminder at SensorFaultReminder / recovery; no reminder outside the season (D-75).
-- Output mismatch detection in the core: the counter over N consecutive steps where actual ≠ desired or unavailable → alert event + recovery (D-67). Inactive in shadow mode.
-- **Tests:** A17 (notification and reminder), A20 (season part), A29 (mismatch alert), the mismatch counter (A27 logic part); simulation with season changes.
+- Output mismatch detection in the core: the counter over N consecutive reconcile ticks where actual ≠ desired or unavailable → alert event + recovery (D-67, D-99). Inactive in shadow mode.
+- **Tests:** A17 (notification and reminder), A20 (season part), A29 (mismatch alert), the mismatch counter (A27 logic part); simulation with season changes. *(Done: 2026-09-27; decisions D-96…D-99.)*
 - **Carried over (settle in the P3 plan):**
   - *Time zone contract* (review C): done in P3 as D-96 (`Inputs.time_zone`; the core converts `now`; DST tests).
   - *Done after the P2 review (2026-09-27):* SetPoint decrease ends the wait (review A, D-94); unvalved reason text during the spread (review B); naive `last_reported` rejected (review D); heat source unavailable, then back (review E, D-95; owner: no grace period, a Wi-Fi glitch must never switch a working heat pump OFF).

@@ -2,8 +2,8 @@
 
 `step(config, state, inputs, now) -> (outputs, new_state, events)` is pure and
 deterministic. One call reaches a fixed point: calling it again with its own new state,
-the same inputs and the same `now` returns the same result, so the reconcile loop may
-run it as often as it likes.
+the same inputs and the same `now` returns the same outputs and state and no events, so
+the reconcile loop may run it as often as it likes and no notification is repeated.
 
 Order within a step:
 1. heat source transitions from the actual switch state (D-66, D-78, D-91, D-95);
