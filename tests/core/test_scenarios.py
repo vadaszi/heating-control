@@ -1,4 +1,4 @@
-"""§6 acceptance scenarios covered by the core in P2 (docs/design.md §6).
+"""§6 acceptance scenarios covered by the core in P2 and P3 (docs/design.md §6).
 
 Defaults from §4: SetPoint 22.0, Hysteresis 0.2 (StartTemp 21.8, StopTemp 22.2),
 WaitTime 30 min, HpMinOnTime/HpMinOffTime 60 min, SensorFaultTimeout 60 min,
@@ -8,11 +8,12 @@ ManualMaxTemp 25.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import timedelta
 
-from custom_components.floorheat.core.io import OutputState
+from custom_components.floorheat.core.io import EventKind, OutputState
 from custom_components.floorheat.core.state import ZoneMode
 
-from .harness import Scenario
+from .harness import DAY, Scenario
 
 IDLE, WAITING, HEATING, FAULT = (
     ZoneMode.IDLE,
@@ -20,6 +21,7 @@ IDLE, WAITING, HEATING, FAULT = (
     ZoneMode.HEATING,
     ZoneMode.SENSOR_FAULT,
 )
+NEXT_DAY = DAY + timedelta(days=1)
 
 
 def _started_by_zone_1(
@@ -455,3 +457,55 @@ def test_a20_no_demand_while_season_off() -> None:
     sc.advance_to("12:30")
     assert sc.hp
     assert sc.calling_zone == "zone_2"  # largest deficit (D-65)
+
+
+def test_a17_sensor_fault_notified_and_reminded_next_day() -> None:
+    sc = Scenario(4, temps={2: 22.2, 3: 22.2})  # at StopTemp: no sync join
+    sc.step()
+    sc.silence(4)  # silent from 06:00
+    sc.advance_to("07:00")
+    assert sc.mode(4) is IDLE  # exactly SensorFaultTimeout: still valid
+    sc.advance_to("07:01")
+    assert sc.mode(4) is FAULT
+    assert [e.zone_id for e in sc.events_of(EventKind.SENSOR_FAULT_STARTED)] == ["zone_4"]
+    assert not sc.hp  # no demand
+    assert sc.valve(4) is False  # the HP is off
+
+    sc.temp(1, 21.8)  # zone 1 starts the HP at 07:31 (first start: no min OFF)
+    sc.step()
+    sc.advance_to("07:31")
+    assert sc.hp
+    assert sc.valve(4) is True  # follows the house
+    sc.temp(1, 22.2)
+    sc.advance_to("08:31")  # min ON elapsed
+    assert not sc.hp
+    assert sc.valve(4) is False
+
+    sc.advance_to("07:59", NEXT_DAY)
+    assert sc.events_of(EventKind.SENSOR_FAULT_REMINDER) == []
+    sc.advance_to("08:00", NEXT_DAY)
+    [reminder] = sc.events_of(EventKind.SENSOR_FAULT_REMINDER)
+    assert reminder.data == {"zone_ids": "zone_4"}
+    assert len(sc.events_of(EventKind.SENSOR_FAULT_STARTED)) == 1
+
+    sc.temp(4, 22.0)
+    sc.step()
+    assert sc.mode(4) is IDLE
+    assert [e.zone_id for e in sc.events_of(EventKind.SENSOR_FAULT_RECOVERED)] == ["zone_4"]
+
+
+def test_a20_fault_notified_without_reminder() -> None:
+    """A20: outside the season a sensor fault is notified, with no daily reminder (D-75)."""
+    sc = Scenario(2)
+    sc.set_season(False)
+    sc.step()
+    sc.silence(1)
+    sc.advance_to("07:01")
+    assert sc.mode(1) is FAULT
+    assert sc.reason(1) == "Sensor fault (heating season off)"
+    assert len(sc.events_of(EventKind.SENSOR_FAULT_STARTED)) == 1
+    sc.advance_to("12:00", NEXT_DAY)
+    assert sc.events_of(EventKind.SENSOR_FAULT_REMINDER) == []
+    sc.temp(1, 22.0)
+    sc.step()
+    assert len(sc.events_of(EventKind.SENSOR_FAULT_RECOVERED)) == 1

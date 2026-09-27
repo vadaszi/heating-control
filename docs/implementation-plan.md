@@ -96,6 +96,9 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Notifications through the configured notify services; message texts in English.
 - **Tests:** entities created per zone with stable unique IDs based on the zone id; a number entity rejects values outside its range (e.g. HpMinOnTime 20); a changed parameter reaches the core; the climate target changes BaseSetPoint; events turn into notify calls (captured).
 
+- **Carried over:**
+  - *Notifications* (P3, D-98): turn the core events into notify calls. The sensor fault reminder is one event for all faulty zones (`zone_id` None, `data.zone_ids`); start/recovery and mismatch events carry the zone id. The alerts sensor shows the active ones.
+
 ## P7 — HA heartbeat client
 - Address from the device registry (the mapped switch's Shelly config entry), otherwise from YAML (V3). Credentials from `secrets.yaml`. Async aiohttp calls every HeartbeatInterval, always including in shadow mode (D-56).
 - Parses the status: unreachable / script not running after 3 consecutive failures → one alert, recovery alert (D-61); script parameter values ≠ expected config → one alert (D-73).

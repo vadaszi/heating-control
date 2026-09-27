@@ -249,6 +249,11 @@ Unvalved zones compute state normally; only their output is a no-op.
 - On a valid reading again → the zone returns to normal logic (`IDLE`, then evaluated in the same step).
 - **Notifications:** when the fault starts, then a daily reminder at 08:00 while any sensor is faulty, and on recovery.
   - Outside heating season (D-75): fault start and recovery only; no daily reminder.
+  - **Details (D-98):**
+    - start and recovery are notified when the zone's state changes to or from `SENSOR_FAULT`. A fault already in the stored state is not notified again after a restart; a fault that began while HA was down is notified when detected.
+    - They are sent in and outside the season, and also in shadow mode (only the D-67 alert is inactive there).
+    - The reminder is **one** notification per local day listing every zone that has been faulty since an earlier local day. The first reminder therefore comes at 08:00 the day after the start notification; a fault that starts at 07:59 is not reminded one minute later.
+    - It is due from SensorFaultReminder until local midnight and is sent at most once per day. If HA is not running at 08:00, or the season is switched ON later that day, it is sent late (catch-up) that day.
 
 **Failsafe mode (D-12, D-22, D-35, D-36, D-37)**
 - **Trigger** (either condition):
@@ -738,9 +743,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-95 | Heat source switch unavailable, then back: back ON after ON means it never stopped (min ON and the cycle continue); back OFF means OFF since it became unavailable; the cycle is kept while unavailable. Refines D-66; relies on the Shelly power-on default OFF |
 | D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence |
 | D-97 | Heating season OFF: zones without a fault are IDLE, the cycle ends, request OFF and all valves closed at once (faulty zones too); fault detection and SetPoint tracking continue; season ON is not a SetPoint raise (normal rules, WaitTime); HpMinOffTime counts from the actual OFF |
+| D-98 | Sensor fault notifications: start/recovery on the state change (not repeated after a restart; also in shadow mode); one daily reminder per local day for zones faulty since an earlier day, due from SensorFaultReminder to midnight with catch-up, heating season only |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 and D-97 during P3.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-98 during P3.
 
 ---
 

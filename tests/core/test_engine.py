@@ -608,11 +608,3 @@ def test_state_is_aligned_with_the_config() -> None:
     sc.step()
     assert set(sc.state.zones) == {"zone_1", "zone_2"}
     assert not sc.hp
-
-
-def test_no_events_yet() -> None:
-    """Notifications are added in P3."""
-    sc = Scenario(2, temps={1: None})
-    sc.step()
-    sc.advance_to("07:30")
-    assert sc.events == []

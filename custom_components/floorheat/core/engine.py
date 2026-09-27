@@ -12,7 +12,8 @@ Order within a step:
    without a fault is IDLE (D-24, D-97);
 4. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
    outside the season the request is OFF at once, overriding min ON (D-68);
-5. valves and reason texts (D-20, D-27, D-64, D-71, D-89).
+5. valves and reason texts (D-20, D-27, D-64, D-71, D-89);
+6. notification events (`alerts`: D-75, D-98).
 
 Schedules and holiday follow in P9.
 """
@@ -25,6 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 
+from .alerts import fault_events
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
 from .io import Event, Inputs, Outputs, OutputState, ZoneInput, ZoneReport
 from .state import CoreState, ZoneMode, ZoneState
@@ -154,6 +156,16 @@ def step(
         valves={z.id: valves[z.id] for z in config.zones if z.has_valve},  # rule 8
         zones=reports,
     )
+    events, reminder_on = fault_events(
+        config,
+        state.zones,
+        zone_states,
+        params,
+        season,
+        state.last_fault_reminder_on,
+        now,
+        inputs.time_zone,
+    )
     new_state = dataclasses.replace(
         state,
         zones=zone_states,
@@ -163,8 +175,9 @@ def step(
         hp_unavailable_since=source.unavailable_since,
         calling_zone=calling,
         sync_fired=sync_fired,
+        last_fault_reminder_on=reminder_on,
     )
-    return outputs, new_state, []
+    return outputs, new_state, events
 
 
 def _cycle(
