@@ -40,6 +40,11 @@ warn_unused_ignores = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
+# Test harness for the HA adapter tests; ships without type information.
+module = ["pytest_homeassistant_custom_component.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # The control core is strictly typed (docs/implementation-plan.md, test strategy).
 module = ["custom_components.floorheat.core.*"]
 strict = true

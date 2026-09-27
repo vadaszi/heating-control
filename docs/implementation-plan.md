@@ -87,7 +87,8 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Reconcile loop: every ReconcileInterval and on sensor updates, serialised by a lock. Calls `step`, commands differing outputs with backoff. Shadow mode sends no commands and feeds the commanded state as feedback (D-66). The ON→OFF transition sends one final safe command set (D-69).
 - Persistence: `helpers.storage.Store`, saved on state change (debounced), restored at startup (§3.8).
 - **Tests (HA harness):** A21 (no service calls in shadow; final safe command on switch-off), A22 (restart during WAITING and HP ON), A25 (manual valve change corrected), A27 (unavailable valve → alert once, backoff, recovery), bad YAML → clear errors, all-valved warning.
-- **Carried over:**
+- *(Done: 2026-09-27; decisions D-106…D-113. Modules `schema.py`, `inputs.py`, `outputs.py`, `storage.py`, `controller.py`; tests in `tests/adapter/`; YAML reference in `docs/configuration.md`. Every carried-over item below is implemented and tested. Core events are logged only; notifications follow in P6.)*
+- **Carried over (all done in P5):**
   - *Reconcile on heat source change* (P2 summary): also run a reconcile when the heat source switch changes state, so HP transitions are seen without waiting up to one ReconcileInterval (the core scenario times assume this).
   - *Recompute before commanding* (review E): the reconcile loop always calls `step` with the current actual states before sending commands, and never re-sends an older desired state. Otherwise a switch returning from `unavailable` could be sent a stale OFF (owner requirement: a Wi-Fi glitch must never switch a working heat pump OFF).
   - *Reconcile tick* (D-99): `Inputs.reconcile_tick` is True only for the run started by the ReconcileInterval timer; runs on sensor updates or heat source changes pass False. Pass a valve state for every valved zone (unavailable when the entity is missing).
@@ -100,12 +101,17 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests:** entities created per zone with stable unique IDs based on the zone id; a number entity rejects values outside its range (e.g. HpMinOnTime 20); a changed parameter reaches the core; the climate target changes BaseSetPoint; events turn into notify calls (captured).
 
 - **Carried over:**
+  - *Settings through the controller* (D-106): the number, switch and climate entities read and change `FloorheatController.settings` (`async_set_zone_params`, `async_set_global_params`, `async_set_heating_season`, `async_set_control_active`); they do not restore their own state. Temperatures are converted to and from HA's unit system (D-77). Update the entities from `async_add_listener`.
+  - *Notify targets*: add the `notify` YAML key (list of notify services) to the schema and `docs/configuration.md`; turn the core events from `async_add_event_handler` into notify calls.
+  - *Trial with stand-in switches* (D-113, owner request): the owner installs after P6 on the live HA in shadow mode with the real sensors and Template switch helpers (no state template) as stand-ins for the valves and the heat source, with no Shellys. Make sure that works (nothing in P5/P6 may need a Shelly), and write the user docs for it: installation (manual copy of `custom_components/floorheat`, HACS custom repository), creating the stand-in helpers, a YAML example, what to look at during the shadow run, how to swap in the real switches later.
   - *Notifications* (P3, D-98): turn the core events into notify calls. The sensor fault reminder is one event for all faulty zones (`zone_id` None, `data.zone_ids`); start/recovery and mismatch events carry the zone id. The alerts sensor shows the active ones.
 
 ## P7 — HA heartbeat client
 - Address from the device registry (the mapped switch's Shelly config entry), otherwise from YAML (V3). Credentials from `secrets.yaml`. Async aiohttp calls every HeartbeatInterval, always including in shadow mode (D-56).
 - Parses the status: unreachable / script not running after 3 consecutive failures → one alert, recovery alert (D-61); script parameter values ≠ expected config → one alert (D-73).
 - **Tests:** mocked HTTP: 2 failures give no alert, 3 give one, recovery is notified (S7); the parameter-mismatch alert; heartbeat still sent in shadow mode; timeouts never block the event loop. Local check (owner): heartbeat reaches the bench Shellys and **V3** is answered.
+- **Carried over (from P5):**
+  - *Switches without a Shelly* (D-113): a mapped switch whose device is not a Shelly (e.g. a Template switch stand-in) gets no heartbeat and raises no heartbeat alert; decide with the owner how this is configured or detected.
 - **Carried over (from P4):**
   - *Protocol:* speak v1 as in `docs/heartbeat-protocol.md` (D-100): `POST` with `{"v": 1}` (valve) or `{"v": 1, "season": <heating season>}` (heat source). A non-200 answer, a timeout or a body that is not the status JSON counts as a failed call (D-61). Alert when `v` is not supported.
   - *Script id:* the endpoint path contains the device's script slot id. Decide how HA finds it: a YAML key per Shelly, or `Script.List` by script name (needs the RPC to be reachable with the same credentials).
@@ -119,6 +125,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Owner (local):** install on the live HA in shadow mode; verify **V6** (`last_reported` moves for BTHome), **V4**, **V5** (wiring), **V1** (actuator power, needed later); run shadow mode for 1–2 weeks next to the Computherm and compare decisions (entity history). Then follow the go-live checklist: remove the Computherm, wire the Shelly 1, set Control active ON.
 - **Carried over:**
   - *`iot_class`* (review F): currently `local_polling`. Re-check before the release (the integration polls the Shellys locally for the heartbeat and pings healthchecks.io; `calculated` would claim no own communication).
+  - *Going live after shadow mode* (D-112): put into the go-live checklist that the real switch states count from then on, so HpMinOffTime may apply before the first start; the zones that need heat open their valves meanwhile.
   - *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime after the first start. Accepted by the owner (2026-09-27); handled by the owner during the test phase, no code change.
 - **Done when:** v1 is running live, with no open critical issues.
 

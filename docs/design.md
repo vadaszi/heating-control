@@ -322,12 +322,14 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - calling zone and whether the sync rule has fired;
   - holiday state and end time;
   - schedules;
-  - FORCED cap state.
+  - FORCED cap state;
+  - the values changed from the UI: parameters, heating season, Control active (D-106).
 - **Persistence format (D-87):**
   - the stored data carries a schema version; datetimes are stored as ISO 8601 in UTC;
   - new fields get a default when missing, so adding one needs no version bump; a breaking change bumps the version and adds a migration;
   - data from a newer version (e.g. after a downgrade) or corrupt data is discarded with a logged warning, and the integration starts as on a first start (D-78);
   - stored state of zones that are no longer configured is dropped (with a warning), new zones start `IDLE`, and a calling zone that is no longer configured is cleared.
+- **Adapter storage (D-106):** one `helpers.storage.Store` file holds the core state, the UI settings (parameters, heating season, Control active) and the switches still owed the final OFF (D-110). The adapter owns the settings; the entities only show and change them. Unusable settings fall back to their defaults with a warning. Saves are delayed and coalesced (at most one write per 30 s) and flushed when HA stops.
 
 ### 3.9 Monitoring
 - **Actuator fault (D-41):** notify if a valve channel is ON but measures < 0.5 W for 10 min. This requires a power sensor mapped to the valve (optional per zone).
@@ -430,9 +432,17 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - Calls `step`, then compares the desired outputs with the actual switch states and corrects any difference. A lost command or a device reboot heals itself within one interval.
 - It is idempotent: running it twice changes nothing.
 - If an output keeps differing from the desired state, retries back off, and the "output not following command" alert fires (D-67, §3.9).
+- **Details (D-107 to D-109):**
+  - runs start on the ReconcileInterval timer (the only reconcile ticks, D-99), on a state change of any mapped sensor or switch, and on a settings change; an `asyncio.Lock` serialises them;
+  - every run calls `step` with the current actual states before any command, so no stale command is sent (e.g. an OFF to a heat source that returns from `unavailable`, D-95);
+  - backoff (D-108): the first command for a desired state goes out at once; while the switch does not follow, retries follow after 1, 2, 4 and 8 min, then every 15 min. The count resets when the switch follows or the desired state changes. Nothing is sent or queued while a switch is unavailable; the first command after it returns goes out at once;
+  - commands run as tasks with a 30 s timeout, outside the lock;
+  - the loop starts once HA has started (`async_at_started`), so entities that are still loading neither get commands nor count for the mismatch alert (D-109).
 
 **Adapter (HA side):**
 - **Sensors:** reads sensor state and **`last_reported`** for staleness. `last_updated`/`last_changed` do not move when a value repeats, so a healthy sensor would look dead.
+  - The reading is converted from the sensor's own `unit_of_measurement`; a sensor without a temperature unit gives no valid reading, and a warning is logged once (D-111).
+  - A switch state other than `on`/`off` (unavailable, unknown, missing) is unavailable (D-66).
 - **Outputs:**
   - calls `switch.turn_on/turn_off` only through the reconcile loop;
   - unvalved zones have no output;
@@ -486,7 +496,11 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - With "Control active" OFF, the integration reads everything, computes decisions, updates its entities and logs, but sends **no output commands**. Heartbeat and watchdog ping continue.
 - **Feedback in shadow mode (D-66):** the real switches are not driven by the integration, so the core gets the commanded states as "actual" states. The simulated decisions stay self-consistent. The output mismatch alert (D-67) is inactive.
 - **Switching Control active ON → OFF (D-69):** the integration sends one final safe command set (heat pump request OFF, all valves OFF) and then stops sending commands. Heartbeats keep the Shelly watchdogs quiet, so without this the heat pump could stay ON indefinitely.
+  - **Delivery (D-110):** every switch that does not report OFF gets OFF, retried with the D-108 backoff (also across a restart) until it has reported OFF once. A switch that is unavailable at that moment gets it when it returns. After that, nothing more is sent. A switch already reporting OFF gets no command.
 - **Switching OFF → ON:** the next reconcile sets all outputs to the desired state.
+  - **Going live (D-112):** from then on the real switch states count. If shadow mode had the heat source ON and the real switch is OFF, that is a stop, so HpMinOffTime applies before the first real start. Accepted; noted in the go-live checklist.
+- **Commanded feedback (D-109):** the commanded state is the last desired state. When it changes, `step` runs again at once with the same `now` (not a new reconcile tick), as if the switches had followed. After a restart the heat source starts from the stored last known state, the valves from OFF.
+- **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids.
 - It is OFF on first install. The owner runs it for 1–2 weeks next to the existing controller, then switches to live.
 
 ### 5.6 Configuration (D-52, D-55)
@@ -501,6 +515,9 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - `!secret` references for the watchdog ping URL and credentials.
 - **All values are changed from the UI and stored by HA:** SetPoints, parameters, holiday, schedules, season.
 - The config is validated at startup with clear error messages (unknown entity, duplicate zone id or name, etc.).
+  - **Exact keys:** [`configuration.md`](configuration.md) (D-111). `valve` is required: a switch or `none`, so a zone without a valve is a deliberate choice. Each switch may be mapped only once. Keys for later phases (notify, Shelly, watchdog) are added with them; unknown keys are rejected.
+  - **Units (D-111):** temperatures in the YAML (`sensor_offset`, plausible range) are in HA's unit system and converted to °C.
+  - **Unknown entities (D-107):** structural errors fail the setup. An entity that is neither in the entity registry nor has a state is reported after HA has started (error log + persistent notification), and the integration keeps running with it treated as unavailable, so a sensor integration that fails to load once does not stop heating control.
 - Startup warning (not an error) if every zone has a valve, pointing to the hydraulic prerequisite (D-80).
 
 Illustrative example (exact keys defined in implementation):
@@ -768,9 +785,17 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-103 | A timed-out script re-asserts its safe outputs at every check (only if they differ); a returning heartbeat ends the timeout at once and the script switches nothing |
 | D-104 | The valve script manages every switch component of its device by default; the CONFIG block can list the channels instead |
 | D-105 | Heat source heartbeat must carry a boolean `season`, otherwise `400` and no heartbeat; a season flag never set counts as OFF and is reported as `null`; a heartbeat during the boot-time KVS read wins over the stored value |
+| D-106 | The adapter owns the UI values (zone and global parameters, heating season, Control active) and persists them with the core state in its `Store` file; entities only show and change them. Defaults on a first install: season ON, Control active OFF |
+| D-107 | Startup checks: structural YAML errors fail the setup; entities neither registered nor with a state are reported after HA start (error log + persistent notification) and treated as unavailable, the integration keeps running; a sensor without a temperature unit gives no valid reading (warning once) |
+| D-108 | Command backoff: first command at once; retries after 1, 2, 4, 8 min, then every 15 min; reset when the switch follows or the desired state changes; nothing sent or queued while unavailable, first command at once when it returns |
+| D-109 | Reconcile loop runs on the timer (ticks), on state changes of mapped sensors and switches, and on settings changes, serialised by a lock; it starts once HA has started. Shadow mode: commanded = last desired state; on a change `step` runs again at the same `now`; after a restart the heat source starts from the stored last known state |
+| D-110 | Control active ON → OFF: the final OFF is repeated (D-108 backoff, persisted across restarts) until each switch has reported OFF once, then nothing more is sent; a switch already OFF gets no command. Refines D-69 |
+| D-111 | YAML keys as in `docs/configuration.md`; `valve` is required (`none` for no valve); a switch may be mapped once; YAML temperatures are in HA's unit system; readings are converted from the sensor's own unit |
+| D-112 | Going live after shadow mode: the real switch states count; a heat source that shadow mode had ON but that reads OFF counts as stopped, so HpMinOffTime applies before the first start. Accepted, noted in the go-live checklist |
+| D-113 | A shadow-mode trial without Shellys uses Template switch helpers without a state template as stand-in switches; the spec stays switch-only |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check).
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan).
 
 ---
 
