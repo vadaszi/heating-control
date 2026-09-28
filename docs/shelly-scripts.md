@@ -123,8 +123,8 @@ while true; do curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 3. Start the loop again → `"state": "normal"`; the output stays OFF. Switch it ON in the app → it **stays ON**.
 
 **Reboot** (both devices)
-1. Send a heartbeat (heat source: season `true`), switch the outputs ON, then reboot the device (web UI, or power off and on).
-2. After the reboot all outputs are **OFF** (this checks the power-on default), `curl -s $URL` answers (script started on its own), `"heartbeat_seen": false`, small `uptime_s`; heat source: `"season": true` (kept in storage).
+1. Send a heartbeat (heat source: season `true`), switch the outputs ON, then **cut the power** for a few seconds (unplug it). A software reboot from the web UI is not enough: it keeps the outputs as they were, and only a real power loss applies the power-on default.
+2. After the power returns all outputs are **OFF** (this checks the power-on default), `curl -s $URL` answers (script started on its own), `"heartbeat_seen": false`, small `uptime_s`; heat source: `"season": true` (kept in storage).
 3. Valve Shelly: without heartbeats, all channels switch ON about 2 minutes after the boot.
 
 **V2 — heartbeat endpoint on each device type**

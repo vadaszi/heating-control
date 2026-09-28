@@ -824,3 +824,7 @@ D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-6
 | V4 | Whether the secondary pump runs during hot water production | Documentation only |
 | V5 | The heat pump reacts correctly to the Shelly 1 contact on the former Computherm terminals | Wiring check before go-live |
 | V6 | BTHome/pvvx sensor entities update `last_reported` when the same value repeats | Sensor fault detection (§3.6) would misfire; needs another staleness source |
+
+**Results so far:**
+- **V2, 2PM (2026-09-28):** passed on two Shelly Plus 2PM Gen2 with firmware 1.7.5 (`GET` and `POST`, `400` on an invalid body, answers after a power loss; bench tests S1, S4, S6 and the reboot check passed too). Tested without authentication, so the `401` check is still open. The Shelly 1 part of V2 is still open (device not yet available).
+- **Power-on default (2026-09-28, 2PM):** a real power loss restarts the outputs OFF; a software reboot keeps them as they were. Both fit D-95: after a reboot the relay really did not change.
