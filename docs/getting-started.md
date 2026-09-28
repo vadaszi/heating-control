@@ -80,6 +80,8 @@ Run it for one to two weeks next to your current controller. Compare in the enti
 
 Any climate or history card works for this; an example dashboard comes with v1.1.
 
+A step-by-step checklist with space for notes: [trial checklist](trial-checklist.md).
+
 ## 7. Later: the real switches
 
 When the Shelly relays are installed:
