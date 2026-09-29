@@ -1,5 +1,11 @@
 {
   "config": {
+    "step": {
+      "user": {
+        "title": "Multizone Floor Heating Manager",
+        "description": "The integration is set up in configuration.yaml."
+      }
+    },
     "abort": {
       "yaml_only": "Multizone Floor Heating Manager is set up in configuration.yaml. See the documentation for the `multizone_floor_heating_manager:` section; the integration appears here after a restart.",
       "single_instance_allowed": "Multizone Floor Heating Manager is already set up from configuration.yaml."
