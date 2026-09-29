@@ -79,7 +79,7 @@ entities:
 ## 6. Values make sense
 - [x] Each climate entity's current temperature matches its sensor (plus the offset, if you set one).
 - [x] Target temperatures set to what you want per zone. The zone state and reason change within seconds.
-- [x] Reason texts are understandable (e.g. "Idle", "Waiting, 25 min left", "Calling zone").
+- [x] Reason texts are understandable (e.g. "Idle", "Waiting" (the end time is the `until` attribute), "Calling zone").
 - [x] Temperatures are shown in your unit (°C).
 
 Feedback (anything unclear in the names, texts or layout): I may want to change wordings later, but now nothing. Some stuff seems unnatural, but without using I dont know what would be better. Leave it like this for now.

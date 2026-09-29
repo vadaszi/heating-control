@@ -212,6 +212,10 @@ class Scenario:
     def reason(self, zone: ZoneRef) -> str:
         return self._out().zones[zone_id(zone)].reason
 
+    def until(self, zone: ZoneRef) -> datetime | None:
+        """End of the timer named by the zone's reason (D-123)."""
+        return self._out().zones[zone_id(zone)].until
+
     def room_temp(self, zone: ZoneRef) -> float | None:
         return self._out().zones[zone_id(zone)].room_temp
 

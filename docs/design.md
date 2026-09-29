@@ -422,7 +422,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
   - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
-  - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89);
+  - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89) with the end of the timer it names (D-123);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
 - fully covered by unit tests (§6).
@@ -474,7 +474,8 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). SensorFaultReminder is a time entity;
   - the entities are views of the adapter's settings and state (D-106): unavailable until the first reconcile run, except the settings (switches, numbers, time), which can be changed at once;
   - climate `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*; attributes `zone_state`, `reason`, `valve` (desired), `calling_zone` (D-116);
-  - the heat request binary sensor is ON with the desired request (in shadow mode the simulated one); attributes `on_since` (last actual, or in shadow mode commanded, ON while running) and `on_duration` in minutes, excluded from the recorder (D-116);
+  - the heat request binary sensor is ON with the desired request (in shadow mode the simulated one); attributes `on_since` (last actual, or in shadow mode commanded, ON) and `on_duration` in minutes, excluded from the recorder (D-116), both present only while the heat source runs (D-123);
+  - **no per-minute countdowns (D-123):** no entity state changes every minute only because time passes. Reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor has an `until` attribute (aware ISO timestamp, the end of the running wait, min OFF or min ON timer) only while such a timer runs. The climate entity's `reason` attribute shows the same text;
   - temperatures: climate, effective SetPoint and absolute temperature numbers are in °C and converted by HA; temperature differences (Hysteresis, ManualResumeDelta) are converted by the adapter to HA's unit system, because HA converts only absolute temperatures (D-77);
   - the alerts sensor derives its list from the core state (`active_alerts`): faulty zones and outputs whose mismatch alert was sent.
 - **Holiday (D-79):** HolidayTemp number, end date/time entity, "Holiday active" switch.
@@ -551,7 +552,7 @@ floorheat:
 
 ### 5.7 Dashboard requirements (D-53)
 The visual design (card types, layout, styling) is left to implementation. The dashboard must **show and control**:
-- **Per zone:** RoomTemp, SetPoint (adjustable), state, reason text (e.g. "Calling zone", "Waiting, 12 min left"), valve on/off.
+- **Per zone:** RoomTemp, SetPoint (adjustable), state, reason text (e.g. "Calling zone", "Waiting"; the timer end is the reason sensor's `until` attribute, D-123), valve on/off.
 - **Global:** heat pump request with running time, active mode, heating season switch, control active switch.
 - **Alerts:** visible only when active.
 - **Holiday:** temperature, end date/time, start/stop.
@@ -779,7 +780,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-86 | Parameter validation checks the inclusive §4 range only (plus finite numbers); the §4 step is UI granularity |
 | D-87 | Persisted core state is versioned; additive fields get defaults, breaking changes bump the version; newer-version or corrupt data is discarded and the integration starts as on a first start (D-78); state of removed zones is dropped |
 | D-88 | The plausibility range (§3.6) is checked against the raw sensor reading, before the per-zone offset |
-| D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events |
+| D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events *(texts fixed by D-123; were countdowns like "Waiting, 12 min left")* |
 | D-90 | Reading validity and the SENSOR_FAULT state machine are implemented with the zone logic in P2; P3 keeps fault notifications, season OFF and the mismatch counter |
 | D-91 | First start with the heat source already ON and no persisted ON time: HpMinOnTime counts from startup |
 | D-92 | Request ON without a calling zone: the HEATING zone with the largest deficit (ties by YAML order) becomes the calling zone |
@@ -806,13 +807,14 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-113 | A shadow-mode trial without Shellys uses Template switch helpers without a state template as stand-in switches; the spec stays switch-only. `unknown` counts as unavailable, so a new stand-in is switched OFF once after it is created |
 | D-114 | Every §4 global parameter gets its number entity in v1 (P6), also those whose features follow in v1.1/v1.2; the docs name the release each is used from |
 | D-115 | Entity ids are fixed and built from the zone id (`<platform>.floorheat_<zone>_<key>`, global `<platform>.floorheat_<key>`); unique ids `floorheat_<key>`; display names use the zone name |
-| D-116 | Climate `hvac_action` = heating while the request is ON and the zone gets flow (valve open or no valve); heat request binary sensor = desired request with `on_since` / `on_duration` (unrecorded) attributes |
+| D-116 | Climate `hvac_action` = heating while the request is ON and the zone gets flow (valve open or no valve); heat request binary sensor = desired request with `on_since` / `on_duration` (unrecorded) attributes *(present only while running, D-123)* |
 | D-117 | Notify targets are `notify.<name>`: a legacy notify service, otherwise a notify entity via `notify.send_message`; one title per event kind; failures logged, never blocking; unknown targets reported after start |
 | D-118 | Switches without a Shelly watchdog are listed explicitly in the YAML key `no_watchdog` (mapped switches only); they get no heartbeat and no heartbeat alert. Unlisted switches are expected to be Shellys with the script. No automatic detection or device-type check (owner, 2026-09-28). The user docs explain that a listed switch has no device failsafe when HA stops |
 | D-119 | No manual mode: pure manual control is Control active OFF plus switching the relays directly, with no protection; the watchdog scripts keep running because heartbeats continue (owner, 2026-09-29). Documented in the user docs (P8) |
+| D-123 | No per-minute countdowns in entity states: reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor's `until` attribute holds the end of the running timer and is present only while one runs; the heat request's `on_since` / `on_duration` are present only while it runs (owner, 2026-09-29). Amends D-89 and D-116 |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-123 on 2026-09-29 during P7.
 
 ---
 

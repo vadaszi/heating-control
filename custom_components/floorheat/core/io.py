@@ -65,11 +65,12 @@ class Inputs:
 
 @dataclass(frozen=True)
 class ZoneReport:
-    """What the adapter shows for one zone (D-89)."""
+    """What the adapter shows for one zone (D-89, D-123)."""
 
-    reason: str  # e.g. "Calling zone", "Waiting, 12 min left"
+    reason: str  # fixed text, e.g. "Calling zone", "Waiting"
     room_temp: float | None  # RoomTemp, °C; None while unknown or faulty
     setpoint: float  # effective SetPoint, °C
+    until: datetime | None = None  # end of the timer the reason names (wait, min ON/OFF)
 
 
 @dataclass(frozen=True)

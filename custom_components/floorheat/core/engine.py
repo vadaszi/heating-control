@@ -98,8 +98,10 @@ def step(
     season = inputs.heating_season
     source = _heat_source(state, inputs.heat_source, now)
     running, last_on, off_since = source.running, source.last_on, source.off_since
-    min_on_left = last_on + params.hp_min_on_time - now if running and last_on else _ZERO
-    min_off_left = off_since + params.hp_min_off_time - now if not running and off_since else _ZERO
+    min_on_end = last_on + params.hp_min_on_time if running and last_on else None
+    min_off_end = off_since + params.hp_min_off_time if not running and off_since else None
+    min_on_left = min_on_end - now if min_on_end else _ZERO
+    min_off_left = min_off_end - now if min_off_end else _ZERO
 
     zones: dict[str, _Zone] = {}
     zone_states: dict[str, ZoneState] = {}
@@ -131,26 +133,23 @@ def step(
         zone_id: season and _valve(zone_states[zone_id], zone, running, request, params)
         for zone_id, zone in zones.items()
     }
-    reports = {
-        zone_id: ZoneReport(
-            reason=_reason(
-                zone_id,
-                zone_states[zone_id],
-                zone,
-                valves[zone_id],
-                calling,
-                request,
-                season,
-                source.available,
-                min_on_left,
-                min_off_left,
-                now,
-            ),
-            room_temp=zone.room,
-            setpoint=zone.setpoint,
+    reports: dict[str, ZoneReport] = {}
+    for zone_id, zone in zones.items():
+        reason, until = _reason(
+            zone_id,
+            zone_states[zone_id],
+            zone,
+            valves[zone_id],
+            calling,
+            request,
+            season,
+            source.available,
+            min_on_end,
+            min_off_end,
         )
-        for zone_id, zone in zones.items()
-    }
+        reports[zone_id] = ZoneReport(
+            reason=reason, room_temp=zone.room, setpoint=zone.setpoint, until=until
+        )
     outputs = Outputs(
         heat_source_on=request.on,
         valves={z.id: valves[z.id] for z in config.zones if z.has_valve},  # rule 8
@@ -415,10 +414,6 @@ def _valve(
     )
 
 
-def _minutes(left: timedelta) -> int:
-    return max(0, math.ceil(left / timedelta(minutes=1)))
-
-
 def _reason(
     zone_id: str,
     zone_state: ZoneState,
@@ -428,31 +423,30 @@ def _reason(
     request: _Request,
     season: bool,
     source_available: bool,
-    min_on_left: timedelta,
-    min_off_left: timedelta,
-    now: datetime,
-) -> str:
-    """Reason text for the zone's reason sensor (D-89)."""
+    min_on_end: datetime | None,
+    min_off_end: datetime | None,
+) -> tuple[str, datetime | None]:
+    """Reason text for the zone's reason sensor (D-89) and the end of the timer it
+    names, if any (D-123). The text is fixed: it never counts down."""
     if zone_state.mode is _FAULT:
         if not season:
-            return "Sensor fault (heating season off)"
-        return "Sensor fault, following the heat pump"
+            return "Sensor fault (heating season off)", None
+        return "Sensor fault, following the heat pump", None
     if not season:
-        return "Heating season off"
+        return "Heating season off", None
     if zone.room is None:
-        return "Waiting for a sensor reading"
+        return "Waiting for a sensor reading", None
     if zone_state.mode is _HEATING:
         if not source_available:
-            return "Heating, heat source unavailable"
+            return "Heating, heat source unavailable", None
         if request.held:
-            return f"Held by min OFF, {_minutes(min_off_left)} min left"
-        return "Calling zone" if zone_id == calling else "Heating"
+            return "Held by min OFF", min_off_end
+        return ("Calling zone" if zone_id == calling else "Heating"), None
     if request.spreading:
         # Without a valve, water flows through the zone whenever the HP runs.
         if valve or not zone.config.has_valve:
-            return f"Spreading heat (min ON), {_minutes(min_on_left)} min left"
-        return "Idle, at or above ManualMaxTemp"
+            return "Spreading heat (min ON)", min_on_end
+        return "Idle, at or above ManualMaxTemp", None
     if zone_state.mode is _WAITING and zone_state.wait_started_at is not None:
-        left = zone_state.wait_started_at + zone.params.wait_time - now
-        return f"Waiting, {_minutes(left)} min left"
-    return "Idle"
+        return "Waiting", zone_state.wait_started_at + zone.params.wait_time
+    return "Idle", None

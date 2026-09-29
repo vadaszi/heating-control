@@ -13,7 +13,7 @@ from datetime import timedelta
 from custom_components.floorheat.core.io import EventKind, OutputState
 from custom_components.floorheat.core.state import ZoneMode
 
-from .harness import DAY, Scenario
+from .harness import DAY, Scenario, at
 
 IDLE, WAITING, HEATING, FAULT = (
     ZoneMode.IDLE,
@@ -45,12 +45,14 @@ def test_a01_wait_then_start() -> None:
     assert sc.mode(1) is WAITING
     assert not sc.hp
     assert sc.valve(1) is False
-    assert sc.reason(1) == "Waiting, 30 min left"
+    assert sc.reason(1) == "Waiting"
+    assert sc.until(1) == at("06:30")
 
     sc.advance_to("06:29")
     assert sc.mode(1) is WAITING
     assert not sc.hp
-    assert sc.reason(1) == "Waiting, 1 min left"
+    assert sc.reason(1) == "Waiting"  # fixed text, no countdown (D-123)
+    assert sc.until(1) == at("06:30")
 
     sc.advance_to("06:30")
     assert sc.mode(1) is HEATING
@@ -58,6 +60,7 @@ def test_a01_wait_then_start() -> None:
     assert sc.valve(1) is True
     assert sc.calling_zone == "zone_1"
     assert sc.reason(1) == "Calling zone"
+    assert sc.until(1) is None
     assert sc.state.hp_last_on_at == sc.now
 
 
@@ -164,8 +167,10 @@ def test_a08_all_satisfied_before_min_on_spreads_heat() -> None:
     assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE, "zone_4": IDLE}
     assert sc.hp
     assert sc.open_valves() == {"zone_1", "zone_2", "zone_3"}  # zone 4 >= ManualMaxTemp
-    assert sc.reason(2) == "Spreading heat (min ON), 20 min left"
+    assert sc.reason(2) == "Spreading heat (min ON)"
+    assert sc.until(2) == at("07:30")
     assert sc.reason(4) == "Idle, at or above ManualMaxTemp"
+    assert sc.until(4) is None
 
     sc.advance_to("07:29")
     assert sc.hp
@@ -173,6 +178,7 @@ def test_a08_all_satisfied_before_min_on_spreads_heat() -> None:
     assert not sc.hp
     assert sc.open_valves() == set()
     assert sc.reason(2) == "Idle"
+    assert sc.until(2) is None
 
 
 def _hp_off_at_0800() -> Scenario:
@@ -204,7 +210,8 @@ def test_a09_demand_held_back_by_min_off() -> None:
     assert sc.valve(2) is True  # valve opens at the end of the wait (D-64)
     assert not sc.hp
     assert sc.calling_zone is None
-    assert sc.reason(2) == "Held by min OFF, 20 min left"
+    assert sc.reason(2) == "Held by min OFF"
+    assert sc.until(2) == at("09:00")
 
     sc.advance_to("08:59")
     assert not sc.hp
@@ -264,7 +271,8 @@ def test_a22_restart_during_wait_continues_the_wait() -> None:
     sc.restart(downtime=3)
     sc.step()
     assert sc.mode(1) is WAITING
-    assert sc.reason(1) == "Waiting, 7 min left"
+    assert sc.reason(1) == "Waiting"
+    assert sc.until(1) == at("06:30")  # the original end of the wait
     sc.advance_to("06:29")
     assert not sc.hp
     sc.advance_to("06:30")

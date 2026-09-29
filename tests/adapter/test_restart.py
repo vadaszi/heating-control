@@ -58,7 +58,7 @@ async def test_a22_restart_during_wait_continues_the_wait(world: World) -> None:
         assert await new.setup(make_conf(), live=False)
         assert new.controller.settings.control_active  # restored (D-106)
         assert new.mode(1) == "waiting"
-        assert new.reason(1) == "Waiting, 7 min left"
+        assert new.reason(1) == "Waiting"
         await new.advance(6)
         assert new.state(HEAT_SOURCE) == "off"
         await new.advance(1)

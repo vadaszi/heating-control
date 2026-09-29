@@ -60,7 +60,8 @@ def test_waiting_without_start_time_restarts_the_wait() -> None:
     sc = Scenario(2, temps={1: 21.8}, state=state)
     sc.step()
     assert sc.state.zones["zone_1"].wait_started_at == sc.now
-    assert sc.reason(1) == "Waiting, 30 min left"
+    assert sc.reason(1) == "Waiting"
+    assert sc.until(1) == sc.now + timedelta(minutes=30)
 
 
 # ---------------------------------------------------------------- rule 3: join while running
@@ -114,7 +115,8 @@ def test_setpoint_raise_is_still_held_by_min_off() -> None:
     assert sc.mode(1) is HEATING
     assert sc.valve(1) is True
     assert not sc.hp
-    assert sc.reason(1) == "Held by min OFF, 30 min left"
+    assert sc.reason(1) == "Held by min OFF"
+    assert sc.until(1) == at("09:00")
     sc.advance_to("09:00")
     assert sc.hp
 
@@ -160,7 +162,8 @@ def test_small_setpoint_decrease_keeps_waiting() -> None:
     sc.set_setpoint(1, 21.5)  # StartTemp 21.3 >= RoomTemp 21.0
     sc.step()
     assert sc.mode(1) is WAITING
-    assert sc.reason(1) == "Waiting, 25 min left"
+    assert sc.reason(1) == "Waiting"
+    assert sc.until(1) == at("06:30")
 
 
 def test_rising_reading_during_the_wait_does_not_end_it() -> None:
@@ -301,7 +304,8 @@ def test_unvalved_zone_never_shows_the_manual_max_exclusion() -> None:
     sc.advance(1)
     assert sc.hp  # D-20 spread
     assert sc.reason(2) == "Idle, at or above ManualMaxTemp"
-    assert sc.reason(3) == "Spreading heat (min ON), 59 min left"
+    assert sc.reason(3) == "Spreading heat (min ON)"
+    assert sc.until(3) == at("07:30")
     assert sc.valve(3) is None
 
 
@@ -406,7 +410,8 @@ def test_season_on_again_is_held_by_min_off_from_the_actual_off() -> None:
     sc.step()
     assert sc.mode(1) is HEATING  # WaitTime 0
     assert not sc.hp
-    assert sc.reason(1) == "Held by min OFF, 50 min left"
+    assert sc.reason(1) == "Held by min OFF"
+    assert sc.until(1) == off_at + timedelta(minutes=60)
     sc.now = off_at + timedelta(minutes=59)
     sc.step()
     assert not sc.hp

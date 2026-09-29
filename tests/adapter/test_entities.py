@@ -86,7 +86,9 @@ async def test_zone_views_follow_the_core(world: World, hass: HomeAssistant) -> 
     world.temp(1, 21.8)
     await hass.async_block_till_done()
     assert _state(hass, "sensor.floorheat_zone_1_state").state == "waiting"
-    assert _state(hass, "sensor.floorheat_zone_1_reason").state == "Waiting, 30 min left"
+    reason = _state(hass, "sensor.floorheat_zone_1_reason")
+    assert reason.state == "Waiting"  # fixed text; the timer end is `until` (D-123)
+    assert reason.attributes["until"] == "2026-01-12T06:30:00+00:00"
     assert _state(hass, "sensor.floorheat_zone_1_setpoint").state == "22.0"
     climate = _state(hass, "climate.floorheat_zone_1")
     assert climate.state == "heat"
@@ -97,10 +99,17 @@ async def test_zone_views_follow_the_core(world: World, hass: HomeAssistant) -> 
     assert climate.attributes["zone_state"] == "waiting"
     request = _state(hass, "binary_sensor.floorheat_heat_request")
     assert request.state == "off"
-    assert request.attributes["on_since"] is None
+    assert "on_since" not in request.attributes  # left out while not running (D-123)
+    assert "on_duration" not in request.attributes
 
+    waiting_since = reason.last_updated
+    await world.advance(10)
+    reason = _state(hass, "sensor.floorheat_zone_1_reason")
+    assert reason.last_updated == waiting_since  # no per-minute change (D-123)
     await world.advance_to("06:30")
-    assert _state(hass, "sensor.floorheat_zone_1_reason").state == "Calling zone"
+    reason = _state(hass, "sensor.floorheat_zone_1_reason")
+    assert reason.state == "Calling zone"
+    assert "until" not in reason.attributes
     climate = _state(hass, "climate.floorheat_zone_1")
     assert climate.attributes["hvac_action"] == "heating"
     assert climate.attributes["valve"] is True

@@ -63,7 +63,9 @@ class ZoneStateSensor(_ZoneSensor):
 
 
 class ZoneReasonSensor(_ZoneSensor):
-    """Why the zone is in its state (D-89), e.g. "Waiting, 12 min left"."""
+    """Why the zone is in its state (D-89), e.g. "Waiting". The text never counts down;
+    the end of the running timer is the `until` attribute, present only while one runs
+    (D-123)."""
 
     def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
         super().__init__(controller, zone, "reason", "reason")
@@ -72,6 +74,12 @@ class ZoneReasonSensor(_ZoneSensor):
     def native_value(self) -> str | None:
         outputs = self.controller.outputs
         return None if outputs is None else outputs.zones[self._zone_id].reason
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        outputs = self.controller.outputs
+        until = None if outputs is None else outputs.zones[self._zone_id].until
+        return {} if until is None else {"until": until.isoformat()}
 
 
 class ZoneSetpointSensor(_ZoneSensor):
