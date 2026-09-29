@@ -111,6 +111,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - Address from the device registry (the mapped switch's Shelly config entry), otherwise from YAML (V3). Credentials from `secrets.yaml`. Async aiohttp calls every HeartbeatInterval, always including in shadow mode (D-56).
 - Parses the status: unreachable / script not running after 3 consecutive failures → one alert, recovery alert (D-61); script parameter values ≠ expected config → one alert (D-73).
 - **Tests:** mocked HTTP: 2 failures give no alert, 3 give one, recovery is notified (S7); the parameter-mismatch alert; heartbeat still sent in shadow mode; timeouts never block the event loop. Local check (owner): heartbeat reaches the bench Shellys and **V3** is answered.
+- *(Done: 2026-09-29; decisions D-120…D-123. Commits: fixed reason texts with `until` (D-123); the heartbeat client: `core/heartbeat.py` (status, parameter check, failure counting), `heartbeat.py` (HTTP client, liveness), YAML `shellys` / `no_watchdog` / heartbeat keys in `schema.py`, alert state in the `Store`. Tests in `tests/core/test_heartbeat.py` and `tests/adapter/test_heartbeat.py`. The address comes from YAML, so V3 no longer applies (first bullet above superseded by D-120). Owner answers during P7: `GET` before `POST` after a start or a failure to see `timed_out`; an uncovered switch is a config error; heartbeats only while the reconcile loop works (D-122). Local check (owner): re-enable the scripts on both 2PMs and see the heartbeats arrive.)*
 - **Owner decisions (2026-09-29), write them into design.md (§5.4, §5.3, §7) with the P7 code:**
   - *Shelly address and script id:* both come from the YAML config, per Shelly. No device-registry lookup and no `Script.List`. The first bullet above and V3 no longer apply; update §5.4 and §8 accordingly.
   - *Watchdog acted / device rebooted:* a status with `state: "timed_out"` or a small `uptime_s` is only logged, no notification.
@@ -172,6 +173,6 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 | Item | Phase |
 |---|---|
 | V2 heartbeat endpoint on both device types | P4 |
-| V3 address from the device registry | P7 |
+| ~~V3 address from the device registry~~ (dropped, D-120) | – |
 | V4, V5, V6 | P8 |
 | V1 actuator power measurable | P8 (result used in P11) |
