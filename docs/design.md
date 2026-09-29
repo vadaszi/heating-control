@@ -827,5 +827,5 @@ D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-6
 
 **Results so far:**
 - **V2, 2PM (2026-09-28):** passed on two Shelly Plus 2PM Gen2 with firmware 1.7.5 (`GET` and `POST`, `400` on an invalid body, answers after a power loss; bench tests S1, S4, S6 and the reboot check passed too). Tested without authentication, so the `401` check is still open. The Shelly 1 part of V2 is still open (device not yet available).
-- **V6, partial (2026-09-29):** about half a day on the real pvvx/BTHome thermometers without a false `sensor_fault`. Still open until a full 24 h run (ideally a night of steady temperatures) has passed.
+- **V6, accepted (2026-09-29):** about half a day on the real pvvx/BTHome thermometers without a false `sensor_fault`. A direct check was not possible: the readings changed with every report, so no repeated value was seen. The owner accepts V6 as working; it is reopened only if a false sensor fault notification appears (a working thermometer reported as faulty).
 - **Power-on default (2026-09-28, 2PM):** a real power loss restarts the outputs OFF; a software reboot keeps them as they were. Both fit D-95: after a reboot the relay really did not change.
