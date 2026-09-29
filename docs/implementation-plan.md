@@ -135,6 +135,7 @@ Inserted before P8 on 2026-09-29 (owner): entity ids must be settled before the 
 - Version 0.7.5 in `manifest.json`; no tag, no release (D-128).
 - **Tests:** one entry from the YAML (also after a restart), the UI step aborts, devices and generated entity ids, *config* categories, reload and unload leave nothing running, removing the entry keeps the settings, a missing YAML section fails the entry without deleting anything, a removed zone loses its device, every reason key and state has a text; all existing adapter tests on the new ids.
 - **Owner (live):** switch over to 0.7.5 (YAML key, HACS, delete the old folder, re-enter settings, areas, dashboards) and check the names in the real UI. Touch-ups go out as 0.7.6 and up.
+- *(Done: 2026-09-29, commits f0c1eb1, 84405fa, c007382, cc5ee78; 0.7.5. New: `config_flow.py`, `runtime.py`, `translations/en.json`, `icons.json`, `tests/adapter/test_config_entry.py`; `docs/configuration.md` has the devices, the new entity ids, the reason texts and "Upgrading from floorheat". hassfest needs `config.step` in the translations although the UI step only aborts. Open: the owner's live check.)*
 
 ## P8 — v1 docs, release, shadow run, go-live
 - Docs per §5.8 for all of v1: README (logic in plain words, limitations, safety, hydraulic prerequisite D-80), installation (HACS + manual), configuration reference, entities, Shelly guide, troubleshooting, shadow mode and go-live checklist, CHANGELOG. `examples/configuration.example.yaml`.
