@@ -45,6 +45,9 @@ floorheat:
   heat_source_switch: switch.heat_source_stand_in
   notify:
     - notify.mobile_app_your_phone
+  no_watchdog:               # the stand-ins are no Shellys: no heartbeat
+    - switch.heat_source_stand_in
+    - switch.valve_living_room_stand_in
   zones:
     - id: living_room
       name: Living room
@@ -58,6 +61,7 @@ floorheat:
 
 - Choose each zone `id` carefully (lowercase, digits, `_`): the entity ids and the stored state are based on it, so it must not change later.
 - `notify` is optional; see [Notifications](configuration.md#notifications).
+- `no_watchdog` lists every stand-in. floorheat expects every other switch to be a Shelly running the watchdog script, and refuses a configuration where a switch is in neither place ([Shelly watchdogs](configuration.md#shelly-watchdogs)).
 - Every key is described in the [configuration reference](configuration.md).
 
 Check the configuration (*Developer tools → YAML → Check configuration*), then restart HA.
@@ -86,8 +90,9 @@ A step-by-step checklist with space for notes: [trial checklist](trial-checklist
 
 When the Shelly relays are installed:
 
-1. Install the watchdog scripts ([Shelly scripts](shelly-scripts.md)).
-2. Replace the stand-in entity ids in `configuration.yaml` with the real switches and restart. Stored settings and zone state are kept, because they belong to the zone ids.
-3. Delete the stand-in helpers.
+1. Install the watchdog scripts ([Shelly scripts](shelly-scripts.md)) and note each script's id.
+2. Replace the stand-in entity ids in `configuration.yaml` with the real switches. Remove them from `no_watchdog` and add each Shelly under `shellys` with its address, script id and switches ([Shelly watchdogs](configuration.md#shelly-watchdogs)). Restart. Stored settings and zone state are kept, because they belong to the zone ids.
+3. Check that the heartbeats arrive: the HA log shows "Shelly … answers" for each Shelly, and `sensor.floorheat_alerts` stays at 0.
+4. Delete the stand-in helpers.
 
 Going live (Control active ON) follows the go-live checklist that comes with the v1 release. Note: from that moment the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF, which counts as a stop, so the minimum OFF time (default 60 min) runs before the first real heat request.

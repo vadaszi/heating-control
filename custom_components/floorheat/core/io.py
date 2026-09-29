@@ -90,6 +90,9 @@ class EventKind(StrEnum):
     SENSOR_FAULT_RECOVERED = "sensor_fault_recovered"
     OUTPUT_MISMATCH = "output_mismatch"
     OUTPUT_MISMATCH_RECOVERED = "output_mismatch_recovered"
+    WATCHDOG_FAILED = "watchdog_failed"  # Shelly unreachable / script not running (D-61)
+    WATCHDOG_RECOVERED = "watchdog_recovered"
+    WATCHDOG_PARAMS_MISMATCH = "watchdog_params_mismatch"  # D-73
 
 
 @dataclass(frozen=True)

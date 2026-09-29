@@ -13,12 +13,14 @@ from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 
 from custom_components.floorheat.const import DATA_CONTROLLER, DOMAIN
 
-from .conftest import World, make_conf, zone_conf
+from .conftest import World, make_conf, no_watchdog_for_all, zone_conf
 
 
 def _conf(**changes: Any) -> dict[str, Any]:
     conf = make_conf(2)
     conf[DOMAIN].update(changes)
+    if "no_watchdog" not in changes and "shellys" not in changes:
+        no_watchdog_for_all(conf[DOMAIN])
     return conf
 
 
@@ -52,6 +54,7 @@ async def test_optional_keys(world: World) -> None:
     conf[DOMAIN].update(
         plausible_min=5, plausible_max=35, reconcile_interval=30, output_mismatch_alert=5
     )
+    no_watchdog_for_all(conf[DOMAIN])
     assert await world.setup(conf, live=False)
     config = world.controller.config
     assert config.core.zones[0].sensor_offset == -0.4
@@ -169,3 +172,117 @@ async def test_registered_entity_without_state_is_known(world: World, hass: Home
     ) as notify:
         assert await world.setup(make_conf(2, unvalved=(1, 2)), live=False)
     notify.assert_not_called()
+
+
+# ---------------------------------------------------------------- Shellys (D-118, D-120)
+
+_VALVES = {"host": "192.0.2.11", "script_id": 1, "switches": ["switch.valve_1", "switch.valve_2"]}
+_HEAT = {"name": "Heat", "host": "192.0.2.12", "script_id": 1, "switches": ["switch.heat_source"]}
+
+
+def _shellys(*shellys: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    return make_conf(2, shellys=list(shellys), **extra)
+
+
+async def test_shelly_wiring(world: World) -> None:
+    world.setup_entities()
+    conf = _shellys(
+        {**_VALVES, "password": "pw"},
+        heartbeat_interval=120,
+        heartbeat_fail_alert=2,
+        heartbeat_timeout=3600,
+        heartbeat_check_interval=30,
+        no_watchdog=["switch.heat_source"],
+    )
+    with patch("custom_components.floorheat.heartbeat.HeartbeatClient.async_start"):
+        assert await world.setup(conf, live=False)  # no calls: only the wiring is tested
+    config = world.controller.config
+    [shelly] = config.shellys
+    assert shelly.name == "192.0.2.11"  # defaults to the host
+    assert shelly.role.value == "valve"
+    assert shelly.switches == ("switch.valve_1", "switch.valve_2")
+    assert shelly.password == "pw"
+    assert shelly.url == "http://192.0.2.11/script/1/heartbeat"
+    assert config.heartbeat_interval.total_seconds() == 120
+    assert config.heartbeat_fail_alert == 2
+    assert (
+        config.expected_params.heartbeat_timeout_s,
+        config.expected_params.check_interval_s,
+    ) == (
+        3600,
+        30,
+    )
+
+
+async def test_heat_source_shelly_role(world: World) -> None:
+    world.setup_entities()
+    with patch("custom_components.floorheat.heartbeat.HeartbeatClient.async_start"):
+        assert await world.setup(_shellys(_VALVES, _HEAT), live=False)
+    roles = {s.name: s.role.value for s in world.controller.config.shellys}
+    assert roles == {"192.0.2.11": "valve", "Heat": "heat_source"}
+    assert world.controller.config.expected_params.check_interval_s is None
+
+
+@pytest.mark.parametrize(
+    ("conf", "message"),
+    [
+        (
+            make_conf(2, no_watchdog=["switch.heat_source"]),
+            "switch switch.valve_1 has no watchdog: add it to the switches of its Shelly",
+        ),
+        (
+            make_conf(
+                2,
+                no_watchdog=["switch.heat_source", "switch.valve_1", "switch.valve_2", "switch.x"],
+            ),
+            "no_watchdog: switch.x is not a mapped switch",
+        ),
+        (
+            _shellys(
+                {**_VALVES, "switches": ["switch.valve_1", "switch.x"]},
+                _HEAT,
+                no_watchdog=["switch.valve_2"],
+            ),
+            "shelly 192.0.2.11: switch.x is not a mapped switch",
+        ),
+        (
+            _shellys(
+                _VALVES,
+                {**_HEAT, "switches": ["switch.valve_1"]},
+                no_watchdog=["switch.heat_source"],
+            ),
+            "switch switch.valve_1 is listed on more than one Shelly",
+        ),
+        (
+            _shellys(_VALVES, _HEAT, no_watchdog=["switch.valve_2"]),
+            "switch switch.valve_2 is on Shelly 192.0.2.11 and in no_watchdog",
+        ),
+        (
+            _shellys(
+                {**_HEAT, "switches": ["switch.heat_source", "switch.valve_1", "switch.valve_2"]}
+            ),
+            "shelly Heat: the heat source switch needs a Shelly of its own",
+        ),
+        (
+            _shellys(_VALVES, {**_HEAT, "host": "192.0.2.11"}),
+            "shellys: 192.0.2.11 script 1 is listed more than once",
+        ),
+        (
+            _shellys({**_VALVES, "name": "heat "}, _HEAT),
+            "shellys: the name 'heat' is used more than once",
+        ),
+        (
+            _shellys(_VALVES, _HEAT, heartbeat_interval=600, heartbeat_timeout=600),
+            "heartbeat_interval must be shorter than heartbeat_timeout",
+        ),
+        (_shellys({**_VALVES, "host": "http://192.0.2.11"}, _HEAT), "expected a host name"),
+        (_shellys({**_VALVES, "script_id": 0}, _HEAT), "value must be at least 1"),
+        (_shellys(_VALVES, _HEAT, heartbeat_interval=30), "value must be at least 60"),
+        (_shellys(_VALVES, _HEAT, heartbeat_fail_alert=0), "value must be at least 1"),
+    ],
+)
+async def test_invalid_shelly_config_is_rejected(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, conf: dict[str, Any], message: str
+) -> None:
+    assert not await async_setup_component(hass, DOMAIN, conf)
+    assert message in caplog.text

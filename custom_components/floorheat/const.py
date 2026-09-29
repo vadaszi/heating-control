@@ -27,12 +27,33 @@ CONF_PLAUSIBLE_MAX: Final = "plausible_max"
 CONF_RECONCILE_INTERVAL: Final = "reconcile_interval"
 CONF_OUTPUT_MISMATCH_ALERT: Final = "output_mismatch_alert"
 CONF_NOTIFY: Final = "notify"
+CONF_SHELLYS: Final = "shellys"
+CONF_HOST: Final = "host"
+CONF_SCRIPT_ID: Final = "script_id"
+CONF_SWITCHES: Final = "switches"
+CONF_PASSWORD: Final = "password"
+CONF_NO_WATCHDOG: Final = "no_watchdog"
+CONF_HEARTBEAT_INTERVAL: Final = "heartbeat_interval"
+CONF_HEARTBEAT_FAIL_ALERT: Final = "heartbeat_fail_alert"
+CONF_HEARTBEAT_TIMEOUT: Final = "heartbeat_timeout"
+CONF_HEARTBEAT_CHECK_INTERVAL: Final = "heartbeat_check_interval"
 
 NO_VALVE: Final = "none"
 
 DEFAULT_RECONCILE_INTERVAL: Final = 60  # s (§4)
 MIN_RECONCILE_INTERVAL: Final = 10
 MAX_RECONCILE_INTERVAL: Final = 300
+
+# Heartbeat to the Shelly watchdog scripts (§4, §5.4, docs/heartbeat-protocol.md)
+DEFAULT_HEARTBEAT_INTERVAL: Final = 300  # s, HeartbeatInterval
+MIN_HEARTBEAT_INTERVAL: Final = 60
+MAX_HEARTBEAT_INTERVAL: Final = 3600
+DEFAULT_HEARTBEAT_FAIL_ALERT: Final = 3  # HeartbeatFailAlert (D-61)
+DEFAULT_HEARTBEAT_TIMEOUT: Final = 18000  # s; the scripts' expected heartbeat_timeout_s
+MAX_SCRIPT_SECONDS: Final = 604800  # the scripts accept 1 s to 7 days
+HEARTBEAT_CALL_TIMEOUT: Final = 10  # s; per heartbeat call
+HEARTBEAT_LIVENESS_TICKS: Final = 3  # heartbeat only after a run within 3 intervals (D-122)
+SHELLY_USERNAME: Final = "admin"  # Shelly digest auth always uses "admin"
 
 # Command retries while an output does not follow (D-108): the delay after the n-th
 # command, then REPEAT for every further retry.

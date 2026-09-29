@@ -18,6 +18,7 @@ from .const import DATA_CONTROLLER, DOMAIN
 from .controller import FloorheatController
 from .core.config import ConfigError, config_warnings
 from .core.units import TemperatureUnit
+from .heartbeat import HeartbeatClient
 from .notifications import Notifier
 from .schema import CONFIG_SCHEMA, build_config
 from .storage import FloorheatStore
@@ -50,13 +51,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         _LOGGER.warning("%s", warning)
 
     store = FloorheatStore(hass)
-    stored = await store.async_load(floorheat_config.core, floorheat_config.switches)
+    stored = await store.async_load(
+        floorheat_config.core,
+        floorheat_config.switches,
+        tuple(shelly.key for shelly in floorheat_config.shellys),
+    )
     for warning in stored.warnings:
         _LOGGER.warning("%s", warning)
     controller = FloorheatController(hass, floorheat_config, store, stored)
     hass.data[DATA_CONTROLLER] = controller
     notifier = Notifier(hass, floorheat_config.notify)
     controller.async_add_event_handler(notifier.async_handle)
+    heartbeat = HeartbeatClient(hass, controller)
     for platform in PLATFORMS:
         hass.async_create_task(
             async_load_platform(hass, platform, DOMAIN, {}, config), f"{DOMAIN} {platform}"
@@ -65,8 +71,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def _async_started(_hass: HomeAssistant) -> None:
         notifier.async_check_targets()
         await controller.async_start()
+        heartbeat.async_start()
 
     async def _async_stop(_event: Event) -> None:
+        await heartbeat.async_stop()
         await controller.async_stop()
 
     async_at_started(hass, _async_started)

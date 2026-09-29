@@ -6,7 +6,9 @@ One `helpers.storage.Store` file holds:
   season, control active); the adapter owns them and the entities only show and change
   them (D-106);
 - `pending_off`: switches that still have to confirm the final OFF after Control active
-  was switched OFF (D-110).
+  was switched OFF (D-110);
+- `heartbeat`: per Shelly (`ShellyWiring.key`), failed heartbeat calls in a row and the
+  alerts sent (D-121), so a restart neither repeats an alert nor loses a recovery.
 
 Saves are delayed and coalesced (at most one write per `SAVE_DELAY`); a pending save is
 written when HA stops.
@@ -34,6 +36,7 @@ from .core.config import (
     ParamSpec,
     ZoneParams,
 )
+from .core.heartbeat import HeartbeatTracking
 from .core.state import CoreState, load_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -135,6 +138,7 @@ class StoredData:
     settings: Settings
     pending_off: frozenset[str]
     warnings: list[str]
+    heartbeat: Mapping[str, HeartbeatTracking] = field(default_factory=dict)
 
 
 class FloorheatStore:
@@ -145,8 +149,13 @@ class FloorheatStore:
         self._latest: dict[str, Any] | None = None
         self._save_pending = False
 
-    async def async_load(self, config: CoreConfig, switches: tuple[str, ...]) -> StoredData:
-        """Restore the stored data for `config`; unusable parts start as on a first start."""
+    async def async_load(
+        self, config: CoreConfig, switches: tuple[str, ...], shellys: tuple[str, ...] = ()
+    ) -> StoredData:
+        """Restore the stored data for `config`; unusable parts start as on a first start.
+
+        `shellys` are the keys of the configured Shellys; others are dropped.
+        """
         try:
             data: object = await self._store.async_load()
         except Exception as err:  # corrupt file: start fresh (D-87)
@@ -167,7 +176,17 @@ class FloorheatStore:
             for entity_id in (pending if isinstance(pending, list) else [])
             if entity_id in switches
         )
-        return StoredData(core, settings, pending_off, warnings + core_warnings + settings_warnings)
+        stored_heartbeat = data.get("heartbeat")
+        if not isinstance(stored_heartbeat, Mapping):
+            stored_heartbeat = {}
+        heartbeat = {key: HeartbeatTracking.from_dict(stored_heartbeat.get(key)) for key in shellys}
+        return StoredData(
+            core,
+            settings,
+            pending_off,
+            warnings + core_warnings + settings_warnings,
+            heartbeat,
+        )
 
     def schedule_save(self, data: dict[str, Any]) -> None:
         """Write `data` after `SAVE_DELAY`; later calls before the write replace it."""

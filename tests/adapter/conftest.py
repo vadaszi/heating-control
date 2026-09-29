@@ -45,13 +45,25 @@ def zone_conf(n: int, *, valve: bool = True, **extra: Any) -> dict[str, Any]:
 
 
 def make_conf(zones: int = 2, *, unvalved: tuple[int, ...] = (), **extra: Any) -> dict[str, Any]:
-    return {
-        DOMAIN: {
-            "heat_source_switch": HEAT_SOURCE,
-            "zones": [zone_conf(n, valve=n not in unvalved) for n in range(1, zones + 1)],
-            **extra,
-        }
+    """Without `shellys` / `no_watchdog`, every switch is listed in `no_watchdog` (D-118)."""
+    conf: dict[str, Any] = {
+        "heat_source_switch": HEAT_SOURCE,
+        "zones": [zone_conf(n, valve=n not in unvalved) for n in range(1, zones + 1)],
+        **extra,
     }
+    if "shellys" not in extra and "no_watchdog" not in extra:
+        no_watchdog_for_all(conf)
+    return {DOMAIN: conf}
+
+
+def no_watchdog_for_all(conf: dict[str, Any]) -> None:
+    """List every mapped switch of a floorheat config in `no_watchdog`."""
+    valves = [
+        zone.get("valve")
+        for zone in conf.get("zones", [])
+        if isinstance(zone, dict) and str(zone.get("valve")).startswith("switch.")
+    ]
+    conf["no_watchdog"] = list(dict.fromkeys([conf["heat_source_switch"], *valves]))
 
 
 def sensor(n: int) -> str:

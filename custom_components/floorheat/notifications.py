@@ -32,6 +32,9 @@ TITLES = {
     EventKind.SENSOR_FAULT_RECOVERED: "floorheat: sensor recovered",
     EventKind.OUTPUT_MISMATCH: "floorheat: output not following command",
     EventKind.OUTPUT_MISMATCH_RECOVERED: "floorheat: output recovered",
+    EventKind.WATCHDOG_FAILED: "floorheat: Shelly watchdog not answering",
+    EventKind.WATCHDOG_RECOVERED: "floorheat: Shelly watchdog answering again",
+    EventKind.WATCHDOG_PARAMS_MISMATCH: "floorheat: Shelly script parameters differ",
 }
 
 

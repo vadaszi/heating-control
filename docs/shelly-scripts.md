@@ -35,7 +35,7 @@ In the device web UI:
 2. Name it, e.g. `floorheat_valve_watchdog` or `floorheat_heat_source_watchdog`.
 3. Paste the **whole** content of the script file, unchanged except for the CONFIG block (see below). **Save**.
 4. Enable **Run on startup** and press **Start**.
-5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). The heartbeat endpoint is:
+5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). floorheat needs it with the device address in its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs)). The heartbeat endpoint is:
    ```
    http://<shelly-address>/script/<script-id>/heartbeat
    ```
@@ -63,7 +63,7 @@ Only edit the CONFIG block at the top of the script. The defaults fit most insta
 | `endpoint` | `"heartbeat"` | Endpoint name in the URL. |
 | `kvs_season_key` | `"floorheat_season"` | Key in the device's key-value store that keeps the heating season flag. |
 
-HA never changes these values. It reads them from every heartbeat answer and, from v1 on, alerts you if they differ from the values it expects (D-73). If you change a timeout on the device, change HA's expected value too.
+HA never changes these values. It reads them from every heartbeat answer and alerts you if they differ from the values it expects (D-73): `heartbeat_timeout_s` against floorheat's `heartbeat_timeout` (default 18000), and `check_interval_s` only if you set `heartbeat_check_interval`. If you change a timeout on the device, change HA's expected value too.
 
 ### Behaviour worth knowing
 - **After a reboot or a script restart** the script treats the start as the last heartbeat: outputs stay at the power-on default (OFF) and the timeout counts from the start (D-72, D-102).
@@ -88,7 +88,9 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"v": 1, "season": true}
 The answer is a JSON status with `"running": true`, the watchdog `state`, `heartbeat_age_s`, the switch outputs and `params`. The fields are described in [`heartbeat-protocol.md`](heartbeat-protocol.md).
 
 ## Bench tests (shortened timeouts)
-Run these before installing, on the bench or with the loads disconnected. HA's heartbeat client comes in a later phase, so you send the heartbeats yourself. **Do not** run them on a system that is heating.
+Run these before installing, on the bench or with the loads disconnected. You send the heartbeats yourself. **Do not** run them on a system that is heating.
+
+If floorheat already sends heartbeats to the device, they keep the watchdog quiet and spoil the test. For the bench tests, remove the device from `shellys` in floorheat's YAML, list its switches in `no_watchdog` instead and restart HA; undo it afterwards. With shortened timeouts floorheat would also report "script parameters differ".
 
 **Preparation:** in the CONFIG block set
 ```

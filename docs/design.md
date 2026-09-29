@@ -376,11 +376,11 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | HolidayTemp | global | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint |
 | FailsafeTrigger | global | 24 h | 1–72 h / 1 | HA case 1 only; the Shelly value is *script config* (D-73) |
 | FailsafeWindow | global | 10:00–15:00 | time of day | HA case 1 only; the Shelly value is *script config* (D-73) |
-| HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73, D-101) |
-| Watchdog check interval (Shelly) | Shelly | 60 s | | *script config*; the timeout is acted on within one check (D-102) |
+| HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73, D-101); HA's expected value is *config* `heartbeat_timeout` (D-121) |
+| Watchdog check interval (Shelly) | Shelly | 60 s | | *script config*; the timeout is acted on within one check (D-102); compared only if *config* `heartbeat_check_interval` is set (D-121) |
 | FailsafeTrigger / FailsafeWindow / uptime cycle (Shelly) | Shelly | 24 h / 10:00–15:00 / 5 h ON, 19 h OFF | | *script config* (D-72, D-73) |
-| HeartbeatInterval | global | 5 min | | *config* |
-| HeartbeatFailAlert | global | 3 consecutive failed calls (≈ 15 min) | | *config* |
+| HeartbeatInterval | global | 5 min | 60–3600 s | *config* `heartbeat_interval`; shorter than `heartbeat_timeout` |
+| HeartbeatFailAlert | global | 3 consecutive failed calls (≈ 15 min) | ≥ 1 | *config* `heartbeat_fail_alert` |
 | ReconcileInterval | global | 60 s | | *config* |
 | OutputMismatchAlert | global | 3 consecutive reconcile intervals | | *config* (D-67) |
 | WatchdogPingInterval | global | 5 min | | *config*; ping URL is a secret |
@@ -488,11 +488,20 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - The response carries a protocol version `v`. Added fields never change it and both sides ignore unknown fields; a breaking change raises it.
   - A request that is not valid (e.g. a heat source heartbeat without a boolean `season`) gets `400` and is not a heartbeat (D-105).
 - The integration calls every Shelly every `HeartbeatInterval` (5 min). For the heat source Shelly, the call carries the heating-season flag.
-- The integration determines each Shelly's address from HA's device registry (the device of the mapped switch) if that is reliable. Otherwise the addresses come from the YAML config.
+- **Shelly wiring from YAML (D-120):** the YAML key `shellys` lists every Shelly running a watchdog script: `host` (address), `script_id` (the script's slot id), `switches` (the mapped switches on it), optional `name` (default: the host) and `password`. There is no device-registry lookup and no `Script.List` (owner, 2026-09-29).
+  - The role follows from the switches: the Shelly holding the heat source switch must report `role: "heat_source"` and hold no valve; every other listed Shelly must report `"valve"`.
+  - Every mapped switch is on exactly one listed Shelly or in `no_watchdog` (D-118); anything else is a config error.
+- **Heartbeat client (D-121):**
+  - a `POST` to every listed Shelly every HeartbeatInterval, as tasks with a 10 s timeout; a Shelly whose previous call is still running is skipped. The heat source Shelly also gets one at once when the heating season changes;
+  - a call **fails** on a connection error or timeout, an HTTP status other than 200, a body that is not a status, `v` ≠ 1 or a `role` other than expected. The alert (D-61) names the cause: unreachable, script not running (404), authentication failed (401) or an unusable answer;
+  - on the first call after HA starts and after a failed call, the status is read with `GET` first: the `POST` answer always shows the state after the heartbeat. A `timed_out` state and a restart (`uptime_s` lower than at the previous answer) are **only logged**, never notified (owner, 2026-09-29);
+  - the alert state per Shelly is persisted in the adapter's `Store` (like D-98), so a restart neither repeats an alert nor loses a recovery. Active alerts appear in the alerts sensor.
+- **Liveness (D-122):** heartbeats go out only while the reconcile loop works, i.e. its last completed run is at most 3 ReconcileIntervals old. A broken integration (e.g. every run failing after an HA update) therefore lets the Shelly watchdogs act after HeartbeatTimeout, as if HA had stopped. The first missed heartbeat is logged.
 - **Switches without a watchdog (D-118):** every mapped switch is expected to be a Shelly running the watchdog script, unless it is listed in the optional YAML key `no_watchdog` (a list of mapped switch entities; any other entry is a config error). A listed switch gets no heartbeat and raises no heartbeat alert; any other relay (or a D-113 stand-in) is used this way. There is no automatic detection and no check of the device type. If HA stops, a listed switch stays in its last state: no device failsafe (§3.6 case 2), only the external watchdog. The user docs state this consequence.
-- If Shelly authentication is enabled, the credentials come from `secrets.yaml`.
+- If Shelly authentication is enabled, the password comes from `secrets.yaml` (`password: !secret …` in the `shellys` entry); HTTP digest auth with the user `admin`.
 - **The Shelly script answers every heartbeat call** with a short status: script running, current watchdog state (normal / timed out / failsafe), stored season flag, and its configured parameter values (HeartbeatTimeout; for the heat source script also FailsafeTrigger, FailsafeWindow and uptime cycle). HA therefore checks two things with the same call: the device is reachable, **and** the watchdog script is running.
 - **Script parameters (D-73):** the script's configuration block or device storage is authoritative. HA never pushes parameter values. HA has *config* entries for the values it expects and alerts once if the reported values differ.
+  - **Details (D-121):** compared are `heartbeat_timeout_s` (expected `heartbeat_timeout`, default 18000) and `check_interval_s` only if `heartbeat_check_interval` is set; other parameters are ignored. The alert is sent once while a difference lasts and clears silently when the values match again (the §3.6 table has no recovery for it).
   - **Refined (D-101):** the configuration block at the top of each script is the only source of parameters. Device storage (KVS) holds only runtime state: the heat source's season flag, written only when it changes.
 - **Timing (D-102):** each script checks the time since the last heartbeat every `check_interval_s` (60 s) against its uptime, so long timeouts (5 h, 24 h) need no long timers and no valid clock. The script start (boot or restart) counts as the last heartbeat for both scripts.
 - **Heartbeat failure alert (D-61):** after `HeartbeatFailAlert` (3 consecutive failed calls, ≈ 15 min), notify "Shelly X unreachable" or "watchdog script not running on Shelly X". A single failed call (Wi-Fi hiccup) never alerts. Also notify when it recovers.
@@ -523,7 +532,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
     - zone names must be unique, compared case-insensitively after trimming spaces (D-85);
   - heat source switch entity;
   - notify targets;
-  - Shelly device addresses if needed;
+  - the Shellys running the watchdog scripts (address, script id, switches; D-120) and `no_watchdog` (D-118);
   - `!secret` references for the watchdog ping URL and credentials.
 - **All values are changed from the UI and stored by HA:** SetPoints, parameters, holiday, schedules, season.
 - The config is validated at startup with clear error messages (unknown entity, duplicate zone id or name, etc.).
@@ -811,10 +820,13 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-117 | Notify targets are `notify.<name>`: a legacy notify service, otherwise a notify entity via `notify.send_message`; one title per event kind; failures logged, never blocking; unknown targets reported after start |
 | D-118 | Switches without a Shelly watchdog are listed explicitly in the YAML key `no_watchdog` (mapped switches only); they get no heartbeat and no heartbeat alert. Unlisted switches are expected to be Shellys with the script. No automatic detection or device-type check (owner, 2026-09-28). The user docs explain that a listed switch has no device failsafe when HA stops |
 | D-119 | No manual mode: pure manual control is Control active OFF plus switching the relays directly, with no protection; the watchdog scripts keep running because heartbeats continue (owner, 2026-09-29). Documented in the user docs (P8) |
+| D-120 | Shelly address, script id, switches, optional name and password come from the YAML key `shellys`; no device registry or `Script.List` (V3 dropped). The Shelly with the heat source switch must run the heat source script and hold no valve, every other one the valve script. Every mapped switch is on exactly one listed Shelly or in `no_watchdog`, otherwise a config error (owner, 2026-09-29) |
+| D-121 | Heartbeat client: `POST` every HeartbeatInterval (also in shadow mode, and at once to the heat source on a season change); a failed call is a connection error/timeout (10 s), non-200, no status, `v` ≠ 1 or the wrong role; one alert after HeartbeatFailAlert failures naming the cause, recovery notified; parameter check of `heartbeat_timeout_s` (and `check_interval_s` if configured), alerted once and cleared silently; `GET` first after a start or a failure so `timed_out` and restarts can be logged (never notified); alert state persisted and shown in the alerts sensor (owner, 2026-09-29) |
+| D-122 | Heartbeats only while the reconcile loop works: the last completed run is at most 3 ReconcileIntervals old, so a broken integration triggers the Shelly failsafe (owner, 2026-09-29) |
 | D-123 | No per-minute countdowns in entity states: reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor's `until` attribute holds the end of the running timer and is present only while one runs; the heat request's `on_since` / `on_duration` are present only while it runs (owner, 2026-09-29). Amends D-89 and D-116 |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-123 on 2026-09-29 during P7.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7.
 
 ---
 
@@ -824,7 +836,7 @@ D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-6
 |---|---|---|
 | V1 | Shelly Plus 2PM measures the actuator holding power reliably (stable, non-zero) | Actuator fault check (D-41) not used |
 | V2 | Shelly script HTTP endpoint for the heartbeat works on 2PM Gen2 and Shelly 1 Gen3/Gen4 | Alternative heartbeat transport needed |
-| V3 | Shelly device address can be derived from the HA device registry | Addresses listed in YAML |
+| V3 | *(dropped, D-120)* Shelly device address can be derived from the HA device registry | Addresses and script ids are listed in YAML |
 | V4 | Whether the secondary pump runs during hot water production | Documentation only |
 | V5 | The heat pump reacts correctly to the Shelly 1 contact on the former Computherm terminals | Wiring check before go-live |
 | V6 | BTHome/pvvx sensor entities update `last_reported` when the same value repeats | Sensor fault detection (§3.6) would misfire; needs another staleness source |

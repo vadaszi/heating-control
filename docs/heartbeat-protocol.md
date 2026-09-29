@@ -15,7 +15,7 @@ Setup and bench tests: [`shelly-scripts.md`](shelly-scripts.md).
 ```
 http://<shelly-address>/script/<script-id>/heartbeat
 ```
-- `<script-id>` is the script's slot number on the device (shown in the device web UI; `Script.List` RPC). How HA finds it is decided in P7.
+- `<script-id>` is the script's slot number on the device (shown in the device web UI). HA takes the address and the script id from its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs), D-120); it does not look them up.
 - `heartbeat` is the default endpoint name (`CONFIG.endpoint`).
 - One endpoint, two methods:
 
@@ -93,6 +93,13 @@ The state changes to `timed_out` at the first check (every `check_interval_s`) a
 | `switch_id` | heat source | 0 | The switch that requests heat. |
 
 The values come only from the script's CONFIG block (D-101); HA never sends parameters. v1.2 adds the heat source failsafe keys (FailsafeTrigger, window, uptime cycle).
+
+## What HA does with it (D-120 to D-122)
+- Every `HeartbeatInterval` (default 5 min) HA sends a `POST` to every listed Shelly, also in shadow mode. The heat source Shelly also gets one at once when the heating season switch changes.
+- On the first call after HA starts, and after a failed call, HA first reads the status with `GET`. The `POST` answer can no longer show a timeout, because the script applies the heartbeat before it answers. A `timed_out` state and its `heartbeat_age_s` are only logged, as is a restart (`uptime_s` lower than at the previous answer).
+- A call **fails** if there is no connection or no answer within 10 s, the HTTP status is not `200` (`404`: script not running or wrong id; `401`: authentication), the body is not a status object, `v` is not 1, or `role` is not the one HA expects from its YAML. After `heartbeat_fail_alert` (default 3) failures in a row HA notifies once, and again when the Shelly answers.
+- `params`: HA compares `heartbeat_timeout_s` (and `check_interval_s` if an expected value is configured) and notifies once while they differ.
+- HA sends heartbeats only while its reconcile loop works (a completed run within the last 3 reconcile intervals), so a broken integration lets the watchdogs act.
 
 ## Versioning
 - Adding a field to the request, the response, `params` or a new `state` value is **not** a breaking change: `v` stays 1. Both sides ignore fields they do not know.

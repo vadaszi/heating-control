@@ -15,6 +15,10 @@ Shadow mode (Control active OFF, §5.5):
 
 The loop starts once HA has started, so entities that are still loading neither get
 commands nor count as mismatches (D-109).
+
+The controller also keeps the heartbeat alert state of every Shelly (D-121; the calls
+are made by `heartbeat.HeartbeatClient`) and the time of the last completed run, which
+the heartbeat client checks before it sends (D-122).
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -36,6 +40,7 @@ from .const import DOMAIN
 from .core.alerts import active_alerts
 from .core.config import GlobalParams
 from .core.engine import step
+from .core.heartbeat import HeartbeatTracking, heartbeat_alerts
 from .core.io import Event as CoreEvent
 from .core.io import EventKind, Inputs, Outputs, OutputState, ZoneInput
 from .core.state import CoreState
@@ -49,7 +54,13 @@ _LOGGER = logging.getLogger(__name__)
 _MAX_SHADOW_RUNS = 3  # step, then re-run with the new commanded states until settled
 
 _ALERT_KINDS = frozenset(
-    {EventKind.SENSOR_FAULT_STARTED, EventKind.SENSOR_FAULT_REMINDER, EventKind.OUTPUT_MISMATCH}
+    {
+        EventKind.SENSOR_FAULT_STARTED,
+        EventKind.SENSOR_FAULT_REMINDER,
+        EventKind.OUTPUT_MISMATCH,
+        EventKind.WATCHDOG_FAILED,
+        EventKind.WATCHDOG_PARAMS_MISMATCH,
+    }
 )
 MISSING_ENTITIES_NOTIFICATION = f"{DOMAIN}_missing_entities"
 
@@ -70,6 +81,11 @@ class FloorheatController:
         self._state: CoreState = stored.core
         self._settings: Settings = stored.settings
         self._pending_off: set[str] = set(stored.pending_off)
+        self._heartbeat: dict[str, HeartbeatTracking] = {
+            shelly.key: stored.heartbeat.get(shelly.key, HeartbeatTracking())
+            for shelly in config.shellys
+        }
+        self._last_run_ok_at: datetime | None = None
         self._outputs: Outputs | None = None
         self._commander = OutputCommander(hass)
         self._sensors = SensorReader()
@@ -106,9 +122,22 @@ class FloorheatController:
         return frozenset(self._pending_off)
 
     @property
+    def last_run_ok_at(self) -> datetime | None:
+        """When a reconcile run last completed; None before the first (D-122)."""
+        return self._last_run_ok_at
+
+    @property
+    def heartbeat(self) -> Mapping[str, HeartbeatTracking]:
+        """Heartbeat state per Shelly key (D-121)."""
+        return self._heartbeat
+
+    @property
     def alerts(self) -> list[CoreEvent]:
         """Alerts active now (the alerts sensor), derived from the state."""
-        return active_alerts(self.config.core, self._state)
+        alerts = active_alerts(self.config.core, self._state)
+        for shelly in self.config.shellys:
+            alerts += heartbeat_alerts(shelly.name, self._heartbeat[shelly.key])
+        return alerts
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
@@ -121,6 +150,19 @@ class FloorheatController:
         """Call `handler` for every core event (notifications, P6)."""
         self._event_handlers.append(handler)
         return lambda: self._event_handlers.remove(handler)
+
+    @callback
+    def async_update_heartbeat(
+        self, key: str, tracking: HeartbeatTracking, events: list[CoreEvent]
+    ) -> None:
+        """Store a Shelly's heartbeat state and publish its events (D-121)."""
+        changed = tracking != self._heartbeat[key]
+        self._heartbeat[key] = tracking
+        self._publish(events)
+        if changed:
+            self._schedule_save()
+            for listener in list(self._listeners):
+                listener()
 
     # ------------------------------------------------------------ settings (D-106)
 
@@ -261,6 +303,7 @@ class FloorheatController:
             self._commander.apply(desired, actual, now)
         else:
             self._final_off(actual, now)
+        self._last_run_ok_at = now
         for listener in list(self._listeners):
             listener()
 
@@ -268,12 +311,15 @@ class FloorheatController:
         inputs = self._inputs(feedback, tick=tick)
         outputs, self._state, events = step(self.config.core, self._state, inputs, now)
         self._outputs = outputs
+        self._publish(events)
+        self._schedule_save()
+        return outputs
+
+    def _publish(self, events: list[CoreEvent]) -> None:
         for event in events:
             self._log_event(event)
             for handler in list(self._event_handlers):
                 handler(event)
-        self._schedule_save()
-        return outputs
 
     def _inputs(self, feedback: dict[str, OutputState], *, tick: bool) -> Inputs:
         zones: dict[str, ZoneInput] = {}
@@ -327,6 +373,7 @@ class FloorheatController:
             "core": self._state.to_dict(),
             "settings": self._settings.to_dict(),
             "pending_off": sorted(self._pending_off),
+            "heartbeat": {key: tracking.to_dict() for key, tracking in self._heartbeat.items()},
         }
 
     def _schedule_save(self) -> None:

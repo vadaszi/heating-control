@@ -12,19 +12,36 @@ floorheat:
   notify:
     - notify.mobile_app_phone
     - notify.email
+  shellys:
+    - name: Valves
+      host: 192.0.2.11
+      script_id: 1
+      switches:
+        - switch.valve_living_room
+        - switch.valve_kitchen
+    - name: Heat pump
+      host: 192.0.2.12
+      script_id: 1
+      switches: [switch.heat_pump_request]
   zones:
     - id: living_room
       name: Living room
       sensor: sensor.living_room_temperature
       valve: switch.valve_living_room
       sensor_offset: -0.2
+    - id: kitchen
+      name: Kitchen
+      sensor: sensor.kitchen_temperature
+      valve: switch.valve_kitchen
     - id: bathroom
       name: Bathroom
       sensor: sensor.bathroom_temperature
       valve: none
 ```
 
-The entity ids are examples: use your own.
+The entity ids and addresses are examples: use your own.
+
+> **Upgrading from 0.6:** from 0.7 on, every switch must be either on a Shelly listed under `shellys` or listed in `no_watchdog` (see [Shelly watchdogs](#shelly-watchdogs)). Add these keys to your YAML **before** you update, otherwise the setup fails with "Invalid config" and floorheat does not run.
 
 ## Keys
 
@@ -39,6 +56,12 @@ The entity ids are examples: use your own.
 | `reconcile_interval` | integer, seconds (10–300) | 60 | How often the outputs are checked and corrected. |
 | `output_mismatch_alert` | integer ≥ 1 | 3 | Alert after this many reconcile intervals in which a switch does not follow its command or is unavailable. |
 | `notify` | list of `notify.<name>` | none | Where notifications go: a notify service (e.g. `notify.mobile_app_phone` from the companion app, or an SMTP `notify.email`) or a notify entity. Without targets, events are only written to the log. |
+| `shellys` | list | none | The Shellys running a floorheat watchdog script; see [Shelly watchdogs](#shelly-watchdogs). |
+| `no_watchdog` | list of `switch` entities | none | Mapped switches that are **not** Shellys running the watchdog script (e.g. stand-ins or another relay). They get no heartbeat. |
+| `heartbeat_interval` | integer, seconds (60–3600) | 300 | How often every Shelly gets a heartbeat. Must be shorter than `heartbeat_timeout`. |
+| `heartbeat_fail_alert` | integer ≥ 1 | 3 | Alert after this many failed heartbeats in a row (3 × 5 min ≈ 15 min). |
+| `heartbeat_timeout` | integer, seconds | 18000 (5 h) | The `heartbeat_timeout_s` you expect in the scripts' CONFIG block. floorheat alerts if a script reports another value. |
+| `heartbeat_check_interval` | integer, seconds | not checked | If set, the `check_interval_s` you expect in the scripts; otherwise it is not compared. |
 
 ### Per zone
 
@@ -56,6 +79,25 @@ The entity ids are examples: use your own.
 - Each switch may be mapped only once: two zones cannot share a valve switch, and a valve switch cannot also be the heat source switch.
 - **At least one flow path.** floorheat assumes water can flow whenever the heat source request is ON: through a zone without a valve, a bypass or a buffer/hydraulic separator. If every zone has a valve, a warning is logged at startup. Make sure your installation has such a path.
 
+### Shelly watchdogs
+
+Each Shelly that switches valves or the heat source runs a watchdog script ([Shelly scripts](shelly-scripts.md)). It puts its outputs into a safe state if Home Assistant stops sending heartbeats. List every such Shelly under `shellys`:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | the `host` | Shown in notifications and the log. Names must be unique. |
+| `host` | string | required | The Shelly's address as in its web UI URL, e.g. `192.0.2.11` or a host name, optionally with `:port`. No `http://`. |
+| `script_id` | integer ≥ 1 | required | The id of the watchdog script on the device (the number in the web UI's script list). |
+| `switches` | list of `switch` entities | required | The mapped switches (valves or the heat source) on this Shelly. |
+| `password` | string | none | Only if authentication is on for the device; use `!secret`, e.g. `password: !secret floorheat_shelly_password`. The user name is always `admin`. |
+
+Rules:
+- **Every mapped switch** (the heat source and every valve) is either on exactly one Shelly under `shellys` or listed in `no_watchdog`. Anything else is a configuration error.
+- The Shelly with the heat source switch runs the **heat source script** and must hold no valve; every other listed Shelly runs the **valve script**. floorheat checks this with each answer.
+- floorheat does not detect device types: it trusts this list.
+
+> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the external watchdog (v1.2) would tell you that HA is down. Use `no_watchdog` only for stand-ins during a trial or for relays that cannot run the script.
+
 ## Checks at startup
 
 - A structural error (missing key, wrong entity domain, duplicate zone id or name, invalid id, value out of range, unknown key) stops the setup. HA shows "Invalid config" and the log names the problem. For an invalid id, a valid one is suggested.
@@ -64,6 +106,7 @@ The entity ids are examples: use your own.
   - an unknown switch counts as unavailable, which is OFF.
 - A sensor without a temperature unit is logged once as a warning; its readings are ignored.
 - A `notify` target that is neither a notify service nor a notify entity is logged as a warning and shown as a persistent notification once HA has started.
+- A mapped switch that is neither on a listed Shelly nor in `no_watchdog`, a switch listed twice, a heat source Shelly holding a valve, or a `heartbeat_interval` not shorter than `heartbeat_timeout` stops the setup.
 
 ## How it runs
 
@@ -71,6 +114,11 @@ The entity ids are examples: use your own.
 - **Retries.** A switch that does not follow gets its command again after 1, 2, 4 and 8 minutes, then every 15 minutes. Nothing is sent to an unavailable switch; when it returns, it is corrected at once. After `output_mismatch_alert` intervals the alert "output not following command" is notified.
 - **Restart.** The logic state (timers, calling zone, sensor faults, heat pump ON/OFF times) and the UI settings are stored in HA's `.storage/floorheat` file, at most every 30 seconds and when HA stops. After a restart the switch states are read back and control continues where it stopped.
 - **Unavailable heat source switch.** It counts as OFF while it is unavailable. If it comes back ON, the heat pump never stopped (a device that lost power restarts OFF), so it is not switched OFF because of a Wi-Fi glitch.
+- **Heartbeat.** Every `heartbeat_interval` each listed Shelly gets a heartbeat (`POST http://<host>/script/<script_id>/heartbeat`, [protocol](heartbeat-protocol.md)), also in shadow mode. The heat source Shelly's heartbeat carries the heating season switch; it gets one at once when you switch the season. Each answer is the script's status:
+  - after `heartbeat_fail_alert` failed heartbeats in a row, "Shelly … not answering" is notified once, naming the cause: unreachable, script not running (HTTP 404: stopped, or wrong `script_id`), authentication failed, or an unexpected answer (wrong script, unsupported protocol version). When it answers again, the recovery is notified. A single failed call (a Wi-Fi hiccup) never alerts;
+  - if the script's `heartbeat_timeout_s` (or `check_interval_s`, if you set `heartbeat_check_interval`) differs from the expected value, that is notified once; it clears silently when the values match again;
+  - only logged, never notified: a watchdog that had timed out (seen in the status read on the first call after HA starts and after a failed call) and a Shelly that restarted.
+- **Heartbeat only while floorheat works.** Heartbeats go out only if the reconcile loop has completed a run within the last 3 reconcile intervals. If floorheat is broken (e.g. after an HA update), the Shellys stop getting heartbeats and act after their timeout, as if HA had stopped.
 
 ## Shadow mode
 
@@ -91,6 +139,9 @@ Every notification goes to every `notify` target, with a title and a message:
 | floorheat: sensor recovered | The zone's sensor reports again. |
 | floorheat: output not following command | A switch has differed from its command, or been unavailable, for `output_mismatch_alert` reconcile intervals. Not in shadow mode. |
 | floorheat: output recovered | That switch follows again. |
+| floorheat: Shelly watchdog not answering | `heartbeat_fail_alert` heartbeats in a row to a Shelly failed; the message names the cause. Also in shadow mode. |
+| floorheat: Shelly watchdog answering again | That Shelly answers again. |
+| floorheat: Shelly script parameters differ | A script reports a `heartbeat_timeout_s` (or `check_interval_s`) other than expected. Once, until the values match again. |
 
 A target that is a notify service (the companion app, SMTP) is called as `notify.<name>`; otherwise the notify entity of that id gets `notify.send_message`. A failing target is logged and never stops the control.
 
@@ -115,7 +166,7 @@ The entity ids are fixed and built from the zone `id`, so they never change when
 |---|---|
 | `binary_sensor.floorheat_heat_request` | The heat source request floorheat wants (in shadow mode: the simulated one). While the heat source runs: attributes `on_since` and `on_duration` (minutes; not kept in the history). Both are left out while it is not running. |
 | `sensor.floorheat_mode` | `normal` (`holiday` from v1.1, `failsafe` from v1.2). Attribute `shadow`: true while Control active is OFF. |
-| `sensor.floorheat_alerts` | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`). |
+| `sensor.floorheat_alerts` | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults, outputs not following, Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`). |
 | `switch.floorheat_heating_season` | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
 | `switch.floorheat_control_active` | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |
 | `time.floorheat_sensor_fault_reminder` | Time of the daily sensor fault reminder (default 08:00). |

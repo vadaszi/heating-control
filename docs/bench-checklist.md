@@ -78,7 +78,7 @@ Feedback:
 
 ## Not possible yet
 - **V1** (actuator holding power): needs the actuators connected.
-- **V3** (HA finds each Shelly's address): P7.
+- **V3** (HA finds each Shelly's address): dropped in P7 (D-120); the address and script id come from the YAML.
 - **Shelly 1** heat source tests (script, timeout, reboot, V2 for that model): needs the device.
 - **V4 / V5** (secondary pump during hot water; the heat pump reacting to the contact): at go-live.
 
