@@ -140,6 +140,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Tests:** A10–A16, A24, A28; DST spring/autumn for 22:00–02:00 and windows inside the skipped/repeated hour; overlap detection against a brute-force minute scan (hypothesis); simulation with a week of schedules keeps the P2 invariants.
 
 ## P10 — HA schedules, holiday, dashboard (v1.1 release)
+- **Owner decision (2026-09-29):** the example dashboard gets a built-in Markdown card that explains every zone state and every reason text in plain words (what it means, why it happens). It is the only place for these explanations: no explanation attribute, no hover text (not possible without custom frontend code). Users read it while learning and may delete the card later.
 - **Carried over (from P6):** the mode sensor shows `holiday` (its options already include it); update the "Used from" column in `docs/configuration.md#entities`.
 - Services add/delete/list with validation errors. The schedule list is a sensor attribute. Schedules are persisted.
 - Form entities (D-74): selects, date/time, weekdays, temperature, Add/Delete buttons; errors appear as a persistent notification.
