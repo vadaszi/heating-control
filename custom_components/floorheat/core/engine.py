@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, tzinfo
 
 from .alerts import fault_events, track_outputs
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
-from .io import Event, Inputs, Outputs, OutputState, ZoneInput, ZoneReport
+from .io import Event, Inputs, Outputs, OutputState, Reason, ZoneInput, ZoneReport
 from .state import CoreState, ZoneMode, ZoneState
 
 # Absorbs float noise in comparisons such as "RoomTemp at or below StartTemp"
@@ -425,28 +425,28 @@ def _reason(
     source_available: bool,
     min_on_end: datetime | None,
     min_off_end: datetime | None,
-) -> tuple[str, datetime | None]:
-    """Reason text for the zone's reason sensor (D-89) and the end of the timer it
-    names, if any (D-123). The text is fixed: it never counts down."""
+) -> tuple[Reason, datetime | None]:
+    """Reason for the zone's reason sensor (D-89, D-126) and the end of the timer it
+    names, if any (D-123). The key is fixed: it never counts down."""
     if zone_state.mode is _FAULT:
         if not season:
-            return "Sensor fault (heating season off)", None
-        return "Sensor fault, following the heat pump", None
+            return Reason.SENSOR_FAULT_SEASON_OFF, None
+        return Reason.SENSOR_FAULT, None
     if not season:
-        return "Heating season off", None
+        return Reason.SEASON_OFF, None
     if zone.room is None:
-        return "Waiting for a sensor reading", None
+        return Reason.NO_READING_YET, None
     if zone_state.mode is _HEATING:
         if not source_available:
-            return "Heating, heat source unavailable", None
+            return Reason.HEAT_SOURCE_UNAVAILABLE, None
         if request.held:
-            return "Held by min OFF", min_off_end
-        return ("Calling zone" if zone_id == calling else "Heating"), None
+            return Reason.HELD_BY_MIN_OFF, min_off_end
+        return (Reason.CALLING_ZONE if zone_id == calling else Reason.HEATING), None
     if request.spreading:
         # Without a valve, water flows through the zone whenever the HP runs.
         if valve or not zone.config.has_valve:
-            return "Spreading heat (min ON)", min_on_end
-        return "Idle, at or above ManualMaxTemp", None
+            return Reason.SPREADING_HEAT, min_on_end
+        return Reason.TOO_WARM_FOR_SPREADING, None
     if zone_state.mode is _WAITING and zone_state.wait_started_at is not None:
-        return "Waiting", zone_state.wait_started_at + zone.params.wait_time
-    return "Idle", None
+        return Reason.WAITING, zone_state.wait_started_at + zone.params.wait_time
+    return Reason.IDLE, None

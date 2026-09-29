@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import timedelta
 
-from custom_components.floorheat.core.io import EventKind, OutputState
+from custom_components.floorheat.core.io import EventKind, OutputState, Reason
 from custom_components.floorheat.core.state import ZoneMode
 
 from .harness import DAY, Scenario, at
@@ -45,13 +45,13 @@ def test_a01_wait_then_start() -> None:
     assert sc.mode(1) is WAITING
     assert not sc.hp
     assert sc.valve(1) is False
-    assert sc.reason(1) == "Waiting"
+    assert sc.reason(1) == Reason.WAITING
     assert sc.until(1) == at("06:30")
 
     sc.advance_to("06:29")
     assert sc.mode(1) is WAITING
     assert not sc.hp
-    assert sc.reason(1) == "Waiting"  # fixed text, no countdown (D-123)
+    assert sc.reason(1) == Reason.WAITING  # fixed text, no countdown (D-123)
     assert sc.until(1) == at("06:30")
 
     sc.advance_to("06:30")
@@ -59,7 +59,7 @@ def test_a01_wait_then_start() -> None:
     assert sc.hp
     assert sc.valve(1) is True
     assert sc.calling_zone == "zone_1"
-    assert sc.reason(1) == "Calling zone"
+    assert sc.reason(1) == Reason.CALLING_ZONE
     assert sc.until(1) is None
     assert sc.state.hp_last_on_at == sc.now
 
@@ -96,7 +96,7 @@ def test_a04_join_while_running_without_wait() -> None:
     sc.step()
     assert sc.mode(2) is HEATING
     assert sc.valve(2) is True
-    assert sc.reason(2) == "Heating"
+    assert sc.reason(2) == Reason.HEATING
     assert sc.calling_zone == "zone_1"
 
 
@@ -167,9 +167,9 @@ def test_a08_all_satisfied_before_min_on_spreads_heat() -> None:
     assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE, "zone_4": IDLE}
     assert sc.hp
     assert sc.open_valves() == {"zone_1", "zone_2", "zone_3"}  # zone 4 >= ManualMaxTemp
-    assert sc.reason(2) == "Spreading heat (min ON)"
+    assert sc.reason(2) == Reason.SPREADING_HEAT
     assert sc.until(2) == at("07:30")
-    assert sc.reason(4) == "Idle, at or above ManualMaxTemp"
+    assert sc.reason(4) == Reason.TOO_WARM_FOR_SPREADING
     assert sc.until(4) is None
 
     sc.advance_to("07:29")
@@ -177,7 +177,7 @@ def test_a08_all_satisfied_before_min_on_spreads_heat() -> None:
     sc.advance_to("07:30")
     assert not sc.hp
     assert sc.open_valves() == set()
-    assert sc.reason(2) == "Idle"
+    assert sc.reason(2) == Reason.IDLE
     assert sc.until(2) is None
 
 
@@ -210,7 +210,7 @@ def test_a09_demand_held_back_by_min_off() -> None:
     assert sc.valve(2) is True  # valve opens at the end of the wait (D-64)
     assert not sc.hp
     assert sc.calling_zone is None
-    assert sc.reason(2) == "Held by min OFF"
+    assert sc.reason(2) == Reason.HELD_BY_MIN_OFF
     assert sc.until(2) == at("09:00")
 
     sc.advance_to("08:59")
@@ -255,7 +255,7 @@ def test_a18_calling_zone_sensor_fails_mid_cycle() -> None:
     assert sc.hp
     assert sc.valve(1) is True  # follows the house while the HP runs
     assert sc.room_temp(1) is None
-    assert sc.reason(1) == "Sensor fault, following the heat pump"
+    assert sc.reason(1) == Reason.SENSOR_FAULT
 
     sc.temp(2, 22.2)
     sc.step()
@@ -271,7 +271,7 @@ def test_a22_restart_during_wait_continues_the_wait() -> None:
     sc.restart(downtime=3)
     sc.step()
     assert sc.mode(1) is WAITING
-    assert sc.reason(1) == "Waiting"
+    assert sc.reason(1) == Reason.WAITING
     assert sc.until(1) == at("06:30")  # the original end of the wait
     sc.advance_to("06:29")
     assert not sc.hp
@@ -335,7 +335,7 @@ def test_a29_heat_source_unavailable_counts_as_off() -> None:
     assert not sc.hp  # held by min OFF, counted from 06:45 (the command cannot be sent)
     assert sc.mode(1) is HEATING
     assert sc.valve(1) is True
-    assert sc.reason(1) == "Heating, heat source unavailable"
+    assert sc.reason(1) == Reason.HEAT_SOURCE_UNAVAILABLE
     assert sc.calling_zone == "zone_1"  # the cycle is kept while unknown (D-95)
 
     sc.advance_to("06:50")
@@ -442,7 +442,7 @@ def test_a20_season_off_mid_cycle_ignores_min_on() -> None:
     assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE}
     assert sc.calling_zone is None
     assert not sc.sync_fired
-    assert sc.reason(1) == "Heating season off"
+    assert sc.reason(1) == Reason.SEASON_OFF
     assert sc.state.hp_last_off_at == sc.now  # min OFF counts from the actual OFF
 
 
@@ -510,7 +510,7 @@ def test_a20_fault_notified_without_reminder() -> None:
     sc.silence(1)
     sc.advance_to("07:01")
     assert sc.mode(1) is FAULT
-    assert sc.reason(1) == "Sensor fault (heating season off)"
+    assert sc.reason(1) == Reason.SENSOR_FAULT_SEASON_OFF
     assert len(sc.events_of(EventKind.SENSOR_FAULT_STARTED)) == 1
     sc.advance_to("12:00", NEXT_DAY)
     assert sc.events_of(EventKind.SENSOR_FAULT_REMINDER) == []

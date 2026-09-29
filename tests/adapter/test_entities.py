@@ -87,7 +87,7 @@ async def test_zone_views_follow_the_core(world: World, hass: HomeAssistant) -> 
     await hass.async_block_till_done()
     assert _state(hass, "sensor.floorheat_zone_1_state").state == "waiting"
     reason = _state(hass, "sensor.floorheat_zone_1_reason")
-    assert reason.state == "Waiting"  # fixed text; the timer end is `until` (D-123)
+    assert reason.state == "waiting"  # fixed text; the timer end is `until` (D-123)
     assert reason.attributes["until"] == "2026-01-12T06:30:00+00:00"
     assert _state(hass, "sensor.floorheat_zone_1_setpoint").state == "22.0"
     climate = _state(hass, "climate.floorheat_zone_1")
@@ -108,7 +108,7 @@ async def test_zone_views_follow_the_core(world: World, hass: HomeAssistant) -> 
     assert reason.last_updated == waiting_since  # no per-minute change (D-123)
     await world.advance_to("06:30")
     reason = _state(hass, "sensor.floorheat_zone_1_reason")
-    assert reason.state == "Calling zone"
+    assert reason.state == "calling_zone"
     assert "until" not in reason.attributes
     climate = _state(hass, "climate.floorheat_zone_1")
     assert climate.attributes["hvac_action"] == "heating"
@@ -303,7 +303,7 @@ async def test_heating_season_switch_stops_the_request(world: World, hass: HomeA
     await _call(hass, "switch", "turn_off", "switch.floorheat_heating_season")
     assert world.state(HEAT_SOURCE) == "off"  # at once, min ON ignored (D-68)
     assert world.state(valve(1)) == "off"
-    assert _state(hass, "sensor.floorheat_zone_1_reason").state == "Heating season off"
+    assert _state(hass, "sensor.floorheat_zone_1_reason").state == "season_off"
     assert _state(hass, "binary_sensor.floorheat_heat_request").state == "off"
 
 

@@ -44,7 +44,7 @@ async def test_sensor_update_runs_the_loop_at_once(world: World) -> None:
     world.temp(1, 21.8)
     await world.hass.async_block_till_done()
     assert world.mode(1) == "waiting"
-    assert world.reason(1) == "Waiting"
+    assert world.reason(1) == "waiting"
 
 
 async def test_a25_manual_valve_change_is_corrected(world: World) -> None:

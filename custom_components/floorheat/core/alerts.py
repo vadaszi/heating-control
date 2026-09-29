@@ -49,7 +49,7 @@ def fault_events(
                     kind=EventKind.SENSOR_FAULT_STARTED,
                     message=(
                         f"Sensor fault in {zone.name}: no valid reading for more than "
-                        f"{minutes} min. The zone follows the heat pump and creates no demand."
+                        f"{minutes} min. The zone follows the heat source and creates no demand."
                     ),
                     zone_id=zone.id,
                     data={"last_valid_at": _iso(new.last_valid_at)},

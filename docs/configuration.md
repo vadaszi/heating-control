@@ -155,7 +155,7 @@ The entity ids are fixed and built from the zone `id`, so they never change when
 |---|---|
 | `climate.floorheat_<zone>` | Current temperature = the zone temperature (reading + offset); target = the zone's base set point (10–30 °C, step 0.1). Mode `heat` only. `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*. Attributes: `zone_state`, `reason`, `valve` (desired state; none without a valve), `calling_zone`. |
 | `sensor.floorheat_<zone>_state` | `idle`, `waiting`, `heating`, `forced` (v1.1), `sensor_fault`. |
-| `sensor.floorheat_<zone>_reason` | Why, e.g. "Calling zone", "Waiting", "Held by min OFF". The text never counts down, so the state changes only when the reason does. While a timer runs ("Waiting", "Held by min OFF", "Spreading heat (min ON)"), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
+| `sensor.floorheat_<zone>_reason` | Why, as a fixed key, e.g. `calling_zone`, `waiting`, `held_by_minimum_off_time`. It never counts down, so the state changes only when the reason does. While a timer runs ("Waiting", "Held by min OFF", "Spreading heat (min ON)"), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
 | `sensor.floorheat_<zone>_setpoint` | Effective set point (the base set point until schedules and holiday arrive in v1.1). |
 | `number.floorheat_<zone>_hysteresis` | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.floorheat_<zone>_wait_time` | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |

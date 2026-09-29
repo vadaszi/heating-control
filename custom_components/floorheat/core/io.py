@@ -63,11 +63,31 @@ class Inputs:
     reconcile_tick: bool
 
 
+class Reason(StrEnum):
+    """Why a zone is in its state (D-89, D-126): fixed keys, never countdowns (D-123).
+
+    The adapter shows them as translated texts; history and automations see the key.
+    """
+
+    IDLE = "idle"
+    WAITING = "waiting"
+    CALLING_ZONE = "calling_zone"
+    HEATING = "heating"
+    HELD_BY_MIN_OFF = "held_by_minimum_off_time"
+    SPREADING_HEAT = "spreading_heat"
+    TOO_WARM_FOR_SPREADING = "too_warm_for_spreading"
+    HEAT_SOURCE_UNAVAILABLE = "heat_source_unavailable"
+    NO_READING_YET = "no_reading_yet"
+    SENSOR_FAULT = "sensor_fault"
+    SEASON_OFF = "season_off"
+    SENSOR_FAULT_SEASON_OFF = "sensor_fault_season_off"
+
+
 @dataclass(frozen=True)
 class ZoneReport:
     """What the adapter shows for one zone (D-89, D-123)."""
 
-    reason: str  # fixed text, e.g. "Calling zone", "Waiting"
+    reason: Reason
     room_temp: float | None  # RoomTemp, °C; None while unknown or faulty
     setpoint: float  # effective SetPoint, °C
     until: datetime | None = None  # end of the timer the reason names (wait, min ON/OFF)

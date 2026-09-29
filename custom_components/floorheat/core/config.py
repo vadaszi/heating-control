@@ -303,8 +303,8 @@ def config_warnings(config: CoreConfig) -> list[str]:
     warnings: list[str] = []
     if all(zone.has_valve for zone in config.zones):
         warnings.append(  # D-80
-            "Every zone has a valve. floorheat assumes a flow path whenever the heat pump "
-            "request is ON (an unvalved zone, a bypass or a buffer/hydraulic separator). "
+            "Every zone has a valve. The integration assumes a flow path whenever the heat "
+            "source request is ON (an unvalved zone, a bypass or a buffer/hydraulic separator). "
             "Make sure your installation has one."
         )
     return warnings

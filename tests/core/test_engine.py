@@ -14,7 +14,7 @@ from custom_components.floorheat.core.config import (
     ZoneParams,
 )
 from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import Inputs, OutputState, ZoneInput
+from custom_components.floorheat.core.io import Inputs, OutputState, Reason, ZoneInput
 from custom_components.floorheat.core.state import CoreState, ZoneMode, ZoneState
 
 from .harness import Scenario, at, make_config
@@ -42,7 +42,7 @@ def test_zone_above_starttemp_stays_idle() -> None:
     sc = Scenario(2, temps={1: 21.81})
     sc.step()
     assert sc.mode(1) is IDLE
-    assert sc.reason(1) == "Idle"
+    assert sc.reason(1) == Reason.IDLE
     assert sc.valve(1) is False
 
 
@@ -60,7 +60,7 @@ def test_waiting_without_start_time_restarts_the_wait() -> None:
     sc = Scenario(2, temps={1: 21.8}, state=state)
     sc.step()
     assert sc.state.zones["zone_1"].wait_started_at == sc.now
-    assert sc.reason(1) == "Waiting"
+    assert sc.reason(1) == Reason.WAITING
     assert sc.until(1) == sc.now + timedelta(minutes=30)
 
 
@@ -115,7 +115,7 @@ def test_setpoint_raise_is_still_held_by_min_off() -> None:
     assert sc.mode(1) is HEATING
     assert sc.valve(1) is True
     assert not sc.hp
-    assert sc.reason(1) == "Held by min OFF"
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
     assert sc.until(1) == at("09:00")
     sc.advance_to("09:00")
     assert sc.hp
@@ -149,7 +149,7 @@ def test_setpoint_decrease_ends_the_wait() -> None:
     sc.set_setpoint(1, 18.0)
     sc.step()
     assert sc.mode(1) is IDLE
-    assert sc.reason(1) == "Idle"
+    assert sc.reason(1) == Reason.IDLE
     sc.advance_to("07:00")
     assert not sc.hp
 
@@ -162,7 +162,7 @@ def test_small_setpoint_decrease_keeps_waiting() -> None:
     sc.set_setpoint(1, 21.5)  # StartTemp 21.3 >= RoomTemp 21.0
     sc.step()
     assert sc.mode(1) is WAITING
-    assert sc.reason(1) == "Waiting"
+    assert sc.reason(1) == Reason.WAITING
     assert sc.until(1) == at("06:30")
 
 
@@ -303,8 +303,8 @@ def test_unvalved_zone_never_shows_the_manual_max_exclusion() -> None:
     sc.temp(1, 22.2)
     sc.advance(1)
     assert sc.hp  # D-20 spread
-    assert sc.reason(2) == "Idle, at or above ManualMaxTemp"
-    assert sc.reason(3) == "Spreading heat (min ON)"
+    assert sc.reason(2) == Reason.TOO_WARM_FOR_SPREADING
+    assert sc.reason(3) == Reason.SPREADING_HEAT
     assert sc.until(3) == at("07:30")
     assert sc.valve(3) is None
 
@@ -314,7 +314,7 @@ def test_zone_without_any_reading_stays_closed_during_spread() -> None:
     sc.step()
     assert sc.hp  # D-91 spread
     assert sc.open_valves() == {"zone_1"}
-    assert sc.reason(2) == "Waiting for a sensor reading"
+    assert sc.reason(2) == Reason.NO_READING_YET
 
 
 def test_request_on_immediately_without_last_off_time() -> None:
@@ -410,7 +410,7 @@ def test_season_on_again_is_held_by_min_off_from_the_actual_off() -> None:
     sc.step()
     assert sc.mode(1) is HEATING  # WaitTime 0
     assert not sc.hp
-    assert sc.reason(1) == "Held by min OFF"
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
     assert sc.until(1) == off_at + timedelta(minutes=60)
     sc.now = off_at + timedelta(minutes=59)
     sc.step()
@@ -432,7 +432,7 @@ def test_season_off_closes_faulty_zones_while_the_hp_still_runs() -> None:
     assert not sc.hp
     assert sc.valve(2) is False
     assert sc.mode(2) is FAULT  # fault detection keeps running (D-75)
-    assert sc.reason(2) == "Sensor fault (heating season off)"
+    assert sc.reason(2) == Reason.SENSOR_FAULT_SEASON_OFF
     assert sc.mode(1) is IDLE  # no join by rule 3 although the HP still runs
 
 
@@ -446,7 +446,7 @@ def test_season_off_ends_the_cycle_while_the_heat_source_is_unavailable() -> Non
     sc.step()
     assert sc.calling_zone is None
     assert not sc.sync_fired
-    assert sc.reason(1) == "Heating season off"
+    assert sc.reason(1) == Reason.SEASON_OFF
 
 
 def test_season_off_at_first_start_with_the_hp_on() -> None:
@@ -477,7 +477,7 @@ def test_implausible_raw_reading_is_ignored() -> None:
     sc = Scenario(2, temps={1: 45.0})
     sc.step()
     assert sc.room_temp(1) is None
-    assert sc.reason(1) == "Waiting for a sensor reading"
+    assert sc.reason(1) == Reason.NO_READING_YET
     sc.temp(1, 21.9)
     sc.step()
     sc.temp(1, -3.0)

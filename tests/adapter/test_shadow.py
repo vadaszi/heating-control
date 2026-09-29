@@ -26,7 +26,7 @@ async def test_a21_shadow_mode_decides_but_sends_nothing(world: World) -> None:
     # the commanded state is the feedback: the core saw the heat source go ON (D-66)
     assert controller.state.hp_actual_on is True
     assert controller.state.hp_last_on_at is not None
-    assert world.reason(1) == "Calling zone"
+    assert world.reason(1) == "calling_zone"
     assert world.calls == []
     assert world.state(HEAT_SOURCE) == "off"
 
@@ -142,7 +142,7 @@ async def test_going_live_while_shadow_heats_applies_min_off(world: World) -> No
     await world.controller.async_set_control_active(True)
     await world.hass.async_block_till_done()
     assert world.calls == [(valve(1), "on")]  # HEATING, held by min OFF (D-64)
-    assert world.reason(1).startswith("Held by min OFF")
+    assert world.reason(1) == "held_by_minimum_off_time"
     await world.advance(59)
     assert world.state(HEAT_SOURCE) == "off"
     await world.advance(1)

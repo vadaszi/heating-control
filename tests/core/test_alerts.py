@@ -40,7 +40,7 @@ def test_fault_start_and_recovery_are_notified_once() -> None:
     assert started.zone_id == "zone_1"
     assert started.message == (
         "Sensor fault in Zone 1: no valid reading for more than 60 min. "
-        "The zone follows the heat pump and creates no demand."
+        "The zone follows the heat source and creates no demand."
     )
     assert started.data == {"last_valid_at": None}
     sc.advance_to("07:30")

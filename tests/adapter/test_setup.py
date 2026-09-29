@@ -156,7 +156,7 @@ async def test_unknown_entities_are_reported_but_control_runs(
     assert call.kwargs["notification_id"] == f"{DOMAIN}_missing_entities"
     assert world.controller.outputs is not None  # the loop runs anyway
     assert world.mode(2) == "idle"
-    assert world.reason(2) == "Waiting for a sensor reading"
+    assert world.reason(2) == "no_reading_yet"
 
 
 async def test_registered_entity_without_state_is_known(world: World, hass: HomeAssistant) -> None:
