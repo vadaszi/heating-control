@@ -40,7 +40,6 @@ from .const import (
     CONF_PASSWORD,
     CONF_PLAUSIBLE_MAX,
     CONF_PLAUSIBLE_MIN,
-    CONF_POWER_SENSOR,
     CONF_RECONCILE_INTERVAL,
     CONF_SCRIPT_ID,
     CONF_SENSOR,
@@ -115,7 +114,6 @@ ZONE_SCHEMA = vol.Schema(
         vol.Required(CONF_NAME): cv.string,
         vol.Required(CONF_SENSOR): cv.entity_domain("sensor"),
         vol.Required(CONF_VALVE): _valve,
-        vol.Optional(CONF_POWER_SENSOR): cv.entity_domain("sensor"),
         vol.Optional(CONF_SENSOR_OFFSET, default=0.0): vol.Coerce(float),
     }
 )
@@ -246,7 +244,6 @@ class ZoneWiring:
     id: str
     sensor: str
     valve: str | None
-    power_sensor: str | None
 
 
 @dataclass(frozen=True)
@@ -296,13 +293,8 @@ class FloorheatConfig:
 
     @property
     def entity_ids(self) -> tuple[str, ...]:
-        """Every mapped entity (sensors, switches, power sensors)."""
-        ids = [*self.switches]
-        for zone in self.zones:
-            ids.append(zone.sensor)
-            if zone.power_sensor is not None:
-                ids.append(zone.power_sensor)
-        return tuple(dict.fromkeys(ids))
+        """Every mapped entity (sensors and switches)."""
+        return tuple(dict.fromkeys([*self.switches, *(zone.sensor for zone in self.zones)]))
 
 
 def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig:
@@ -350,7 +342,6 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig
                 id=zone[CONF_ID],
                 sensor=zone[CONF_SENSOR],
                 valve=zone[CONF_VALVE],
-                power_sensor=zone.get(CONF_POWER_SENSOR),
             )
             for zone in conf[CONF_ZONES]
         ),

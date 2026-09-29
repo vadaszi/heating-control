@@ -82,7 +82,6 @@ Without a `multizone_floor_heating_manager:` section the entry fails to load wit
 | `name` | string | required | Display name. Names must be unique (case and surrounding spaces are ignored). |
 | `sensor` | `sensor` entity | required | The zone's temperature sensor. It must have a temperature unit (°C, °F or K). |
 | `valve` | `switch` entity or `none` | required | The zone's valve actuator switch, or `none` for a zone without a valve. |
-| `power_sensor` | `sensor` entity | – | Power measurement of the valve channel. Accepted now; used by the actuator fault check in a later release. |
 | `sensor_offset` | number | 0 | Calibration added to every reading (range ±5 °C). |
 
 ### Rules

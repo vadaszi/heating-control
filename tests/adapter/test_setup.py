@@ -48,7 +48,7 @@ async def test_all_valved_warning(world: World, caplog: pytest.LogCaptureFixture
 async def test_optional_keys(world: World) -> None:
     world.setup_entities()
     conf = _zones(
-        zone_conf(1, sensor_offset=-0.4, power_sensor="sensor.valve_1_power"),
+        zone_conf(1, sensor_offset=-0.4),
         zone_conf(2, valve=False),
     )
     conf[DOMAIN].update(
@@ -58,7 +58,6 @@ async def test_optional_keys(world: World) -> None:
     assert await world.setup(conf, live=False)
     config = world.controller.config
     assert config.core.zones[0].sensor_offset == -0.4
-    assert config.zones[0].power_sensor == "sensor.valve_1_power"
     assert (config.core.plausible_min, config.core.plausible_max) == (5, 35)
     assert config.reconcile_interval.total_seconds() == 30
     assert config.core.output_mismatch_alert == 5
@@ -91,6 +90,7 @@ async def test_optional_keys(world: World) -> None:
         (_conf(reconcile_interval=5), "value must be at least 10"),
         (_conf(output_mismatch_alert=0), "value must be at least 1"),
         (_conf(watchdog_ping_url="x"), "'watchdog_ping_url' is an invalid option"),
+        (_zones({**zone_conf(1), "power_sensor": "sensor.p"}), "'power_sensor'"),  # removed
         (_zones({**zone_conf(1), "sensor_offset": 6}), "sensor_offset: 6 °C is out of range"),
         (_conf(plausible_min=40, plausible_max=0), "plausible range"),
     ],

@@ -4,7 +4,7 @@
 > Rules: one work phase at a time, committed directly to `main` (D-83); each phase ends with a summary to the owner, and the next phase starts only when the owner asks. Docs are updated in the same commit(s) as the code. `main` must stay green. The §0 rules apply everywhere.
 
 ## Overview
-| Phase | Name | Release | Where | Main tests |
+| Phase | Name | Feature set / release | Where | Main tests |
 |---|---|---|---|---|
 | P0 | Repository bootstrap | v1 | cloud | CI runs, secret scanning works |
 | P1 | Core models, config validation, persistence format | v1 | cloud | unit tests |
@@ -15,13 +15,13 @@
 | P6 | HA entities & notifications | v1 | cloud | entity/notify tests |
 | P7 | HA heartbeat client | v1 | cloud + local check | S7, mismatch alert, shadow heartbeat |
 | P7b | HA naming conventions, config entry, rename (0.7.5) | v1 | local + owner check | config entry/device/naming tests, live check |
-| P8 | v1 docs, release, shadow run, go-live | **v1 release** (timing: D-128) | local / owner | install test, V2–V6, go-live checklist |
 | P9 | Core schedules & holiday | v1.1 | cloud | A10–A16, A24, A28 + DST/overlap tests |
-| P10 | HA schedules, holiday, dashboard | **v1.1 release** | cloud | service/form-entity tests, dashboard check |
-| P11 | Core failsafe & maintenance features | v1.2 | cloud | A19, A20 (exercise), actuator, long run, overshoot |
-| P12 | Heat source failsafe script, watchdog ping, v1.2 release | **v1.2 release** | local + cloud | JS S2, S3, S5; bench; ping tests |
+| P10 | HA schedules, holiday, dashboard | v1.1 | cloud | service/form-entity tests, dashboard check |
+| P11 | Core failsafe & maintenance features | v1.2 | cloud | A19, A20 (exercise), long run, overshoot |
+| P12 | Heat source failsafe script, watchdog ping | v1.2 | local + cloud | JS S2, S3, S5; bench; ping tests |
+| P8 | Documentation and release preparation (runs last, D-129) | **1.0.0 release** (v1 + v1.1 + v1.2) | local | docs complete, install test |
 
-P4 can run in parallel with P5–P6 because it only depends on the protocol it defines. Everything else runs in order.
+P4 can run in parallel with P5–P6 because it only depends on the protocol it defines. Everything else runs in order. **Order after P7b (owner, 2026-09-29, D-129):** P9 → P10 → P11 → P12 → P8 → release 1.0.0. There is no release before 1.0.0 (D-128) and no go-live step: the owner runs the integration live since P7b.
 
 ## Test strategy (all phases)
 - **Core (`core/`)**: pytest, no HA imports. `now` is always passed in. Aware datetimes and a `zoneinfo` time zone are passed in, never read. Branch coverage ≥ 95 % is enforced in CI.
@@ -52,7 +52,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - `core/io.py`: `Inputs` (temps + last_reported, actual outputs, params, season, control_active) and `Outputs` / `Event` types.
 - `core/units.py`: °C conversion helpers for the adapter (D-77).
 - **Tests:** validation edge cases (every range boundary, including 29/30 min rejected/accepted); state serialisation round-trip (hypothesis); unknown schema version handled.
-- Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87; D-88/D-89 settled for P2/P3.)*
+- Parameters without a §4 range (FailsafeWindow, ValveExercise weekday/time) are added in P11 with their features. Alerts are derived from the state fields rather than stored separately. *(Done: 2026-09-27; decisions D-84…D-87; D-88/D-89 settled for P2/P3.)*
 
 ## P2 — Core zone logic, sensor validity & HP protection (`step`)
 - `core/engine.py`: `step(config, state, inputs, now) -> (outputs, new_state, events)`.
@@ -135,18 +135,7 @@ Inserted before P8 on 2026-09-29 (owner): entity ids must be settled before the 
 - Version 0.7.5 in `manifest.json`; no tag, no release (D-128).
 - **Tests:** one entry from the YAML (also after a restart), the UI step aborts, devices and generated entity ids, *config* categories, reload and unload leave nothing running, removing the entry keeps the settings, a missing YAML section fails the entry without deleting anything, a removed zone loses its device, every reason key and state has a text; all existing adapter tests on the new ids.
 - **Owner (live):** switch over to 0.7.5 (YAML key, HACS, delete the old folder, re-enter settings, areas, dashboards) and check the names in the real UI. Touch-ups go out as 0.7.6 and up.
-- *(Done: 2026-09-29, commits f0c1eb1, 84405fa, c007382, cc5ee78; 0.7.5. New: `config_flow.py`, `runtime.py`, `translations/en.json`, `icons.json`, `tests/adapter/test_config_entry.py`; `docs/configuration.md` has the devices, the new entity ids, the reason texts and "Upgrading from floorheat". hassfest needs `config.step` in the translations although the UI step only aborts. Open: the owner's live check.)*
-
-## P8 — v1 docs, release, shadow run, go-live
-- Docs per §5.8 for all of v1: README (logic in plain words, limitations, safety, hydraulic prerequisite D-80), installation (HACS + manual), configuration reference, entities, Shelly guide, troubleshooting, shadow mode and go-live checklist, CHANGELOG. `examples/configuration.example.yaml`.
-- Tag `v1.0.0` and publish a GitHub release; verify installation through HACS. **Owner (2026-09-29, D-128):** no release before the owner says so; the first release is 1.0.0 and may also contain P9/P10. Until then, versions are bumped in `manifest.json` only.
-- **Owner (local):** install on the live HA in shadow mode; verify **V6** (`last_reported` moves for BTHome), **V4**, **V5** (wiring), **V1** (actuator power, needed later); run shadow mode for 1–2 weeks next to the Computherm and compare decisions (entity history). Then follow the go-live checklist: remove the Computherm, wire the Shelly 1, set Control active ON.
-- **Carried over:**
-  - *`iot_class`* (review F): currently `local_polling`. Re-check before the release (the integration polls the Shellys locally for the heartbeat and pings healthchecks.io; `calculated` would claim no own communication).
-  - *Going live after shadow mode* (D-112): put into the go-live checklist that the real switch states count from then on, so HpMinOffTime may apply before the first start; the zones that need heat open their valves meanwhile.
-  - *Manual control* (D-119, owner 2026-09-29): a short "Manual control" section in the user docs: Control active OFF first, then switch the relays directly; leave the watchdog scripts running; Control active ON returns to automatic (min OFF may apply, D-112). No code.
-  - *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime after the first start. Accepted by the owner (2026-09-27); handled by the owner during the test phase, no code change.
-- **Done when:** v1 is released and running live, with no open critical issues. **"Live" (owner, 2026-09-29)** means the owner's current setup: Control active ON, floorheat controlling the real 2PMs (actuators not yet connected) and the heat source stand-in. Connecting the real valves, the Shelly 1 and removing the Computherm are the owner's own later steps, outside the phase plan; the remaining owner checks (V1, V4, V5, Shelly 1 tests) stay open in design.md §8 and do not block P9.
+- *(Done: 2026-09-29, commits f0c1eb1, 84405fa, c007382, cc5ee78; 0.7.5. New: `config_flow.py`, `runtime.py`, `translations/en.json`, `icons.json`, `tests/adapter/test_config_entry.py`; `docs/configuration.md` has the devices, the new entity ids, the reason texts and "Upgrading from floorheat". hassfest needs `config.step` in the translations although the UI step only aborts. The owner runs 0.7.5 live and kept the wording as is.)*
 
 ## P9 — Core schedules & holiday (v1.1)
 - **Carried over (from P6):** the number entities for ManualResumeDelta and HolidayTemp already exist (D-114); use their values from `GlobalParams`. The zone state sensor already lists `forced`.
@@ -154,37 +143,48 @@ Inserted before P8 on 2026-09-29 (owner): entity ids must be settled before the 
 - Precedence (D-16): holiday > manual > auto > base. FORCED state with the ManualMaxTemp cap and resume (D-38). Calling zone in a manually started cycle (D-44). SENSOR_FAULT beats FORCED (D-70). Holiday (D-59). A raised SetPoint at a schedule start or holiday end → immediate HEATING (D-26).
 - **Tests:** A10–A16, A24, A28; DST spring/autumn for 22:00–02:00 and windows inside the skipped/repeated hour; overlap detection against a brute-force minute scan (hypothesis); simulation with a week of schedules keeps the P2 invariants.
 
-## P10 — HA schedules, holiday, dashboard (v1.1 release)
+## P10 — HA schedules, holiday, dashboard (v1.1)
 - **Owner decision (2026-09-29):** the example dashboard gets a built-in Markdown card that explains every zone state and every reason text in plain words (what it means, why it happens). It is the only place for these explanations: no explanation attribute, no hover text (not possible without custom frontend code). Users read it while learning and may delete the card later.
 - **Carried over (from P6):** the mode sensor shows `holiday` (its options already include it); update the "Used from" column in `docs/configuration.md#entities`.
 - Services add/delete/list with validation errors. The schedule list is a sensor attribute. Schedules are persisted.
 - Form entities (D-74): selects, date/time, weekdays, temperature, Add/Delete buttons; errors appear as a persistent notification.
 - Holiday switch + end datetime + HolidayTemp (D-79). The mode sensor shows holiday.
-- `examples/dashboard.example.yaml` (built-in cards only, §5.7), settings page, screenshots; docs and CHANGELOG. Tag `v1.1.0`.
+- `examples/dashboard.example.yaml` (built-in cards only, §5.7), settings page, screenshots; docs.
 - **Tests:** service validation (the A12 overlap is rejected and nothing stored); a form-entity add/delete round trip; schedules survive a restart; holiday on/off through entities; the dashboard YAML loads (lovelace config parse). Owner: dashboard check on the live HA.
 
 ## P11 — Core failsafe & maintenance features (v1.2)
 - **Carried over (from P6):** the number entities for FailsafeTrigger, ValveExercise duration and LongRunAlarm already exist (D-114); wire them into the features. The mode sensor shows `failsafe`. New alert kinds go into `active_alerts` and `notifications.TITLES`.
 - Failsafe case 1: no valid sensor for > FailsafeTrigger → all valves open + HP ON during FailsafeWindow, heating season only; exits on the first valid reading; notifications.
 - Valve exercise: outside the season, Monday 08:00, valves one after another for 15 min each, HP off; aborted if the season turns ON.
-- Actuator fault check (only if **V1** is positive, otherwise disabled with a doc note), long run alarm at 12 h, overshoot logging (event + attribute, max 6 h).
-- Add the parameters deferred from P1 to `GlobalParams`: FailsafeWindow, ValveExercise weekday/time, ActuatorFaultThreshold.
-- **Tests:** A19, A20 (exercise part); an actuator fault after 10 min < 0.5 W; the long run alarm fires once; overshoot peak tracking; simulation: all sensors die for 30 h and the failsafe schedule is correct.
+- Long run alarm at 12 h, overshoot logging (event + attribute, max 6 h).
+- Add the parameters deferred from P1 to `GlobalParams`: FailsafeWindow, ValveExercise weekday/time.
+- **Tests:** A19, A20 (exercise part); the long run alarm fires once; overshoot peak tracking; simulation: all sensors die for 30 h and the failsafe schedule is correct.
 
-## P12 — Heat source failsafe script, watchdog ping, v1.2 release
+## P12 — Heat source failsafe script, watchdog ping (v1.2)
 - `heat_source_watchdog.js`: after FailsafeTrigger, the daily window by NTP time; with no valid time, the uptime cycle (D-72); only with the season flag ON.
 - **Carried over (from P4):**
   - Add the `failsafe` state in `computeState()` and its output in `targetOutput()` (the hooks exist); new CONFIG keys and `params` for FailsafeTrigger, the window and the uptime cycle (additive, protocol stays `v: 1`, D-100).
   - Season flag: heat only with `true`; never set (`null`) counts as OFF (D-105).
   - The time comes from `Shelly.getComponentStatus("sys")` (`unixtime`/`time` are `null` without NTP); decide how a clock that becomes valid during the uptime cycle is handled (spec question for P12).
   - Extend the mock with a settable clock (`sys.unixtime`, `sys.time`) for S2, S3, S5.
-- HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); failsafe/exercise/actuator/long-run entities and notifications wired up; docs for healthchecks setup (period 5 min, grace 30 min, D-62).
-- **Tests:** JS with simulated time: S2, S3 (reboot, no clock), S5 (season OFF never heats); adapter: the ping is sent on schedule and a failure never blocks. Bench (owner): S2, S3, S5 with shortened timeouts; stop HA for real and check that the healthchecks alert arrives. Tag `v1.2.0`.
+- HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); failsafe/exercise/long-run entities and notifications wired up; docs for healthchecks setup (period 5 min, grace 30 min, D-62).
+- **Tests:** JS with simulated time: S2, S3 (reboot, no clock), S5 (season OFF never heats); adapter: the ping is sent on schedule and a failure never blocks. Bench (owner): S2, S3, S5 with shortened timeouts; stop HA for real and check that the healthchecks alert arrives.
+- **Carried over (Gemini P7/P7b review, finding 1; owner 2026-09-29):** a season change while a heartbeat to the heat source Shelly is in flight is skipped by `_send()` (`_busy`) and only sent after the next reconcile run (≤ 1 ReconcileInterval later, not 5 min as the review says). Send it once the running call finishes (e.g. a pending-season flag checked in the task's `finally`). Test: season flipped during a slow heartbeat reaches the Shelly right after it. The review's finding 3 (a 3 min floor for the D-122 liveness limit) was rejected by the owner; D-122 stays.
+
+## P8 — Documentation and release preparation (runs last, D-129)
+Runs after P12; then the owner releases **1.0.0** (v1 + v1.1 + v1.2). No go-live step: the owner runs the integration live since P7b. The reference docs (`configuration.md`, `getting-started.md`, `shelly-scripts.md`) grow with each phase anyway; P8 adds and finishes the overview material, written once from the finished state.
+- Docs per §5.8: README (what it does, the logic in plain words, limitations, safety notes, hydraulic prerequisite D-80), installation (HACS + manual), a check of the configuration reference and the Shelly guide, troubleshooting (sensor faults, heartbeat, failsafe, logs), CHANGELOG, `examples/configuration.example.yaml`.
+- *Shadow mode to live* (for other users; the docs must be correct): switching Control active ON; the real switch states count from then on, so HpMinOffTime may apply before the first start while the zones that need heat open their valves (D-112).
+- *Manual control* (D-119): Control active OFF first, then switch the relays directly; leave the watchdog scripts running; Control active ON returns to automatic (min OFF may apply, D-112).
+- *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime; document it as expected behaviour.
+- `iot_class` stays `local_polling` (owner, 2026-09-29; the heartbeat polls the Shellys locally).
+- Version 1.0.0, tag `v1.0.0` and a GitHub release when the owner says so; verify the installation through HACS.
+- **Done when:** the docs describe the finished integration and 1.0.0 is released.
 
 ## Owner checkpoints (hardware)
 | Item | Phase |
 |---|---|
 | V2 heartbeat endpoint on both device types | P4 |
 | ~~V3 address from the device registry~~ (dropped, D-120) | – |
-| V4, V5, V6 | P8 |
-| V1 actuator power measurable | P8 (result used in P11) |
+| V4 (secondary pump during hot water), V5 (Shelly 1 wiring) | owner, when convenient; not blocking |
+| V6 | accepted (2026-09-29) |

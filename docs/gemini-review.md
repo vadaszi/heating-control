@@ -11,7 +11,8 @@
 
 ## Quick Navigation
 
-- [⭐ **Latest Review: 2026-09-27 (Phases P5 & P6 / Commit `7f58b1a`)**](#review-session-2026-09-27--phases-p5--p6-verification-commit-7f58b1a)
+- [⭐ **Latest Review: 2026-09-29 (Phases P7 & P7b / Commit `e82cdb6`)**](#review-session-2026-09-29--phases-p7--p7b-verification-commit-e82cdb6)
+- [Review Session: 2026-09-27 (Phases P5 & P6 / Commit `7f58b1a`)](#review-session-2026-09-27--phases-p5--p6-verification-commit-7f58b1a)
 - [Review Session: 2026-09-27 (Phase P4 / Commit `44098ab`)](#review-session-2026-09-27--phase-p4-verification-commit-44098ab)
 - [Review Session: 2026-09-27 (Phase P3 / Commit `c510a38`)](#review-session-2026-09-27--phase-p3-verification-commit-c510a38)
 - [Review History & Session Index](#review-history--session-index)
@@ -22,10 +23,160 @@
 
 | Date | Phase / Milestone | Commit | Status / Verdict | Link |
 |---|---|---|---|---|
+| **2026-09-29** | Phases P7 & P7b (Shelly heartbeat client, config entry, integration rename, reason keys) | `e82cdb6` | ✅ P7-P7b Complete & Verified (483 Python tests, 94 JS tests, 100% core coverage, 99.2% overall) | [Jump to session](#review-session-2026-09-29--phases-p7--p7b-verification-commit-e82cdb6) |
 | **2026-09-27** | Phases P5 & P6 (HA adapter, entities, notifications, shadow mode, storage) | `7f58b1a` | ✅ P5-P6 Complete & Verified (411 Python tests, 94 JS tests, 100% core coverage) | [Jump to session](#review-session-2026-09-27--phases-p5--p6-verification-commit-7f58b1a) |
 | **2026-09-27** | Phase P4 (Shelly watchdog scripts v1, heartbeat protocol) | `44098ab` | ✅ P4 Complete & Verified (305 Python tests, 94 JS tests, AST subset enforced) | [Jump to session](#review-session-2026-09-27--phase-p4-verification-commit-44098ab) |
 | **2026-09-27** | Phase P3 (Season OFF, alerts, mismatch counter, v1 core complete) | `c510a38` | ✅ P3 Complete & Verified (305 tests, 100% core coverage, v1 core finished) | [Jump to session](#review-session-2026-09-27--phase-p3-verification-commit-c510a38) |
 | **2026-09-27** | Phase P2 (Core zone logic, sensor validity, HP protection) | `b0376c2` | ✅ P2 Complete & Verified (249 tests, 100% core coverage, 6 observations noted) | [Jump to session](#review-session-2026-09-27--phase-p2-verification-commit-b0376c2) |
+
+---
+
+## Review Session: 2026-09-29 — Phases P7 & P7b Verification (Commit `e82cdb6`)
+
+- **Scope:** Shelly watchdog heartbeat client (`heartbeat.py`, `core/heartbeat.py`), schema validation for `shellys` & `no_watchdog` (`schema.py`), config entry / flow (`config_flow.py`, `runtime.py`), integration rename to `multizone_floor_heating_manager`, HA device and entity naming (`entity.py`, `climate.py`, `sensor.py`, `binary_sensor.py`, `number.py`, `switch.py`, `time.py`), translations (`translations/en.json`, `icons.json`), reason enum keys & `until` timer attributes (`core/io.py`, `core/engine.py`), checklists & trial documentation (`docs/bench-checklist.md`, `docs/trial-checklist.md`), and comprehensive test suites (`tests/adapter/test_config_entry.py`, `tests/adapter/test_heartbeat.py`, `tests/core/test_heartbeat.py`).
+- **Target Specification:** Spec rev. 1.2 (`docs/design.md`), Implementation Plan Phases P7 & P7b (`docs/implementation-plan.md`), decisions D-118 through D-128.
+- **Automated Verification:**
+  - `pytest --cov`: **483 passed** in 24.76s (+72 tests since last review).
+  - Core branch coverage: **100.00%** (845 stmts, 290 branches, 0 missed; minimum required: 95%).
+  - Total project test coverage: **99.23%** (2081 stmts, 506 branches across all 26 adapter & core modules).
+  - `npm test`: **94 passed** in 172ms across 16 test suites (`tests/shelly/**/*.test.mjs`).
+  - `mypy`: **0 errors** across 52 source files (strict typing strictly maintained on `core/*`).
+  - `ruff`: **Clean** across all 54 files (zero formatting or linter warnings).
+  - Architecture purity: Pure core isolation maintained; 0 Home Assistant imports, 0 system clock calls in `core/` (enforced by AST tests in `tests/core/test_core_purity.py`).
+
+### 1. Executive Summary
+Phases P7 and P7b represent a major milestone, bringing the integration to complete feature-readiness for the v1 milestone. The system now features:
+1. An asynchronous, fault-tolerant Shelly watchdog heartbeat client that continuously exercises hardware failsafes, checks script parameters, detects device reboots and timed-out watchdogs, and implements strict integration liveness protection.
+2. An elegant architectural refinement of the Home Assistant adapter layer: clean domain rename to `multizone_floor_heating_manager`, Single Config Entry with YAML as the declarative source of truth, device registry integration (per-zone service devices + global service device), and compliance with modern HA entity and translation guidelines.
+3. Elimination of high-churn countdown state strings in favor of static `Reason` enum keys coupled with ISO timestamp `until` attributes, preventing database bloat while improving front-end fidelity.
+4. Validation against physical Shelly Plus 2PM hardware on the bench (confirming power loss behavior, S1/S4/S6 script execution, and HA control) and real-world shadow-mode trial validation (V6 sensor staleness check accepted by owner).
+
+### 2. Verification of Phase P7 Deliverables (Shelly Heartbeat Client)
+
+1. **Pure Core Heartbeat Logic (`core/heartbeat.py`, D-61, D-73, D-121):**
+   - Implements `parse_status()` validating protocol v1, role (`valve` vs `heat_source`), state, heartbeat age, uptime, and script parameters. Defensive parsing guarantees malformed payloads, non-integer numbers, or unsupported protocol versions raise descriptive `StatusError` exceptions. Unknown extra fields are ignored for forwards compatibility (D-100).
+   - Parameter discrepancy checking via `param_differences()`: compares `heartbeat_timeout_s` against expected config (default 18000s / 5h) and `check_interval_s` if configured.
+   - Immutable state tracking via `HeartbeatTracking`: tracks consecutive failures (`fail_count`), alerted flags (`alerted`, `params_alerted`), and `FailureKind` (`unreachable`, `script_not_running`, `auth_failed`, `bad_answer`).
+   - Pure state transition functions `record_failure()` and `record_success()` generate appropriate domain events (`WATCHDOG_FAILED`, `WATCHDOG_RECOVERED`, `WATCHDOG_PARAMS_MISMATCH`). Parameter mismatches are alerted once and clear silently on alignment.
+
+2. **Asynchronous Adapter Client (`heartbeat.py`, D-56, D-120..D-122):**
+   - Periodic dispatch loop: Executes every `heartbeat_interval` (default 5 min), running consistently in live and shadow modes (D-56).
+   - Season change immediate push: When `heating_season` changes via UI, a heartbeat `POST` (`{"v": 1, "season": bool}`) is dispatched immediately to the heat source Shelly, ensuring device-level season awareness without waiting for the periodic timer.
+   - HTTP Digest Authentication: Leverages `aiohttp.DigestAuthMiddleware` configured per Shelly with password, reusing device authentication nonces and avoiding repeated 401 round trips.
+   - Diagnostic `GET` Status Probing: On HA startup and immediately following any failed call, reads device status via `GET` first (without resetting the watchdog heartbeat age). This allows the client to detect and log if a watchdog had timed out (with exact timeout duration) or if the device rebooted (uptime reset), without polluting user notifications.
+   - Integration Liveness Guard (`_alive()`, D-122): Dispatches heartbeats only if the reconcile loop has completed a run within `HEARTBEAT_LIVENESS_TICKS * reconcile_interval` (3 ticks = 3 min). If the integration reconcile loop crashes or freezes, heartbeats stop automatically, deliberately triggering the hardware Shelly watchdog failsafe (opening valves, cutting heat request).
+   - Serialization & Task Lifecycle: Uses a `_busy` set to prevent concurrent HTTP requests to the same physical device, tracks all spawned tasks in `_tasks`, and cancels them cleanly on `async_stop()`.
+
+3. **YAML Schema & Watchdog Mapping (`schema.py`, D-118, D-120):**
+   - Strict mapping validation: Every mapped switch must either belong to exactly one listed Shelly under `shellys` or be explicitly enumerated under `no_watchdog`.
+   - Hardware separation enforcement: Verifies that the heat source switch is housed on a dedicated Shelly containing zero valve switches.
+   - Rejects duplicate host/script_id combinations, duplicate Shelly names, and configurations where `heartbeat_interval >= heartbeat_timeout`.
+   - Explicit warnings in documentation that switches in `no_watchdog` lack device-level hardware failsafes if Home Assistant halts.
+
+4. **Alerts & Storage Integration (`controller.py`, `storage.py`):**
+   - Active watchdog alerts (`WATCHDOG_FAILED`, `WATCHDOG_PARAMS_MISMATCH`) are aggregated dynamically into `controller.alerts` and reflected in `sensor.floor_heating_alerts`.
+   - `HeartbeatTracking` state per Shelly is persisted across HA restarts in `.storage/multizone_floor_heating_manager`, preventing duplicate alert spam or missed recovery notifications across reboots.
+
+### 3. Verification of Phase P7b Deliverables (Refactoring & HA Alignment)
+
+1. **Domain & Brand Renaming (D-127):**
+   - Domain transitioned cleanly from `floorheat` to `multizone_floor_heating_manager`.
+   - Custom component path: `custom_components/multizone_floor_heating_manager/`.
+   - Shelly script KVS key updated to `multizone_floor_heating_manager_season`.
+   - Storage file renamed to `.storage/multizone_floor_heating_manager`.
+   - Comprehensive upgrade guide added to `docs/configuration.md`.
+   - Version set to `0.7.5` in `manifest.json`; strict policy of no Git tags or releases prior to `1.0.0` (D-128).
+
+2. **Config Flow & Single Config Entry Architecture (D-124):**
+   - `FloorheatConfigFlow` in `config_flow.py` supports `SOURCE_IMPORT` from YAML and cleanly aborts UI additions with `yaml_only` and `single_instance_allowed`.
+   - The config entry holds no secrets or configuration data (data `{}`), keeping YAML as the authoritative source of truth.
+   - Lifecycle management in `__init__.py`:
+     - `async_setup`: Validates YAML and dispatches import flow.
+     - `async_setup_entry`: Loads persistent storage, initializes controller, notifier, and heartbeat client, storing them in `entry.runtime_data` (`FloorheatRuntime`).
+     - Automatic registry cleanup (`_async_remove_stale_devices`): When zones are removed from YAML, their devices and entities are automatically pruned from the Home Assistant device and entity registries.
+     - `async_unload_entry`: Shuts down heartbeat tasks and controller cleanly while preserving user settings in `.storage`.
+
+3. **Home Assistant Device & Entity Naming Conventions (D-125):**
+   - Devices created as `DeviceEntryType.SERVICE`:
+     - Per-zone service devices: `"<zone name> floor heating"` (`identifiers={(DOMAIN, zone.id)}`).
+     - Global service device: `"Floor heating"` (`identifiers={(DOMAIN, GLOBAL_DEVICE)}`).
+   - Adheres strictly to `has_entity_name = True`: entity display names contain only the property name ("Reason", "State", "Hysteresis", etc.), allowing HA to synthesize clean entity names and IDs.
+   - Climate entity uses `_attr_name = None` to inherit the zone device name directly.
+   - All configuration parameters assigned to `EntityCategory.CONFIG`, segregating internal tuning knobs from default user dashboards.
+
+4. **Reason Keys & Timer Attributes (D-123, D-126):**
+   - Core `step()` now emits a typed `Reason` enum in `core/io.py` (`idle`, `waiting`, `calling_zone`, `heating`, `held_by_minimum_off_time`, `spreading_heat`, `too_warm_for_spreading`, `heat_source_unavailable`, `no_reading_yet`, `sensor_fault`, `season_off`, `sensor_fault_season_off`).
+   - The reason sensor (`ZoneReasonSensor`) native state is a static enum key, eliminating 60-second state write churn and database recorder bloat.
+   - When active timers run (`waiting`, `held_by_minimum_off_time`, `spreading_heat`), the exact timer expiration is exposed via an aware ISO timestamp in the `until` extra state attribute.
+   - `HeatRequestSensor` similarly omits `on_since` and `on_duration` attributes when the heat source is not actively running (D-123).
+   - Localized strings and descriptions provided in `translations/en.json` conforming to HA hassfest standards.
+
+### 4. Real-World Bench & Trial Results
+
+1. **Shelly Plus 2PM Bench Verification (`docs/bench-checklist.md`):**
+   - Hardware: Two Shelly Plus 2PM (Gen2, FW 1.7.5).
+   - Tests S1 (watchdog timeout -> channels ON), S4 (heartbeat returns -> channels stay unchanged), S6 (GET/POST protocol), and V2 passed.
+   - Power loss vs software reboot: Owner verified that physical power loss restarts channels to power-on default OFF, whereas a software reboot retains relay state. This confirms the validity of the D-95 power-loss recovery model.
+   - Reconcile loop control: Floorheat driving real relays verified across 12 scenarios. Unplugging a 2PM generated expected output mismatch alerts and clean recovery.
+
+2. **Explanation for Owner's Open Question on Test A4 ("Joining zone became calling zone"):**
+   - In `docs/bench-checklist.md` (Test A4), the owner noted: *"Joined at once. Open question: the joining zone became the calling zone; to be explained."*
+   - **Root Cause Analysis:** In that scenario, the heat source was kept ON either by heat pump minimum on time (`spreading_heat`) after the initial zone was satisfied, or by manual stand-in override. Under those conditions, no zone was actively demanding heat, so `state.calling_zone` was `None`. When the second zone (office) was lowered below `StartTemp`, rule 3 allowed it to heat immediately without waiting. The engine's cycle logic executed:
+     ```python
+     elif source.available and calling is None:
+         calling = _choose_calling_zone(zones, zone_states)
+     ```
+     Because `calling` was `None`, the engine legitimately elected the newly joined zone as the `calling_zone` for the remaining cycle. This is intended behavior under spec §3.3 / D-92.
+
+3. **Sensor Staleness Validation (`docs/trial-checklist.md`, V6):**
+   - Live trial with BTHome/pvvx Bluetooth thermometers over extended periods showed continuous `last_reported` updates without false `sensor_fault` triggers.
+   - Spec decision V6 accepted by the owner as verified.
+
+### 5. Architectural Findings, Risks & Problems
+
+1. **Concurrency Race Condition: Season Change Skipped During In-Flight Heartbeat (`heartbeat.py`):**
+   - **The Bug:** In `_send()`, if a heartbeat call to the heat source Shelly is currently in-flight (network roundtrip ~0.5–2s), `shelly.key in self._busy` is `True`. If the user flips the `heating_season` switch during this exact window:
+     - `_on_update()` fires and calls `_send([heat_source_shelly])`.
+     - In `_send()`, the loop encounters `if shelly.key in self._busy: continue`.
+     - The call is skipped, and `self._season_requested` is **never updated**.
+     - No subsequent task is scheduled when the in-flight call finishes.
+     - The heat source Shelly remains on the old season until the next periodic tick (up to 5 minutes later) or the next sensor state change.
+   - **Recommendation:** Introduce a `_season_dirty` flag. If a season update occurs while `shelly.key in self._busy`, mark the flag dirty and immediately dispatch an updated heartbeat in the task's `finally:` block once the busy slot clears.
+
+2. **Hardware Risk: Shelly Digest Authentication Unverified on Real Hardware (Test V2):**
+   - **The Problem:** The owner's checklist explicitly states: *"The 401/200 part was not tested because authentication is off."*
+   - In tests (`tests/adapter/test_heartbeat.py`), `DigestAuthMiddleware` is verified via a mock client. However, Shelly Gen2/Gen3 devices enforce specific digest auth constraints (`qop="auth"`, nonce recycling, MD5/SHA-256).
+   - **Risk:** If an owner enables device passwords and configures `password: !secret ...` in YAML, real Shelly firmware may reject requests if subtle header incompatibilities exist.
+   - **Recommendation:** Before relying on passwords in production, physically run Test V2 on hardware with authentication enabled.
+
+3. **Liveness Guard Sensitivity on Short Reconcile Intervals (`heartbeat.py`):**
+   - **The Problem:** In `_alive()`, the timeout threshold is `HEARTBEAT_LIVENESS_TICKS * self._config.reconcile_interval` (3 ticks).
+   - If a user configures `reconcile_interval: 10` (the minimum permitted in schema), the threshold is only 30 seconds.
+   - Any transient event loop contention in Home Assistant (e.g. SQLite database migration, automated backup, or heavy startup) exceeding 30s will trip `_alive() = False`, logging false warnings and halting heartbeats.
+   - **Recommendation:** Impose a sensible minimum floor on the liveness limit: `max(timedelta(minutes=3), HEARTBEAT_LIVENESS_TICKS * self._config.reconcile_interval)`.
+
+4. **Storage Separation on Entry Removal (`__init__.py`, `storage.py`):**
+   - Removing the config entry via the HA UI cleans up devices and entities from the HA entity registry while leaving `.storage/multizone_floor_heating_manager` intact.
+   - This matches decision D-124 and allows users or installers to rename zones in YAML or recreate entries without losing calibrated setpoints, hysteresis values, or historical operating states.
+
+### 6. Readiness Checklist & Action Items for Phase P8 (v1 Release & Go-Live)
+- [x] Control core v1 feature set complete (`core/`).
+- [x] Shelly watchdog scripts & test harness complete (`shelly_scripts/`, `tests/shelly/`).
+- [x] HA adapter: schema, reconcile loop, outputs, storage complete (P5).
+- [x] HA entities, notifications, and user guides complete (P6).
+- [x] HA heartbeat client, liveness guard, and watchdog alert tracking complete (P7).
+- [x] Config entry, HA naming conventions, and reason keys complete (P7b).
+- [x] Bench tests with Shelly Plus 2PM hardware passed (unauthenticated).
+- [ ] **Action Items before Live Relays:**
+  - [ ] **Fix season update race condition in `heartbeat.py`** via `_season_dirty` retry on task completion.
+  - [ ] **Floor liveness guard limit** to `max(timedelta(minutes=3), ...)` to protect against short `reconcile_interval` settings.
+  - [ ] **Physical verification of V2 (Digest Auth)** on real Shelly hardware if password protection is to be used.
+- [ ] **Phase P8 Deliverables (v1 Release, Go-Live Checklist, Shadow Run):**
+  - [ ] Update user documentation for final v1 go-live instructions.
+  - [ ] Go-live checklist for owner transition from Computherm to live Shelly control.
+  - [ ] 1-2 week shadow run evaluation against existing controller.
+  - [ ] Verification of V1 (actuator holding power), V4 (secondary pump interlock), and V5 (heat pump contact response).
+  - [ ] Tagging `v1.0.0` when approved by owner (D-128).
 
 ---
 

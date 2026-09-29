@@ -2,7 +2,7 @@
 
 > **Status: Spec rev. 1.2 — ground truth for implementation** (2026-09-27; rev. 1.1 of 2026-09-25 reviewed with the owner, see D-64…D-82)
 > Phases: (1) functional spec ✅ → (2) technical design ✅ → (3) implementation with Claude Code
-> "Spec rev." numbers this document; "v1 / v1.1 / v1.2" are the release phases in §5.10.
+> "Spec rev." numbers this document; "v1 / v1.1 / v1.2" are the feature sets in §5.10, all released together as 1.0.0 (D-129).
 > Integration: **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (D-127; the working name until P7b was `floorheat`, which older entries of this document still use)
 
 ---
@@ -287,7 +287,6 @@ Unvalved zones compute state normally; only their output is a no-op.
 | Sensor fault started / daily 08:00 reminder / sensor recovered | push + email |
 | Failsafe entered / left (case 1) | push + email |
 | Heat pump request ON > `LongRunAlarm` | push + email |
-| Actuator fault (§3.9) | push + email |
 | Shelly unreachable / watchdog script not running (§5.4) + recovery | push + email |
 | Output not following command (§3.9) + recovery | push + email |
 | Shelly script parameters differ from HA's expected values (§5.4) | push + email |
@@ -332,8 +331,6 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
 - **Adapter storage (D-106):** one `helpers.storage.Store` file holds the core state, the UI settings (parameters, heating season, Control active) and the switches still owed the final OFF (D-110). The adapter owns the settings; the entities only show and change them. Unusable settings fall back to their defaults with a warning. Saves are delayed and coalesced (at most one write per 30 s) and flushed when HA stops.
 
 ### 3.9 Monitoring
-- **Actuator fault (D-41):** notify if a valve channel is ON but measures < 0.5 W for 10 min. This requires a power sensor mapped to the valve (optional per zone).
-  - **To verify on the bench (§8):** can the Shelly Plus 2PM measure the actuator's small holding power at all? If not, this check is not used.
 - **Output not following command (D-67):** notify if an output's actual state differs from the desired state, or the entity is unavailable, for `OutputMismatchAlert` consecutive reconcile intervals (default 3). Notify again on recovery. The reconcile loop keeps retrying with backoff instead of sending a command every interval. Not active in shadow mode.
   - **Counting (D-99):** the core counts reconcile ticks, not steps. The adapter marks the run started by the ReconcileInterval timer (`reconcile_tick`); runs on sensor updates or heat source changes do not count, and a repeated step at the same time counts once. Per output (heat source, each valve), on each tick:
     - unavailable → counts;
@@ -385,7 +382,6 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | OutputMismatchAlert | global | 3 consecutive reconcile intervals | | *config* (D-67) |
 | WatchdogPingInterval | global | 5 min | | *config*; ping URL is a secret |
 | ValveExercise | global | Mon 08:00, 15 min/valve | weekday, time, 5–30 min / 5 | |
-| ActuatorFaultThreshold | global | < 0.5 W for 10 min | | |
 | LongRunAlarm | global | 12 h | 2–48 h / 1 | |
 | Heating season | global | ON | | switch |
 | Control active (shadow mode) | global | OFF on first install | | switch, §5.5 |
@@ -521,14 +517,14 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - **Going live (D-112):** from then on the real switch states count. If shadow mode had the heat source ON and the real switch is OFF, that is a stop, so HpMinOffTime applies before the first real start. Accepted; noted in the go-live checklist.
 - **Commanded feedback (D-109):** the commanded state is the last desired state. When it changes, `step` runs again at once with the same `now` (not a new reconcile tick), as if the switches had followed. After a restart the heat source starts from the stored last known state, the valves from OFF.
 - **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids. A new Template switch is `unknown` until it is switched once, and `unknown` counts as unavailable (no commands, D-66), so each stand-in is switched OFF once after it is created (user guide: [`getting-started.md`](getting-started.md)). Stand-ins are listed in `no_watchdog` (D-118), so they get no heartbeat.
-- It is OFF on first install. The owner runs it for 1–2 weeks next to the existing controller, then switches to live.
+- It is OFF on first install. The owner ran it next to the existing controller before switching to live (live since P7b, D-129).
 - **Manual control (D-119):** there is no separate manual mode. For pure manual control (e.g. heating one room outside the automatic logic, or heat pump maintenance) the user switches Control active OFF first, then switches the relays directly (Shelly app or HA). the integration sends nothing after the final OFF (D-110); no min ON/OFF, cap or other protection applies. The watchdog scripts keep running: shadow mode keeps sending heartbeats (D-56), so they act only if HA is down for HeartbeatTimeout. Switching Control active ON returns to automatic control from the real switch states (D-112). The user docs describe this.
 
 ### 5.6 Configuration (D-52, D-55)
 - **YAML configuration** is used for setup, also for the public release (at least initially). A UI setup (config flow) is an optional later improvement.
 - **Config entry from YAML (D-124):** at startup the validated YAML is imported into a single config entry, so the integration appears under *Devices & services* and can create devices (D-125). The YAML stays the only configuration: the entry holds no data (the parsed YAML stays in memory, so no password is copied into HA's entry storage), and the UI's "Add integration" step only points to the YAML. The entry follows the YAML at every start; a zone removed from the YAML loses its device. Without a YAML section the entry fails to load with a clear error, and nothing is deleted. Removing the entry keeps the stored settings and state (the `Store` file), so the entry can be removed to let HA regenerate entity ids after a rename.
 - **YAML holds only the wiring:**
-  - zones: stable `id` (D-76; key for persisted state, schedules and entity unique IDs, must never change), display `name`, sensor entity, valve switch entity or `none`, optional power sensor entity, sensor offset;
+  - zones: stable `id` (D-76; key for persisted state, schedules and entity unique IDs, must never change), display `name`, sensor entity, valve switch entity or `none`, sensor offset;
     - the `id` is an HA-style slug: lowercase letters, digits and `_`, starting with a letter (e.g. `living_room`). An invalid id is rejected with a suggested slug (D-84);
     - zone names must be unique, compared case-insensitively after trimming spaces (D-85);
   - heat source switch entity;
@@ -607,9 +603,9 @@ Docs are updated in the same commit(s) as the code they describe.
 ```
 
 ### 5.10 Phasing
-The three releases below are split into smaller **work phases** P0–P12 in `docs/implementation-plan.md` (D-82): P0–P8 = v1, P9–P10 = v1.1, P11–P12 = v1.2. Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The release contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
+The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phases** in `docs/implementation-plan.md` (D-82): P0–P7b = v1, P9–P10 = v1.1, P11–P12 = v1.2, and P8 (documentation and release preparation) runs last (D-129). Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
 
-**Releases (D-128):** nothing is tagged or released before 1.0.0, the first release. Until then, versions are set in `manifest.json` only (P7b inserted before P8: 0.7.5). Whether 1.0.0 contains only v1 or also v1.1 (P9/P10) is decided by the owner later.
+**Releases (D-128, D-129):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are set in `manifest.json` only (P7b: 0.7.5) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
@@ -628,7 +624,6 @@ The three releases below are split into smaller **work phases** P0–P12 in `doc
 **v1.2:**
 - 24 h failsafe (HA case and Shelly 1 window with uptime fallback);
 - valve exercise;
-- actuator fault check;
 - long run alarm;
 - healthchecks.io watchdog;
 - overshoot logging.
@@ -744,7 +739,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-38 | Manual schedule resumes below ManualMaxTemp − 1.0 °C |
 | D-39 | WaitTime and HpMinOffTime run in parallel |
 | D-40 | State restored after HA restart: outputs read back, logic state persisted in HA |
-| D-41 | Actuator fault detection via power measurement (if measurable) |
+| D-41 | *(withdrawn, D-129)* |
 | D-42 | Long run alarm at 12 h |
 | D-43 | *(superseded by D-53)* |
 | D-44 | Manually started cycle: first zone joining by temperature becomes the calling zone; otherwise no sync rule |
@@ -831,10 +826,11 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-125 | Devices and names follow HA's conventions: a *service* device per zone ("<zone name> floor heating") and a "Floor heating" device; `has_entity_name`, translated names and states, *config* category for settings; entity ids generated by HA from device + entity name, no integration name in them; unique ids from zone id + key; areas assigned in the UI. No per-zone valve entity (the relay's own entity shows it while live). Supersedes the fixed ids of D-115 (owner, 2026-09-29) |
 | D-126 | The reason sensor is an enum of fixed keys (`idle`, `waiting`, `calling_zone`, `heating`, `held_by_minimum_off_time`, `spreading_heat`, `too_warm_for_spreading`, `heat_source_unavailable`, `no_reading_yet`, `sensor_fault`, `season_off`, `sensor_fault_season_off`); the core returns the key, the texts are translations ("heat source" wording). Amends D-89 and D-123 (owner, 2026-09-29) |
 | D-127 | The integration is renamed from the working name `floorheat` to **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (YAML key, folder, storage file). Docs name it in full, then "the integration"; notification titles start with "Floor heating:". The Shelly scripts use the new name; the heat source script's KVS key becomes `multizone_floor_heating_manager_season` (owner, 2026-09-29) |
-| D-128 | No tag or GitHub release before the first release, which is 1.0.0; until then versions are set in `manifest.json` only (P7b: 0.7.5) and installed from the default branch. Whether P9/P10 go into 1.0.0 is decided later (owner, 2026-09-29) |
+| D-128 | No tag or GitHub release before the first release, which is 1.0.0; until then versions are set in `manifest.json` only (P7b: 0.7.5) and installed from the default branch. Whether P9/P10 go into 1.0.0 is decided later (owner, 2026-09-29) *(settled by D-129)* |
+| D-129 | Phase order after P7b: P9 → P10 → P11 → P12 → P8 → release 1.0.0 with v1, v1.1 and v1.2. P8 is documentation and release preparation only (the user docs keep a shadow-mode-to-live section); there is no go-live step, the owner is live since P7b. The actuator fault check by power measurement is removed: D-41 withdrawn, V1, ActuatorFaultThreshold and the `power_sensor` YAML key dropped (owner, 2026-09-29) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b.
 
 ---
 
@@ -842,7 +838,6 @@ D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-6
 
 | # | Item | Impact if negative |
 |---|---|---|
-| V1 | Shelly Plus 2PM measures the actuator holding power reliably (stable, non-zero) | Actuator fault check (D-41) not used |
 | V2 | Shelly script HTTP endpoint for the heartbeat works on 2PM Gen2 and Shelly 1 Gen3/Gen4 | Alternative heartbeat transport needed |
 | V3 | *(dropped, D-120)* Shelly device address can be derived from the HA device registry | Addresses and script ids are listed in YAML |
 | V4 | Whether the secondary pump runs during hot water production | Documentation only |

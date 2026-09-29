@@ -96,4 +96,4 @@ When the Shelly relays are installed:
 3. Check that the heartbeats arrive: the HA log shows "Shelly … answers" for each Shelly, and `sensor.floor_heating_alerts` stays at 0.
 4. Delete the stand-in helpers.
 
-Going live (Control active ON) follows the go-live checklist that comes with the v1 release. Note: from that moment the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF, which counts as a stop, so the minimum OFF time (default 60 min) runs before the first real heat request.
+Going live means switching Control active ON ([Shadow mode](configuration.md#shadow-mode)). Note: from that moment the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF, which counts as a stop, so the minimum OFF time (default 60 min) runs before the first real heat request.
