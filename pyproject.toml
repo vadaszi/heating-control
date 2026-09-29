@@ -1,5 +1,5 @@
 [project]
-name = "floorheat"
+name = "multizone-floor-heating-manager"
 version = "0.0.0"
 description = "Home Assistant custom integration for room-by-room underfloor heating zone control"
 readme = "README.md"
@@ -30,7 +30,7 @@ select = [
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 python_version = "3.14"
-files = ["custom_components/floorheat", "tests"]
+files = ["custom_components/multizone_floor_heating_manager", "tests"]
 mypy_path = "."
 explicit_package_bases = true
 namespace_packages = true
@@ -46,7 +46,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # The control core is strictly typed (docs/implementation-plan.md, test strategy).
-module = ["custom_components.floorheat.core.*"]
+module = ["custom_components.multizone_floor_heating_manager.core.*"]
 strict = true
 
 # ---------------------------------------------------------------- pytest
@@ -61,7 +61,7 @@ addopts = "--strict-markers"
 # Branch coverage >= 95 % is enforced for the core only.
 [tool.coverage.run]
 branch = true
-source = ["custom_components/floorheat/core"]
+source = ["custom_components/multizone_floor_heating_manager/core"]
 
 [tool.coverage.report]
 fail_under = 95

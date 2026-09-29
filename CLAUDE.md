@@ -1,6 +1,6 @@
-# CLAUDE.md — floorheat
+# CLAUDE.md — Multizone Floor Heating Manager
 
-Home Assistant custom integration (`custom_components/floorheat`) that controls underfloor heating zone by zone.
+Home Assistant custom integration **Multizone Floor Heating Manager** (domain `multizone_floor_heating_manager`, folder `custom_components/multizone_floor_heating_manager`; working name until P7b: `floorheat`) that controls underfloor heating zone by zone.
 
 - **Spec (ground truth):** [`docs/design.md`](docs/design.md) — read all of it before writing code.
 - **Work plan:** [`docs/implementation-plan.md`](docs/implementation-plan.md) — work phases P0–P12.
@@ -34,12 +34,12 @@ If the spec and anything else (this file, the plan, the code) disagree, the spec
 
 ## Architecture (spec §5, fixed)
 
-1. **Control core** — `custom_components/floorheat/core/`
+1. **Control core** — `custom_components/multizone_floor_heating_manager/core/`
    - Pure Python, **no Home Assistant imports**.
    - One deterministic step function: `step(config, state, inputs, now) -> (desired_outputs, new_state, events)`.
    - **Never reads the clock**; `now` (aware datetime) and the time zone are passed in.
    - Both rules are enforced by `tests/core/test_core_purity.py`. mypy is strict for the core.
-2. **Thin HA adapter** — the rest of `custom_components/floorheat/`: YAML config, input collection (sensor `last_reported`, unavailable switch = OFF), entities, services, notifications, persistence via `helpers.storage.Store`. Async only; never block the event loop.
+2. **Thin HA adapter** — the rest of `custom_components/multizone_floor_heating_manager/`: YAML config, input collection (sensor `last_reported`, unavailable switch = OFF), entities, services, notifications, persistence via `helpers.storage.Store`. Async only; never block the event loop.
 3. **Reconcile loop** — every `ReconcileInterval` (60 s) and on sensor updates: call `step`, compare desired vs actual outputs, correct differences with backoff. Idempotent. No commands in shadow mode (§5.5).
 4. **Shelly watchdog scripts** — `shelly_scripts/` (JavaScript on the devices): heartbeat endpoint, failsafe on heartbeat loss (§3.6, §5.4). Protocol: `docs/heartbeat-protocol.md`; user guide: `docs/shelly-scripts.md`.
    - Only the Shelly engine's JavaScript subset: `let`/`var`, named top-level functions declared before use, no arrow functions, `const`, classes, template literals, destructuring, promises. `tests/shelly/subset.test.mjs` enforces it (acorn AST check).

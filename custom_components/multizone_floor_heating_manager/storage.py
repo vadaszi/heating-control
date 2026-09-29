@@ -160,13 +160,13 @@ class FloorheatStore:
             data: object = await self._store.async_load()
         except Exception as err:  # corrupt file: start fresh (D-87)
             data = {}
-            warnings = [f"Stored floorheat data is unreadable ({err}); starting fresh."]
+            warnings = [f"Stored data is unreadable ({err}); starting fresh."]
         else:
             warnings = []
         if data is None:
             data = {}
         if not isinstance(data, Mapping):
-            warnings.append(f"Stored floorheat data is unusable ({data!r}); starting fresh.")
+            warnings.append(f"Stored data is unusable ({data!r}); starting fresh.")
             data = {}
         core, core_warnings = load_state(data.get("core"), config)
         settings, settings_warnings = Settings.from_dict(data.get("settings"), config)

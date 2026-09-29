@@ -25,7 +25,7 @@ from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_OFF, SERVICE_TURN_O
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import COMMAND_BACKOFF, COMMAND_BACKOFF_REPEAT, COMMAND_TIMEOUT
+from .const import COMMAND_BACKOFF, COMMAND_BACKOFF_REPEAT, COMMAND_TIMEOUT, DOMAIN
 from .core.io import OutputState
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class OutputCommander:
     def _send(self, entity_id: str, on: bool, track: _Track) -> None:
         track.in_flight = True
         task = self._hass.async_create_task(
-            self._async_call(entity_id, on, track), f"floorheat command {entity_id}"
+            self._async_call(entity_id, on, track), f"{DOMAIN} command {entity_id}"
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)

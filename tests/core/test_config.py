@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from custom_components.floorheat.core.config import (
+from custom_components.multizone_floor_heating_manager.core.config import (
     GLOBAL_PARAM_SPECS,
     PARAM_SPECS,
     SENSOR_OFFSET_SPEC,
@@ -317,7 +317,7 @@ def test_all_config_errors_reported_together() -> None:
             output_mismatch_alert=0,
         )
     assert len(err.value.errors) == 4
-    assert str(err.value).startswith("Invalid floorheat configuration:\n- ")
+    assert str(err.value).startswith("Invalid Multizone Floor Heating Manager configuration:\n- ")
 
 
 # ---------------------------------------------------------------- D-80 warning

@@ -10,7 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.floorheat.const import DOMAIN
+from custom_components.multizone_floor_heating_manager.const import DOMAIN
 
 from .conftest import World, make_conf, valve
 
@@ -34,13 +34,13 @@ async def test_sensor_fault_is_notified(world: World, hass: HomeAssistant) -> No
     assert await world.setup(_conf("notify.mobile_app_phone", "notify.email"), live=False)
     await _fault_zone_1(world)  # shadow mode notifies sensor faults too (D-98)
     [call] = phone
-    assert call.data["title"] == "floorheat: sensor fault"
+    assert call.data["title"] == "Floor heating: sensor fault"
     assert call.data["message"].startswith("Sensor fault in Zone 1")
     assert len(email) == 1
 
     world.temp(1, 22.0)
     await hass.async_block_till_done()
-    assert phone[-1].data["title"] == "floorheat: sensor recovered"
+    assert phone[-1].data["title"] == "Floor heating: sensor recovered"
 
 
 async def test_notify_entity_target(world: World, hass: HomeAssistant) -> None:
@@ -51,7 +51,7 @@ async def test_notify_entity_target(world: World, hass: HomeAssistant) -> None:
     await _fault_zone_1(world)
     [call] = sent
     assert call.data["entity_id"] == "notify.family_chat"
-    assert call.data["title"] == "floorheat: sensor fault"
+    assert call.data["title"] == "Floor heating: sensor fault"
 
 
 async def test_output_mismatch_is_notified_once_with_recovery(
@@ -62,11 +62,11 @@ async def test_output_mismatch_is_notified_once_with_recovery(
     assert await world.setup(_conf("notify.phone"))
     world.switch(valve(1), "unavailable")
     await world.advance(10)
-    assert [c.data["title"] for c in phone] == ["floorheat: output not following command"]
+    assert [c.data["title"] for c in phone] == ["Floor heating: switch not following command"]
     assert phone[0].data["message"].startswith("The valve of Zone 1 does not follow")
     world.switch(valve(1), "off")
     await world.advance(1)
-    assert phone[-1].data["title"] == "floorheat: output recovered"
+    assert phone[-1].data["title"] == "Floor heating: switch following again"
 
 
 async def test_missing_target_is_reported_and_skipped(
@@ -111,7 +111,7 @@ async def test_alerts_sensor(world: World, hass: HomeAssistant) -> None:
     await _fault_zone_1(world)
     world.switch(valve(2), "unavailable")
     await world.advance(3)
-    alerts = hass.states.get("sensor.floorheat_alerts")
+    alerts = hass.states.get("sensor.floor_heating_alerts")
     assert alerts is not None
     assert alerts.state == "2"
     assert alerts.attributes["alerts"] == [
@@ -125,7 +125,7 @@ async def test_alerts_sensor(world: World, hass: HomeAssistant) -> None:
     world.temp(1, 22.0)
     world.switch(valve(2), "off")
     await world.advance(1)
-    alerts = hass.states.get("sensor.floorheat_alerts")
+    alerts = hass.states.get("sensor.floor_heating_alerts")
     assert alerts is not None
     assert alerts.state == "0"
     assert alerts.attributes["alerts"] == []

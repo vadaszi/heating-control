@@ -1,5 +1,7 @@
 """Sensors (docs/design.md §5.3): per zone state, reason and effective SetPoint; the
-mode sensor with the shadow attribute (D-79); the alerts sensor (count + list)."""
+mode sensor with the shadow attribute (D-79); the alerts sensor (count + list).
+
+State and reason are enums of fixed keys; their texts are translations (D-126)."""
 
 from __future__ import annotations
 
@@ -8,27 +10,24 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
 from .core.config import ZoneConfig
+from .core.io import Reason
 from .core.state import ZoneMode
 from .entity import FloorheatEntity
+from .runtime import FloorheatConfigEntry
 
 MODES = ["normal", "holiday", "failsafe"]  # holiday from v1.1, failsafe from v1.2
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    controller = hass.data[DATA_CONTROLLER]
+    controller = entry.runtime_data.controller
     entities: list[SensorEntity] = []
     for zone in controller.config.core.zones:
         entities += [
@@ -41,10 +40,8 @@ async def async_setup_platform(
 
 
 class _ZoneSensor(FloorheatEntity, SensorEntity):
-    def __init__(
-        self, controller: FloorheatController, zone: ZoneConfig, key: str, name: str
-    ) -> None:
-        super().__init__(controller, "sensor", f"{zone.id}_{key}", f"{zone.name} {name}")
+    def __init__(self, controller: FloorheatController, zone: ZoneConfig, key: str) -> None:
+        super().__init__(controller, key, zone)
         self._zone_id = zone.id
 
 
@@ -53,9 +50,10 @@ class ZoneStateSensor(_ZoneSensor):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [mode.value for mode in ZoneMode]  # noqa: RUF012 - HA's attribute convention
+    _attr_translation_key = "zone_state"
 
     def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
-        super().__init__(controller, zone, "state", "state")
+        super().__init__(controller, zone, "state")
 
     @property
     def native_value(self) -> str:
@@ -63,17 +61,20 @@ class ZoneStateSensor(_ZoneSensor):
 
 
 class ZoneReasonSensor(_ZoneSensor):
-    """Why the zone is in its state (D-89), e.g. "Waiting". The text never counts down;
-    the end of the running timer is the `until` attribute, present only while one runs
-    (D-123)."""
+    """Why the zone is in its state (D-89): a fixed key such as `waiting` (D-126). It
+    never counts down; the end of the running timer is the `until` attribute, present
+    only while one runs (D-123)."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [reason.value for reason in Reason]  # noqa: RUF012 - HA's attribute convention
 
     def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
-        super().__init__(controller, zone, "reason", "reason")
+        super().__init__(controller, zone, "reason")
 
     @property
     def native_value(self) -> str | None:
         outputs = self.controller.outputs
-        return None if outputs is None else outputs.zones[self._zone_id].reason
+        return None if outputs is None else outputs.zones[self._zone_id].reason.value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -88,9 +89,10 @@ class ZoneSetpointSensor(_ZoneSensor):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_suggested_display_precision = 1
+    _attr_translation_key = "effective_setpoint"
 
     def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
-        super().__init__(controller, zone, "setpoint", "setpoint")
+        super().__init__(controller, zone, "setpoint")
 
     @property
     def native_value(self) -> float | None:
@@ -105,7 +107,7 @@ class ModeSensor(FloorheatEntity, SensorEntity):
     _attr_options = MODES
 
     def __init__(self, controller: FloorheatController) -> None:
-        super().__init__(controller, "sensor", "mode", "Floorheat mode")
+        super().__init__(controller, "mode")
 
     @property
     def native_value(self) -> str:
@@ -119,10 +121,8 @@ class ModeSensor(FloorheatEntity, SensorEntity):
 class AlertsSensor(FloorheatEntity, SensorEntity):
     """Number of active alerts; the list is the `alerts` attribute."""
 
-    _attr_icon = "mdi:alert"
-
     def __init__(self, controller: FloorheatController) -> None:
-        super().__init__(controller, "sensor", "alerts", "Floorheat alerts")
+        super().__init__(controller, "alerts")
 
     @property
     def native_value(self) -> int:

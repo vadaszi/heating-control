@@ -13,24 +13,20 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
 from .entity import FloorheatEntity
+from .runtime import FloorheatConfigEntry
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    async_add_entities([HeatRequestSensor(hass.data[DATA_CONTROLLER])])
+    async_add_entities([HeatRequestSensor(entry.runtime_data.controller)])
 
 
 class HeatRequestSensor(FloorheatEntity, BinarySensorEntity):
@@ -38,7 +34,7 @@ class HeatRequestSensor(FloorheatEntity, BinarySensorEntity):
     _unrecorded_attributes = frozenset({"on_duration"})
 
     def __init__(self, controller: FloorheatController) -> None:
-        super().__init__(controller, "binary_sensor", "heat_request", "Floorheat heat request")
+        super().__init__(controller, "heat_request")
 
     @property
     def is_on(self) -> bool | None:

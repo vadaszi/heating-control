@@ -1,4 +1,4 @@
-// floorheat heat source watchdog (Shelly script, Gen2 or newer)
+// Multizone Floor Heating Manager: heat source watchdog (Shelly script, Gen2 or newer)
 //
 // Runs on the Shelly that switches the heat source request. If Home Assistant's
 // heartbeat stops for heartbeat_timeout_s, it switches the output OFF and keeps
@@ -24,7 +24,7 @@ let CONFIG = {
   // Endpoint name in the URL.
   endpoint: "heartbeat",
   // KVS key that keeps the heating season flag from the last heartbeat.
-  kvs_season_key: "floorheat_season"
+  kvs_season_key: "multizone_floor_heating_manager_season"
 };
 // ==== CONFIG END ====
 
@@ -50,7 +50,7 @@ let seasonLoaded = false;
 let seasonWriting = false;
 
 function log(message) {
-  console.log("floorheat heat source watchdog:", message);
+  console.log("Floor heating heat source watchdog:", message);
 }
 
 function isWholeNumber(value, min, max) {

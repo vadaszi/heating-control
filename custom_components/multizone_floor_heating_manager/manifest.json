@@ -1,11 +1,13 @@
 {
-  "domain": "floorheat",
-  "name": "Floor Heating Zone Control",
+  "domain": "multizone_floor_heating_manager",
+  "name": "Multizone Floor Heating Manager",
   "codeowners": ["@vadaszi"],
+  "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/vadaszi/heating-control",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/vadaszi/heating-control/issues",
   "requirements": [],
-  "version": "0.7.0"
+  "single_config_entry": true,
+  "version": "0.7.5"
 }

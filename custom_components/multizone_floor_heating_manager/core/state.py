@@ -111,7 +111,7 @@ class CoreState:
         version = reader.required_int("schema_version")
         if version > SCHEMA_VERSION:
             raise StateFormatError(
-                f"schema version {version} is newer than this version of floorheat "
+                f"schema version {version} is newer than this version of the integration "
                 f"supports ({SCHEMA_VERSION})"
             )
         if version != SCHEMA_VERSION:
@@ -146,9 +146,7 @@ def load_state(data: object, config: CoreConfig) -> tuple[CoreState, list[str]]:
     try:
         stored = CoreState.from_dict(data)
     except StateFormatError as err:
-        return initial, [
-            f"Stored floorheat state is unusable ({err}); starting as on a first start."
-        ]
+        return initial, [f"Stored state is unusable ({err}); starting as on a first start."]
     warnings: list[str] = []
     dropped = sorted(set(stored.zones) - set(config.zone_ids))
     if dropped:

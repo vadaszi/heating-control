@@ -18,7 +18,7 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, NOTIFY_TIMEOUT
+from .const import DOMAIN, NOTIFY_TIMEOUT, SHORT_NAME
 from .core.io import Event, EventKind
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,14 +27,14 @@ NOTIFY_DOMAIN = "notify"
 MISSING_TARGETS_NOTIFICATION = f"{DOMAIN}_missing_notify_targets"
 
 TITLES = {
-    EventKind.SENSOR_FAULT_STARTED: "floorheat: sensor fault",
-    EventKind.SENSOR_FAULT_REMINDER: "floorheat: sensor fault reminder",
-    EventKind.SENSOR_FAULT_RECOVERED: "floorheat: sensor recovered",
-    EventKind.OUTPUT_MISMATCH: "floorheat: output not following command",
-    EventKind.OUTPUT_MISMATCH_RECOVERED: "floorheat: output recovered",
-    EventKind.WATCHDOG_FAILED: "floorheat: Shelly watchdog not answering",
-    EventKind.WATCHDOG_RECOVERED: "floorheat: Shelly watchdog answering again",
-    EventKind.WATCHDOG_PARAMS_MISMATCH: "floorheat: Shelly script parameters differ",
+    EventKind.SENSOR_FAULT_STARTED: "Floor heating: sensor fault",
+    EventKind.SENSOR_FAULT_REMINDER: "Floor heating: sensor fault reminder",
+    EventKind.SENSOR_FAULT_RECOVERED: "Floor heating: sensor recovered",
+    EventKind.OUTPUT_MISMATCH: "Floor heating: switch not following command",
+    EventKind.OUTPUT_MISMATCH_RECOVERED: "Floor heating: switch following again",
+    EventKind.WATCHDOG_FAILED: "Floor heating: Shelly watchdog not answering",
+    EventKind.WATCHDOG_RECOVERED: "Floor heating: Shelly watchdog answering again",
+    EventKind.WATCHDOG_PARAMS_MISMATCH: "Floor heating: Shelly script parameters differ",
 }
 
 
@@ -63,16 +63,16 @@ class Notifier:
         _LOGGER.warning("Notify targets not found: %s", listed)
         persistent_notification.async_create(
             self._hass,
-            f"These notify targets in the floorheat configuration do not exist: {listed}. "
-            "floorheat notifications will not reach them.",
-            title="floorheat: unknown notify targets",
+            "These notify targets in the Multizone Floor Heating Manager configuration do not "
+            f"exist: {listed}. Floor heating notifications will not reach them.",
+            title="Floor heating: unknown notify targets",
             notification_id=MISSING_TARGETS_NOTIFICATION,
         )
 
     @callback
     def async_handle(self, event: Event) -> None:
         """Send `event` to every target (a controller event handler)."""
-        title = TITLES.get(event.kind, "floorheat")
+        title = TITLES.get(event.kind, SHORT_NAME)
         for target in self._targets:
             self._hass.async_create_task(
                 self._async_send(target, title, event.message), f"{DOMAIN} notify {target}"

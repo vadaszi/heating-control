@@ -26,8 +26,11 @@ from pytest_homeassistant_custom_component.common import (
     mock_platform,
 )
 
-from custom_components.floorheat.const import DATA_CONTROLLER, DOMAIN
-from custom_components.floorheat.controller import FloorheatController
+from custom_components.multizone_floor_heating_manager.const import DOMAIN
+from custom_components.multizone_floor_heating_manager.controller import FloorheatController
+from custom_components.multizone_floor_heating_manager.runtime import FloorheatConfigEntry
+
+PKG = "custom_components.multizone_floor_heating_manager"  # for patch targets
 
 START = datetime(2026, 1, 12, 6, 0, tzinfo=UTC)  # a Monday in the heating season
 
@@ -57,7 +60,7 @@ def make_conf(zones: int = 2, *, unvalved: tuple[int, ...] = (), **extra: Any) -
 
 
 def no_watchdog_for_all(conf: dict[str, Any]) -> None:
-    """List every mapped switch of a floorheat config in `no_watchdog`."""
+    """List every mapped switch of a configuration in `no_watchdog`."""
     valves = [
         zone.get("valve")
         for zone in conf.get("zones", [])
@@ -175,8 +178,13 @@ class World:
         return ok
 
     @property
+    def entry(self) -> FloorheatConfigEntry:
+        [entry] = self.hass.config_entries.async_entries(DOMAIN)
+        return entry
+
+    @property
     def controller(self) -> FloorheatController:
-        return self.hass.data[DATA_CONTROLLER]
+        return self.entry.runtime_data.controller
 
     def mode(self, n: int) -> str:
         return self.controller.state.zones[f"zone_{n}"].mode.value
@@ -208,7 +216,7 @@ class World:
 
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
-    """Load `custom_components/floorheat` in every adapter test."""
+    """Load `custom_components/multizone_floor_heating_manager` in every adapter test."""
 
 
 @pytest.fixture

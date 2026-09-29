@@ -11,9 +11,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 
-from custom_components.floorheat.const import DATA_CONTROLLER, DOMAIN
+from custom_components.multizone_floor_heating_manager.const import DOMAIN
 
-from .conftest import World, make_conf, no_watchdog_for_all, zone_conf
+from .conftest import PKG, World, make_conf, no_watchdog_for_all, zone_conf
 
 
 def _conf(**changes: Any) -> dict[str, Any]:
@@ -100,7 +100,7 @@ async def test_invalid_config_is_rejected_with_a_clear_error(
 ) -> None:
     assert not await async_setup_component(hass, DOMAIN, conf)
     assert message in caplog.text
-    assert DATA_CONTROLLER not in hass.data
+    assert not hass.config_entries.async_entries(DOMAIN)
 
 
 async def test_every_zone_error_is_reported(
@@ -132,9 +132,9 @@ async def test_fahrenheit_offset_range(
     assert "sensor_offset" in caplog.text
 
 
-async def test_no_floorheat_key(hass: HomeAssistant) -> None:
+async def test_no_yaml_section(hass: HomeAssistant) -> None:
     assert await async_setup_component(hass, DOMAIN, {})
-    assert DATA_CONTROLLER not in hass.data
+    assert not hass.config_entries.async_entries(DOMAIN)
 
 
 async def test_unknown_entities_are_reported_but_control_runs(
@@ -143,11 +143,9 @@ async def test_unknown_entities_are_reported_but_control_runs(
     world.temp(1, 22.0)
     world.switch("switch.heat_source", "off")
     world.switch("switch.valve_1", "off")
-    with patch(
-        "custom_components.floorheat.controller.persistent_notification.async_create"
-    ) as notify:
+    with patch(f"{PKG}.controller.persistent_notification.async_create") as notify:
         assert await world.setup(make_conf(2), live=False)
-    assert "Unknown entities in the floorheat configuration" in caplog.text
+    assert "Unknown entities in the Multizone Floor Heating Manager configuration" in caplog.text
     [call] = notify.call_args_list
     message = call.args[1]
     assert "switch.valve_2" in message
@@ -167,9 +165,7 @@ async def test_registered_entity_without_state_is_known(world: World, hass: Home
     )
     world.temp(1, 22.0)
     world.switch("switch.heat_source", "off")
-    with patch(
-        "custom_components.floorheat.controller.persistent_notification.async_create"
-    ) as notify:
+    with patch(f"{PKG}.controller.persistent_notification.async_create") as notify:
         assert await world.setup(make_conf(2, unvalved=(1, 2)), live=False)
     notify.assert_not_called()
 
@@ -194,7 +190,7 @@ async def test_shelly_wiring(world: World) -> None:
         heartbeat_check_interval=30,
         no_watchdog=["switch.heat_source"],
     )
-    with patch("custom_components.floorheat.heartbeat.HeartbeatClient.async_start"):
+    with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
         assert await world.setup(conf, live=False)  # no calls: only the wiring is tested
     config = world.controller.config
     [shelly] = config.shellys
@@ -216,7 +212,7 @@ async def test_shelly_wiring(world: World) -> None:
 
 async def test_heat_source_shelly_role(world: World) -> None:
     world.setup_entities()
-    with patch("custom_components.floorheat.heartbeat.HeartbeatClient.async_start"):
+    with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
         assert await world.setup(_shellys(_VALVES, _HEAT), live=False)
     roles = {s.name: s.role.value for s in world.controller.config.shellys}
     assert roles == {"192.0.2.11": "valve", "Heat": "heat_source"}

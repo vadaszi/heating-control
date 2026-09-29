@@ -10,8 +10,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from custom_components.floorheat.core.config import CoreConfig, ZoneConfig
-from custom_components.floorheat.core.state import (
+from custom_components.multizone_floor_heating_manager.core.config import CoreConfig, ZoneConfig
+from custom_components.multizone_floor_heating_manager.core.state import (
     SCHEMA_VERSION,
     CoreState,
     OutputTracking,

@@ -1,4 +1,4 @@
-// floorheat valve watchdog (Shelly script, Gen2 or newer)
+// Multizone Floor Heating Manager: valve watchdog (Shelly script, Gen2 or newer)
 //
 // Runs on every Shelly that switches zone valves. If Home Assistant's heartbeat
 // stops for heartbeat_timeout_s, it switches all valve channels ON (open) and
@@ -41,7 +41,7 @@ let heartbeatSeen = false;
 let pendingCalls = 0;
 
 function log(message) {
-  console.log("floorheat valve watchdog:", message);
+  console.log("Floor heating valve watchdog:", message);
 }
 
 function isWholeNumber(value, min, max) {

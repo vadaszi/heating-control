@@ -1,4 +1,4 @@
-"""Constants of the floorheat HA adapter."""
+"""Constants of the Multizone Floor Heating Manager HA adapter."""
 
 from __future__ import annotations
 
@@ -8,10 +8,16 @@ from typing import TYPE_CHECKING, Final
 from homeassistant.util.hass_dict import HassKey
 
 if TYPE_CHECKING:
-    from .controller import FloorheatController
+    from .schema import FloorheatConfig
 
-DOMAIN: Final = "floorheat"
-DATA_CONTROLLER: HassKey[FloorheatController] = HassKey(DOMAIN)
+DOMAIN: Final = "multizone_floor_heating_manager"
+NAME: Final = "Multizone Floor Heating Manager"  # the config entry title (D-127)
+SHORT_NAME: Final = "Floor heating"  # the global device and notification titles (D-125)
+ZONE_DEVICE_SUFFIX: Final = "floor heating"  # zone device: "<zone name> floor heating"
+GLOBAL_DEVICE: Final = "global"  # identifier of the "Floor heating" device
+
+# The validated YAML, kept in memory for the config entry (D-124).
+DATA_YAML: HassKey[FloorheatConfig] = HassKey(DOMAIN)
 
 # YAML keys (docs/configuration.md)
 CONF_HEAT_SOURCE_SWITCH: Final = "heat_source_switch"

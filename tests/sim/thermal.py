@@ -12,8 +12,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from custom_components.floorheat.core.io import Event, OutputState
-from custom_components.floorheat.core.state import ZoneMode
+from custom_components.multizone_floor_heating_manager.core.io import Event, OutputState
+from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
 from ..core.harness import Scenario
 

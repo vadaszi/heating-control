@@ -12,73 +12,68 @@ durations in minutes or hours.
 from __future__ import annotations
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
-from homeassistant.const import UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
-from .core.config import GLOBAL_PARAM_SPECS, ZONE_PARAM_SPECS, ParamSpec, ParamUnit
+from .core.config import GLOBAL_PARAM_SPECS, ZONE_PARAM_SPECS, ParamSpec, ParamUnit, ZoneConfig
 from .core.units import TemperatureUnit, delta_from_celsius, delta_to_celsius
 from .entity import FloorheatEntity, async_apply
+from .runtime import FloorheatConfigEntry
 
-GLOBAL_NAMES = {
-    "hp_min_on_time": "HP min ON time",
-    "hp_min_off_time": "HP min OFF time",
-    "sensor_fault_timeout": "sensor fault timeout",
-    "manual_max_temp": "manual max temperature",
-    "manual_resume_delta": "manual resume delta",
-    "holiday_temp": "holiday temperature",
-    "failsafe_trigger": "failsafe trigger",
-    "valve_exercise_duration": "valve exercise duration",
-    "long_run_alarm": "long run alarm",
-}
-ZONE_NAMES = {"hysteresis": "hysteresis", "wait_time": "wait time"}
+# Parameter keys; the names are translations (translations/en.json, D-125).
+GLOBAL_KEYS = (
+    "hp_min_on_time",
+    "hp_min_off_time",
+    "sensor_fault_timeout",
+    "manual_max_temp",
+    "manual_resume_delta",
+    "holiday_temp",
+    "failsafe_trigger",
+    "valve_exercise_duration",
+    "long_run_alarm",
+)
+ZONE_KEYS = ("hysteresis", "wait_time")
 
 _TIME_UNITS = {ParamUnit.MINUTES: UnitOfTime.MINUTES, ParamUnit.HOURS: UnitOfTime.HOURS}
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    controller = hass.data[DATA_CONTROLLER]
+    controller = entry.runtime_data.controller
     unit = TemperatureUnit(hass.config.units.temperature_unit)
     entities = [
-        ParamNumber(controller, ZONE_PARAM_SPECS[key], unit, zone.id, f"{zone.name} {name}")
+        ParamNumber(controller, ZONE_PARAM_SPECS[key], unit, zone)
         for zone in controller.config.core.zones
-        for key, name in ZONE_NAMES.items()
+        for key in ZONE_KEYS
     ]
     entities += [
-        ParamNumber(controller, GLOBAL_PARAM_SPECS[key], unit, None, f"Floorheat {name}")
-        for key, name in GLOBAL_NAMES.items()
+        ParamNumber(controller, GLOBAL_PARAM_SPECS[key], unit, None) for key in GLOBAL_KEYS
     ]
     async_add_entities(entities)
 
 
 class ParamNumber(FloorheatEntity, NumberEntity):
-    """One §4 parameter."""
+    """One §4 parameter; a setting (config category)."""
 
     _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
         controller: FloorheatController,
         spec: ParamSpec,
         unit: TemperatureUnit,
-        zone_id: str | None,  # None: a global parameter
-        name: str,
+        zone: ZoneConfig | None,  # None: a global parameter
     ) -> None:
-        key = spec.key if zone_id is None else f"{zone_id}_{spec.key}"
-        super().__init__(controller, "number", key, name)
+        super().__init__(controller, spec.key, zone)
         self._spec = spec
         self._unit = unit
-        self._zone_id = zone_id
+        self._zone_id = None if zone is None else zone.id
         self._attr_native_step = spec.step
         if spec.unit is ParamUnit.CELSIUS:
             self._attr_device_class = NumberDeviceClass.TEMPERATURE

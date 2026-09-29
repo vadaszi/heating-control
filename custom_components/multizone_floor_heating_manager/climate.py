@@ -15,26 +15,22 @@ from homeassistant.components.climate.const import ClimateEntityFeature, HVACAct
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_TENTHS, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
 from .core.config import ZONE_PARAM_SPECS, ZoneConfig
 from .entity import FloorheatEntity, async_apply
+from .runtime import FloorheatConfigEntry
 
 _SETPOINT = ZONE_PARAM_SPECS["base_setpoint"]
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    controller = hass.data[DATA_CONTROLLER]
+    controller = entry.runtime_data.controller
     async_add_entities(ZoneClimate(controller, zone) for zone in controller.config.core.zones)
 
 
@@ -49,9 +45,12 @@ class ZoneClimate(FloorheatEntity, ClimateEntity):
     _attr_target_temperature_step = _SETPOINT.step
     _attr_min_temp = _SETPOINT.minimum
     _attr_max_temp = _SETPOINT.maximum
+    _attr_name = None  # the zone device's main entity: named like the device (D-125)
+    _attr_translation_key = "zone"  # translates the attribute values
 
     def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
-        super().__init__(controller, "climate", zone.id, zone.name)
+        super().__init__(controller, "climate", zone)
+        self._attr_unique_id = zone.id
         self._zone = zone
 
     @property
@@ -77,7 +76,7 @@ class ZoneClimate(FloorheatEntity, ClimateEntity):
         state = self.controller.state
         return {
             "zone_state": state.zones[self._zone.id].mode.value,
-            "reason": None if outputs is None else outputs.zones[self._zone.id].reason,
+            "reason": None if outputs is None else outputs.zones[self._zone.id].reason.value,
             "valve": None if outputs is None else outputs.valves.get(self._zone.id),
             "calling_zone": state.calling_zone == self._zone.id,
         }
@@ -91,4 +90,4 @@ class ZoneClimate(FloorheatEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode != HVACMode.HEAT:
-            raise ServiceValidationError("floorheat zones support the heat mode only")
+            raise ServiceValidationError("Floor heating zones support the heat mode only")

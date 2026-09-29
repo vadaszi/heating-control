@@ -22,9 +22,9 @@ from itertools import pairwise
 
 import pytest
 
-from custom_components.floorheat.core.config import GlobalParams, ZoneParams
-from custom_components.floorheat.core.io import EventKind
-from custom_components.floorheat.core.state import ZoneMode
+from custom_components.multizone_floor_heating_manager.core.config import GlobalParams, ZoneParams
+from custom_components.multizone_floor_heating_manager.core.io import EventKind
+from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
 from ..core.harness import Scenario
 from .thermal import (

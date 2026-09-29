@@ -1,6 +1,6 @@
 # Heartbeat protocol (v1)
 
-How the `floorheat` integration talks to the Shelly watchdog scripts (`shelly_scripts/`).
+How the Multizone Floor Heating Manager integration talks to the Shelly watchdog scripts (`shelly_scripts/`).
 Spec: [`design.md`](design.md) §3.6 (failsafe case 2), §5.4, decisions D-60, D-61, D-72, D-73, D-100 to D-105.
 Setup and bench tests: [`shelly-scripts.md`](shelly-scripts.md).
 

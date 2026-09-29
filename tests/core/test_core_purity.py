@@ -10,9 +10,14 @@ from pathlib import Path
 
 import pytest
 
-import custom_components.floorheat.core as core
+import custom_components.multizone_floor_heating_manager.core as core
 
-CORE_DIR = Path(__file__).resolve().parents[2] / "custom_components" / "floorheat" / "core"
+CORE_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "custom_components"
+    / "multizone_floor_heating_manager"
+    / "core"
+)
 
 # Calls that read the current time. Legitimate uses such as `dt.time()` (time-of-day
 # part of a passed-in datetime) are not listed.

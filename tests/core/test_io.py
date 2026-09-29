@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from custom_components.floorheat.core.config import GlobalParams, ZoneParams
-from custom_components.floorheat.core.io import (
+from custom_components.multizone_floor_heating_manager.core.config import GlobalParams, ZoneParams
+from custom_components.multizone_floor_heating_manager.core.io import (
     Event,
     EventKind,
     Inputs,

@@ -12,7 +12,11 @@ from homeassistant import loader
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from pytest_homeassistant_custom_component.common import async_test_home_assistant
 
-from custom_components.floorheat.const import SAVE_DELAY, STORAGE_KEY, STORAGE_VERSION
+from custom_components.multizone_floor_heating_manager.const import (
+    SAVE_DELAY,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
 
 from .conftest import HEAT_SOURCE, START, World, make_conf, valve
 
@@ -172,7 +176,7 @@ async def test_newer_state_is_discarded(
 @pytest.mark.parametrize(
     ("data", "warning"),
     [
-        ("garbage", "Stored floorheat data is unusable"),
+        ("garbage", "Stored data is unusable"),
         ({"settings": "garbage"}, "Stored settings are unusable"),
         (
             {"settings": {"zones": {"zone_1": {"base_setpoint": 99}}}},

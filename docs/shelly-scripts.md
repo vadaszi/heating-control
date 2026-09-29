@@ -1,6 +1,6 @@
 # Shelly scripts: which script on which device, upload, configure, test
 
-The Shellys that switch your valves and your heat source run a small **watchdog script**. It is the safety net for the case that Home Assistant (HA) or the `floorheat` integration stops working (spec [`design.md`](design.md) §3.6, failsafe case 2):
+The Shellys that switch your valves and your heat source run a small **watchdog script**. It is the safety net for the case that Home Assistant (HA) or the Multizone Floor Heating Manager integration stops working (spec [`design.md`](design.md) §3.6, failsafe case 2):
 
 - HA sends a heartbeat to every script every 5 minutes.
 - If the heartbeats stop for 5 hours (`heartbeat_timeout_s`), each script puts its device into a safe state on its own:
@@ -32,14 +32,14 @@ Set these in the device's web UI (names may differ slightly between firmware ver
 ## Upload
 In the device web UI:
 1. Open **Scripts** → **Create script** (or **Add script**).
-2. Name it, e.g. `floorheat_valve_watchdog` or `floorheat_heat_source_watchdog`.
+2. Name it, e.g. `floor_heating_valve_watchdog` or `floor_heating_heat_source_watchdog`.
 3. Paste the **whole** content of the script file, unchanged except for the CONFIG block (see below). **Save**.
 4. Enable **Run on startup** and press **Start**.
-5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). floorheat needs it with the device address in its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs)). The heartbeat endpoint is:
+5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). The integration needs it with the device address in its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs)). The heartbeat endpoint is:
    ```
    http://<shelly-address>/script/<script-id>/heartbeat
    ```
-6. The script console should show `floorheat ... watchdog: started, ...`. An error such as `CONFIG.heartbeat_timeout_s must be ...` means the CONFIG block has an invalid value; the script stops until you fix it.
+6. The script console should show `Floor heating ... watchdog: started, ...`. An error such as `CONFIG.heartbeat_timeout_s must be ...` means the CONFIG block has an invalid value; the script stops until you fix it.
 
 To update a script later, replace its code with the new file, re-apply your CONFIG changes, save and restart it. The heat source's stored season flag survives this (it lives in the device's key-value store).
 
@@ -61,9 +61,9 @@ Only edit the CONFIG block at the top of the script. The defaults fit most insta
 | `check_interval_s` | `60` | As above. |
 | `switch_id` | `0` | The switch that requests heat. |
 | `endpoint` | `"heartbeat"` | Endpoint name in the URL. |
-| `kvs_season_key` | `"floorheat_season"` | Key in the device's key-value store that keeps the heating season flag. |
+| `kvs_season_key` | `"multizone_floor_heating_manager_season"` | Key in the device's key-value store that keeps the heating season flag. |
 
-HA never changes these values. It reads them from every heartbeat answer and alerts you if they differ from the values it expects (D-73): `heartbeat_timeout_s` against floorheat's `heartbeat_timeout` (default 18000), and `check_interval_s` only if you set `heartbeat_check_interval`. If you change a timeout on the device, change HA's expected value too.
+HA never changes these values. It reads them from every heartbeat answer and alerts you if they differ from the values it expects (D-73): `heartbeat_timeout_s` against the integration's `heartbeat_timeout` (default 18000), and `check_interval_s` only if you set `heartbeat_check_interval`. If you change a timeout on the device, change HA's expected value too.
 
 ### Behaviour worth knowing
 - **After a reboot or a script restart** the script treats the start as the last heartbeat: outputs stay at the power-on default (OFF) and the timeout counts from the start (D-72, D-102).
@@ -90,7 +90,7 @@ The answer is a JSON status with `"running": true`, the watchdog `state`, `heart
 ## Bench tests (shortened timeouts)
 Run these before installing, on the bench or with the loads disconnected. You send the heartbeats yourself. **Do not** run them on a system that is heating.
 
-If floorheat already sends heartbeats to the device, they keep the watchdog quiet and spoil the test. For the bench tests, remove the device from `shellys` in floorheat's YAML, list its switches in `no_watchdog` instead and restart HA; undo it afterwards. With shortened timeouts floorheat would also report "script parameters differ".
+If the integration already sends heartbeats to the device, they keep the watchdog quiet and spoil the test. For the bench tests, remove the device from `shellys` in the integration's YAML, list its switches in `no_watchdog` instead and restart HA; undo it afterwards. With shortened timeouts the integration would also report "script parameters differ".
 
 **Preparation:** in the CONFIG block set
 ```

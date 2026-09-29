@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from custom_components.floorheat.core.heartbeat import (
+from custom_components.multizone_floor_heating_manager.core.heartbeat import (
     ExpectedParams,
     FailureKind,
     HeartbeatTracking,
@@ -18,7 +18,7 @@ from custom_components.floorheat.core.heartbeat import (
     record_failure,
     record_success,
 )
-from custom_components.floorheat.core.io import EventKind
+from custom_components.multizone_floor_heating_manager.core.io import EventKind
 
 
 def status(**changes: Any) -> dict[str, Any]:

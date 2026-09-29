@@ -9,11 +9,11 @@ from zoneinfo import ZoneInfo
 import pytest
 from homeassistant.core import HomeAssistant, State
 
-from custom_components.floorheat.core.engine import step as real_step
-from custom_components.floorheat.core.io import Inputs, OutputState
-from custom_components.floorheat.inputs import SensorReader, read_switch
+from custom_components.multizone_floor_heating_manager.core.engine import step as real_step
+from custom_components.multizone_floor_heating_manager.core.io import Inputs, OutputState
+from custom_components.multizone_floor_heating_manager.inputs import SensorReader, read_switch
 
-from .conftest import START, World
+from .conftest import PKG, START, World
 
 _T = datetime(2026, 1, 12, 6, 0, tzinfo=UTC)
 
@@ -96,7 +96,7 @@ async def test_time_zone_follows_ha(
         seen.append(inputs)
         return real_step(config, state, inputs, now)
 
-    monkeypatch.setattr("custom_components.floorheat.controller.step", spy)
+    monkeypatch.setattr(f"{PKG}.controller.step", spy)
     world.setup_entities()
     assert await world.setup(live=False)
     assert seen[-1].time_zone == ZoneInfo("UTC")

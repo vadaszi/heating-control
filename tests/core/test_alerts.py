@@ -7,11 +7,20 @@ import dataclasses
 from datetime import UTC, date, time, timedelta
 from zoneinfo import ZoneInfo
 
-from custom_components.floorheat.core.alerts import active_alerts
-from custom_components.floorheat.core.config import CoreConfig, GlobalParams, ZoneParams
-from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import EventKind, OutputState
-from custom_components.floorheat.core.state import CoreState, OutputTracking, ZoneMode, ZoneState
+from custom_components.multizone_floor_heating_manager.core.alerts import active_alerts
+from custom_components.multizone_floor_heating_manager.core.config import (
+    CoreConfig,
+    GlobalParams,
+    ZoneParams,
+)
+from custom_components.multizone_floor_heating_manager.core.engine import step
+from custom_components.multizone_floor_heating_manager.core.io import EventKind, OutputState
+from custom_components.multizone_floor_heating_manager.core.state import (
+    CoreState,
+    OutputTracking,
+    ZoneMode,
+    ZoneState,
+)
 
 from .harness import DAY, Scenario, at, make_config
 

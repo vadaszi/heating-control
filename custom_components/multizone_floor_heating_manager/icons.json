@@ -1,0 +1,31 @@
+{
+  "entity": {
+    "sensor": {
+      "alerts": {
+        "default": "mdi:alert"
+      },
+      "reason": {
+        "default": "mdi:information-outline"
+      },
+      "zone_state": {
+        "default": "mdi:radiator"
+      },
+      "mode": {
+        "default": "mdi:home-thermometer"
+      }
+    },
+    "switch": {
+      "heating_season": {
+        "default": "mdi:sun-snowflake-variant"
+      },
+      "control_active": {
+        "default": "mdi:robot"
+      }
+    },
+    "time": {
+      "sensor_fault_reminder": {
+        "default": "mdi:bell-ring"
+      }
+    }
+  }
+}

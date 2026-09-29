@@ -1,4 +1,4 @@
-"""Pure-Python control core of floorheat.
+"""Pure-Python control core of Multizone Floor Heating Manager.
 
 Rules (docs/design.md §5.3):
 - no Home Assistant imports;

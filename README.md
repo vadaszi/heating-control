@@ -1,8 +1,8 @@
-# Floor Heating Zone Control (`floorheat`)
+# Multizone Floor Heating Manager
 
 A Home Assistant custom integration for room-by-room control of underfloor heating fed by a heat pump (or any heat source that can be requested through a switch).
 
-> **Status: under development.** The first release (v1) is being built in phases; see [`docs/implementation-plan.md`](docs/implementation-plan.md). The integration can already be installed for a trial in shadow mode (it decides but switches nothing): see [Getting started](docs/getting-started.md).
+> **Status: under development.** There is no release yet; the first one will be 1.0.0. The work is done in phases; see [`docs/implementation-plan.md`](docs/implementation-plan.md). The integration can already be installed for a trial in shadow mode (it decides but switches nothing): see [Getting started](docs/getting-started.md).
 
 ## Planned features (v1)
 - Per-zone thermostat logic with hysteresis and an open-window wait time.
@@ -16,7 +16,7 @@ Later releases add schedules, holiday mode, a dashboard example (v1.1), and a 24
 ## Documentation
 - Design and functional specification: [`docs/design.md`](docs/design.md)
 - Getting started (install, stand-in switches, shadow-mode trial): [`docs/getting-started.md`](docs/getting-started.md)
-- Configuration reference (YAML keys, entities, notifications, shadow mode): [`docs/configuration.md`](docs/configuration.md)
+- Configuration reference (YAML keys, devices and entities, notifications, shadow mode, upgrading from `floorheat`): [`docs/configuration.md`](docs/configuration.md)
 - Shelly watchdog scripts (which device, upload, configure, bench tests): [`docs/shelly-scripts.md`](docs/shelly-scripts.md)
 - Heartbeat protocol between the integration and the scripts: [`docs/heartbeat-protocol.md`](docs/heartbeat-protocol.md)
 - Installation and safety notes will be added with the v1 release.

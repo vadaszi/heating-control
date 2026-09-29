@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from custom_components.floorheat.core.units import (
+from custom_components.multizone_floor_heating_manager.core.units import (
     TemperatureUnit,
     delta_from_celsius,
     delta_to_celsius,

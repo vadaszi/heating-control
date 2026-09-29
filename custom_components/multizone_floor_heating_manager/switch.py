@@ -11,38 +11,30 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
 from .entity import FloorheatEntity
+from .runtime import FloorheatConfigEntry
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    controller = hass.data[DATA_CONTROLLER]
+    controller = entry.runtime_data.controller
     async_add_entities(
         [
             SettingSwitch(
                 controller,
                 "heating_season",
-                "Floorheat heating season",
-                "mdi:sun-snowflake-variant",
                 lambda: controller.settings.heating_season,
                 controller.async_set_heating_season,
             ),
             SettingSwitch(
                 controller,
                 "control_active",
-                "Floorheat control active",
-                "mdi:robot",
                 lambda: controller.settings.control_active,
                 controller.async_set_control_active,
             ),
@@ -55,13 +47,10 @@ class SettingSwitch(FloorheatEntity, SwitchEntity):
         self,
         controller: FloorheatController,
         key: str,
-        name: str,
-        icon: str,
         get: Callable[[], bool],
         set_: Callable[[bool], Awaitable[None]],
     ) -> None:
-        super().__init__(controller, "switch", key, name)
-        self._attr_icon = icon
+        super().__init__(controller, key)
         self._get = get
         self._set = set_
 

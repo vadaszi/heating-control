@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import timedelta
 
-from custom_components.floorheat.core.io import EventKind, OutputState, Reason
-from custom_components.floorheat.core.state import ZoneMode
+from custom_components.multizone_floor_heating_manager.core.io import EventKind, OutputState, Reason
+from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
 from .harness import DAY, Scenario, at
 

@@ -7,15 +7,24 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from custom_components.floorheat.core.config import (
+from custom_components.multizone_floor_heating_manager.core.config import (
     CoreConfig,
     GlobalParams,
     ZoneConfig,
     ZoneParams,
 )
-from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import Inputs, OutputState, Reason, ZoneInput
-from custom_components.floorheat.core.state import CoreState, ZoneMode, ZoneState
+from custom_components.multizone_floor_heating_manager.core.engine import step
+from custom_components.multizone_floor_heating_manager.core.io import (
+    Inputs,
+    OutputState,
+    Reason,
+    ZoneInput,
+)
+from custom_components.multizone_floor_heating_manager.core.state import (
+    CoreState,
+    ZoneMode,
+    ZoneState,
+)
 
 from .harness import Scenario, at, make_config
 

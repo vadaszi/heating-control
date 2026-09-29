@@ -1,7 +1,7 @@
 {
-  "name": "floorheat-shelly-scripts",
+  "name": "multizone-floor-heating-manager-shelly-scripts",
   "private": true,
-  "description": "Tests for the floorheat Shelly watchdog scripts (shelly_scripts/)",
+  "description": "Tests for the Multizone Floor Heating Manager Shelly watchdog scripts (shelly_scripts/)",
   "license": "MIT",
   "type": "module",
   "engines": {

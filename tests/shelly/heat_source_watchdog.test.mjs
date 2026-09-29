@@ -17,7 +17,7 @@ import {
 } from "./helpers.mjs";
 import { Device, ERR_NOT_FOUND } from "./shelly_mock.mjs";
 
-const KEY = "floorheat_season";
+const KEY = "multizone_floor_heating_manager_season";
 
 function heatSource(options = {}) {
   return newDevice(HEAT_SOURCE_SCRIPT, { switches: 1, ...options });

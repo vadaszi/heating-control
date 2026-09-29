@@ -35,7 +35,8 @@ class ConfigError(ValueError):
     def __init__(self, errors: list[str]) -> None:
         self.errors = list(errors)
         super().__init__(
-            "Invalid floorheat configuration:\n" + "\n".join(f"- {e}" for e in self.errors)
+            "Invalid Multizone Floor Heating Manager configuration:\n"
+            + "\n".join(f"- {e}" for e in self.errors)
         )
 
 

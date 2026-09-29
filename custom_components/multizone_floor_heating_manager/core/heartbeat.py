@@ -68,7 +68,7 @@ def parse_status(body: object, role: ShellyRole) -> ShellyStatus:
         raise StatusError("the answer has no protocol version")
     if version != PROTOCOL_VERSION:
         raise StatusError(
-            f"protocol v{version} is not supported (floorheat speaks v{PROTOCOL_VERSION})"
+            f"protocol v{version} is not supported (the integration speaks v{PROTOCOL_VERSION})"
         )
     reported = body.get("role")
     if reported != role.value:
@@ -193,9 +193,9 @@ def record_success(
             Event(
                 kind=EventKind.WATCHDOG_PARAMS_MISMATCH,
                 message=(
-                    f"Shelly {name}: the watchdog script parameters differ from floorheat's "
+                    f"Shelly {name}: the watchdog script parameters differ from the integration's "
                     f"expected values: {'; '.join(differences)}. Change the script's CONFIG "
-                    "block or floorheat's expected values."
+                    "block or the integration's expected values."
                 ),
                 data={"shelly": name},
             )

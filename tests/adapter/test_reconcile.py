@@ -9,8 +9,8 @@ import pytest
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, HomeAssistant
 
-from custom_components.floorheat.core.io import Event as CoreEvent
-from custom_components.floorheat.core.io import EventKind
+from custom_components.multizone_floor_heating_manager.core.io import Event as CoreEvent
+from custom_components.multizone_floor_heating_manager.core.io import EventKind
 
 from .conftest import HEAT_SOURCE, World, make_conf, valve
 

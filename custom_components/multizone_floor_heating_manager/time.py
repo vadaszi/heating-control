@@ -5,33 +5,28 @@ from __future__ import annotations
 from datetime import time
 
 from homeassistant.components.time import TimeEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_CONTROLLER
 from .controller import FloorheatController
 from .entity import FloorheatEntity, async_apply
+from .runtime import FloorheatConfigEntry
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: FloorheatConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    if discovery_info is None:
-        return
-    async_add_entities([ReminderTime(hass.data[DATA_CONTROLLER])])
+    async_add_entities([ReminderTime(entry.runtime_data.controller)])
 
 
 class ReminderTime(FloorheatEntity, TimeEntity):
-    _attr_icon = "mdi:bell-ring"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, controller: FloorheatController) -> None:
-        super().__init__(
-            controller, "time", "sensor_fault_reminder", "Floorheat sensor fault reminder"
-        )
+        super().__init__(controller, "sensor_fault_reminder")
 
     @property
     def available(self) -> bool:

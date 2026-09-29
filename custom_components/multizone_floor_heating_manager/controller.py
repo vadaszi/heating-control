@@ -247,15 +247,15 @@ class FloorheatController:
             return
         listed = ", ".join(missing)
         _LOGGER.error(
-            "Unknown entities in the floorheat configuration: %s. They count as "
-            "unavailable (sensors: no reading; switches: OFF) until they appear",
+            "Unknown entities in the Multizone Floor Heating Manager configuration: %s. "
+            "They count as unavailable (sensors: no reading; switches: OFF) until they appear",
             listed,
         )
         persistent_notification.async_create(
             self.hass,
-            f"These entities in the floorheat configuration do not exist: {listed}. "
-            "They count as unavailable until they appear. Check the entity ids.",
-            title="floorheat: unknown entities",
+            "These entities in the Multizone Floor Heating Manager configuration do not "
+            f"exist: {listed}. They count as unavailable until they appear. Check the entity ids.",
+            title="Floor heating: unknown entities",
             notification_id=MISSING_ENTITIES_NOTIFICATION,
         )
 

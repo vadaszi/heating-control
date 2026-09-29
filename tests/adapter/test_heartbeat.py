@@ -19,9 +19,9 @@ from pytest_homeassistant_custom_component.common import (
 )
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.floorheat.const import DOMAIN
+from custom_components.multizone_floor_heating_manager.const import DOMAIN
 
-from .conftest import HEAT_SOURCE, World, make_conf, valve
+from .conftest import HEAT_SOURCE, PKG, World, make_conf, valve
 from .test_restart import restarted
 
 VALVES = {"name": "Valves", "host": "192.0.2.11", "script_id": 1, "switches": [valve(1), valve(2)]}
@@ -136,7 +136,7 @@ async def test_s07_alert_after_three_failures_and_recovery(
     world.setup_entities()
     assert await world.setup(conf())
     await world.advance(10)  # calls at 0, 5 and 10 min
-    assert titles(phone) == ["floorheat: Shelly watchdog not answering"]
+    assert titles(phone) == ["Floor heating: Shelly watchdog not answering"]
     assert (
         phone[0]
         .data["message"]
@@ -146,7 +146,7 @@ async def test_s07_alert_after_three_failures_and_recovery(
     )
     # every call after a failure reads the status first
     assert [m for m, _ in calls(aioclient_mock, VALVE_URL)] == ["GET", "POST"] * 3
-    alerts = hass.states.get("sensor.floorheat_alerts")
+    alerts = hass.states.get("sensor.floor_heating_alerts")
     assert alerts is not None
     assert alerts.state == "1"
     assert alerts.attributes["alerts"] == [
@@ -158,11 +158,11 @@ async def test_s07_alert_after_three_failures_and_recovery(
 
     serve(aioclient_mock)
     await world.advance(5)
-    assert titles(phone)[1:] == ["floorheat: Shelly watchdog answering again"]
+    assert titles(phone)[1:] == ["Floor heating: Shelly watchdog answering again"]
     assert (
         phone[1].data["message"] == "Shelly Valves answers again; its watchdog script is running."
     )
-    assert hass.states.get("sensor.floorheat_alerts").state == "0"  # type: ignore[union-attr]
+    assert hass.states.get("sensor.floor_heating_alerts").state == "0"  # type: ignore[union-attr]
 
 
 async def test_two_failures_do_not_alert(
@@ -255,17 +255,17 @@ async def test_params_mismatch_is_alerted_once(
     serve(aioclient_mock, valves={"json": changed})
     world.setup_entities()
     assert await world.setup(conf())  # check_interval not configured: not compared
-    assert titles(phone) == ["floorheat: Shelly script parameters differ"]
+    assert titles(phone) == ["Floor heating: Shelly script parameters differ"]
     assert "heartbeat_timeout_s is 120, expected 18000." in phone[0].data["message"]
     assert "check_interval_s" not in phone[0].data["message"]
     await world.advance(10)
     assert len(phone) == 1
-    assert hass.states.get("sensor.floorheat_alerts").state == "1"  # type: ignore[union-attr]
+    assert hass.states.get("sensor.floor_heating_alerts").state == "1"  # type: ignore[union-attr]
 
     serve(aioclient_mock)
     await world.advance(5)
     assert len(phone) == 1  # cleared without a notification
-    assert hass.states.get("sensor.floorheat_alerts").state == "0"  # type: ignore[union-attr]
+    assert hass.states.get("sensor.floor_heating_alerts").state == "0"  # type: ignore[union-attr]
 
 
 async def test_check_interval_is_compared_when_configured(
@@ -320,7 +320,7 @@ async def test_no_heartbeat_while_the_reconcile_loop_is_broken(
 async def test_password_uses_digest_auth(world: World, aioclient_mock: AiohttpClientMocker) -> None:
     serve(aioclient_mock)
     world.setup_entities()
-    with patch("custom_components.floorheat.heartbeat.DigestAuthMiddleware") as digest:
+    with patch(f"{PKG}.heartbeat.DigestAuthMiddleware") as digest:
         assert await world.setup(make_conf(2, shellys=[{**VALVES, "password": "pw"}, HEAT]))
     digest.assert_called_once_with("admin", "pw")  # the valve Shelly only
 
@@ -345,5 +345,5 @@ async def test_alert_state_survives_a_restart(
         serve(aioclient_mock)
         await new.advance(5)
         assert [c.data["title"] for c in new_phone] == [
-            "floorheat: Shelly watchdog answering again"
+            "Floor heating: Shelly watchdog answering again"
         ]

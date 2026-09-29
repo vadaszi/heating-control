@@ -1,4 +1,4 @@
-"""YAML configuration of floorheat (docs/design.md §5.6, docs/configuration.md).
+"""YAML configuration of the integration (docs/design.md §5.6, docs/configuration.md).
 
 Two stages:
 - `CONFIG_SCHEMA` checks the structure and everything that does not depend on HA's
@@ -182,7 +182,7 @@ def _check_watchdogs(conf: dict[str, Any], switches: list[str]) -> list[str]:
             )
     errors.extend(
         f"switch {entity_id} has no watchdog: add it to the switches of its Shelly under "
-        "shellys, or to no_watchdog if it is not a Shelly running the floorheat watchdog script"
+        "shellys, or to no_watchdog if it is not a Shelly running the watchdog script"
         for entity_id in dict.fromkeys(switches)
         if entity_id not in on_shelly and entity_id not in no_watchdog
     )
@@ -251,7 +251,7 @@ class ZoneWiring:
 
 @dataclass(frozen=True)
 class ShellyWiring:
-    """A Shelly running a floorheat watchdog script (D-120)."""
+    """A Shelly running a watchdog script (D-120)."""
 
     name: str
     host: str

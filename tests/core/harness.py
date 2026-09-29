@@ -18,9 +18,14 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
-from custom_components.floorheat.core.config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
-from custom_components.floorheat.core.engine import step
-from custom_components.floorheat.core.io import (
+from custom_components.multizone_floor_heating_manager.core.config import (
+    CoreConfig,
+    GlobalParams,
+    ZoneConfig,
+    ZoneParams,
+)
+from custom_components.multizone_floor_heating_manager.core.engine import step
+from custom_components.multizone_floor_heating_manager.core.io import (
     Event,
     EventKind,
     Inputs,
@@ -28,7 +33,11 @@ from custom_components.floorheat.core.io import (
     OutputState,
     ZoneInput,
 )
-from custom_components.floorheat.core.state import CoreState, ZoneMode, load_state
+from custom_components.multizone_floor_heating_manager.core.state import (
+    CoreState,
+    ZoneMode,
+    load_state,
+)
 
 DAY = date(2026, 1, 12)  # a Monday in the heating season
 
