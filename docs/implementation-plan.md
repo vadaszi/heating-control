@@ -130,6 +130,7 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
 - **Carried over:**
   - *`iot_class`* (review F): currently `local_polling`. Re-check before the release (the integration polls the Shellys locally for the heartbeat and pings healthchecks.io; `calculated` would claim no own communication).
   - *Going live after shadow mode* (D-112): put into the go-live checklist that the real switch states count from then on, so HpMinOffTime may apply before the first start; the zones that need heat open their valves meanwhile.
+  - *Manual control* (D-119, owner 2026-09-29): a short "Manual control" section in the user docs: Control active OFF first, then switch the relays directly; leave the watchdog scripts running; Control active ON returns to automatic (min OFF may apply, D-112). No code.
   - *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime after the first start. Accepted by the owner (2026-09-27); handled by the owner during the test phase, no code change.
 - **Done when:** v1 is running live, with no open critical issues.
 
