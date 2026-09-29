@@ -3,7 +3,7 @@
 > **Status: Spec rev. 1.2 — ground truth for implementation** (2026-09-27; rev. 1.1 of 2026-09-25 reviewed with the owner, see D-64…D-82)
 > Phases: (1) functional spec ✅ → (2) technical design ✅ → (3) implementation with Claude Code
 > "Spec rev." numbers this document; "v1 / v1.1 / v1.2" are the release phases in §5.10.
-> Working name of the integration: `floorheat` (may be renamed before public release)
+> Integration: **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (D-127; the working name until P7b was `floorheat`, which older entries of this document still use)
 
 ---
 
@@ -422,7 +422,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
   - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
-  - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason text shown by the reason sensor (D-89) with the end of the timer it names (D-123);
+  - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason shown by the reason sensor (D-89): a fixed key (D-126) with the end of the timer it names (D-123);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
 - fully covered by unit tests (§6).
@@ -449,7 +449,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - in shadow mode, no output commands.
 - **Persistence:** logic state in HA storage (`helpers.storage.Store`), restored at startup (§3.8).
 - **Notifications:** through the notify services listed in the YAML config.
-  - **Targets (D-117):** YAML `notify` lists `notify.<name>` targets. A legacy notify service of that name is called with title and message; otherwise the notify entity with that id gets `notify.send_message`. Calls run as tasks with a timeout; failures are logged and never stop the control. Titles: "floorheat: sensor fault" / "sensor fault reminder" / "sensor recovered" / "output not following command" / "output recovered"; the message is the core event text. Targets that don't exist are reported after HA has started (warning + persistent notification). Without targets, events are only logged.
+  - **Targets (D-117):** YAML `notify` lists `notify.<name>` targets. A legacy notify service of that name is called with title and message; otherwise the notify entity with that id gets `notify.send_message`. Calls run as tasks with a timeout; failures are logged and never stop the control. Titles (D-127): "Floor heating: sensor fault" / "sensor fault reminder" / "sensor recovered" / "switch not following command" / "switch following again" / "Shelly watchdog not answering" / "Shelly watchdog answering again" / "Shelly script parameters differ"; the message is the core event text. Targets that don't exist are reported after HA has started (warning + persistent notification). Without targets, events are only logged.
 - **Heartbeat and watchdog:**
   - sends the heartbeat to the Shellys (§5.4);
   - pings healthchecks.io every `WatchdogPingInterval` (5 min).
@@ -460,7 +460,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **Per zone:**
   - climate entity (current temp = RoomTemp, target = BaseSetPoint, hvac_action heating/idle; hvac_modes: `heat` only, no per-zone off);
   - state sensor (`IDLE`/`WAITING`/…);
-  - reason sensor (text);
+  - reason sensor (enum of fixed keys, shown as translated texts, D-126);
   - effective SetPoint sensor;
   - Hysteresis and WaitTime number entities.
 - **Global:**
@@ -470,12 +470,12 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - number entities for the global parameters;
   - alerts sensor (count + list).
 - **Details (D-114 to D-116):**
-  - entity ids are fixed and built from the zone id: `climate.floorheat_<zone>`, `sensor.floorheat_<zone>_state` / `_reason` / `_setpoint`, `number.floorheat_<zone>_hysteresis` / `_wait_time`; global `binary_sensor.floorheat_heat_request`, `sensor.floorheat_mode`, `sensor.floorheat_alerts`, `switch.floorheat_heating_season`, `switch.floorheat_control_active`, `number.floorheat_<parameter>`, `time.floorheat_sensor_fault_reminder`. Unique ids `floorheat_<same key>`; display names use the zone name (D-115). Full list: [`configuration.md`](configuration.md#entities);
+  - **devices and names (D-125, replaces the fixed ids of D-115):** one device per zone, "<zone name> floor heating", and one "Floor heating" device for the global entities (device type *service*). Entities follow HA's naming conventions: `has_entity_name`, the entity name names only the value ("Reason", "Hysteresis"), the climate entity has no name of its own (it is the zone device), names and state texts come from translations, settings carry the *config* entity category. HA generates the entity ids from device name + entity name when an entity is first registered (e.g. `climate.living_room_floor_heating`, `sensor.living_room_floor_heating_reason`, `switch.floor_heating_heating_season`); later renames don't change them. Unique ids are built from the zone id and the key (e.g. `living_room_reason`, `heat_request`). Zone devices are assigned to areas in the UI (no YAML key). Full list: [`configuration.md`](configuration.md#entities);
   - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). SensorFaultReminder is a time entity;
   - the entities are views of the adapter's settings and state (D-106): unavailable until the first reconcile run, except the settings (switches, numbers, time), which can be changed at once;
   - climate `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*; attributes `zone_state`, `reason`, `valve` (desired), `calling_zone` (D-116);
   - the heat request binary sensor is ON with the desired request (in shadow mode the simulated one); attributes `on_since` (last actual, or in shadow mode commanded, ON) and `on_duration` in minutes, excluded from the recorder (D-116), both present only while the heat source runs (D-123);
-  - **no per-minute countdowns (D-123):** no entity state changes every minute only because time passes. Reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor has an `until` attribute (aware ISO timestamp, the end of the running wait, min OFF or min ON timer) only while such a timer runs. The climate entity's `reason` attribute shows the same text;
+  - **no per-minute countdowns (D-123):** no entity state changes every minute only because time passes. Reasons are fixed keys (D-126; e.g. `waiting` shown as "Waiting period", `held_by_minimum_off_time`, `spreading_heat`); the reason sensor has an `until` attribute (aware ISO timestamp, the end of the running wait, min OFF or min ON timer) only while such a timer runs. The climate entity's `reason` attribute holds the same key;
   - temperatures: climate, effective SetPoint and absolute temperature numbers are in °C and converted by HA; temperature differences (Hysteresis, ManualResumeDelta) are converted by the adapter to HA's unit system, because HA converts only absolute temperatures (D-77);
   - the alerts sensor derives its list from the core state (`active_alerts`): faulty zones and outputs whose mismatch alert was sent.
 - **Holiday (D-79):** HolidayTemp number, end date/time entity, "Holiday active" switch.
@@ -526,6 +526,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 
 ### 5.6 Configuration (D-52, D-55)
 - **YAML configuration** is used for setup, also for the public release (at least initially). A UI setup (config flow) is an optional later improvement.
+- **Config entry from YAML (D-124):** at startup the validated YAML is imported into a single config entry, so the integration appears under *Devices & services* and can create devices (D-125). The YAML stays the only configuration: the entry holds no data (the parsed YAML stays in memory, so no password is copied into HA's entry storage), and the UI's "Add integration" step only points to the YAML. The entry follows the YAML at every start; a zone removed from the YAML loses its device. Without a YAML section the entry fails to load with a clear error, and nothing is deleted. Removing the entry keeps the stored settings and state (the `Store` file), so the entry can be removed to let HA regenerate entity ids after a rename.
 - **YAML holds only the wiring:**
   - zones: stable `id` (D-76; key for persisted state, schedules and entity unique IDs, must never change), display `name`, sensor entity, valve switch entity or `none`, optional power sensor entity, sensor offset;
     - the `id` is an HA-style slug: lowercase letters, digits and `_`, starting with a letter (e.g. `living_room`). An invalid id is rejected with a suggested slug (D-84);
@@ -543,9 +544,9 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 
 Illustrative example (exact keys defined in implementation):
 ```yaml
-floorheat:
+multizone_floor_heating_manager:
   heat_source_switch: switch.heat_pump_request
-  watchdog_ping_url: !secret floorheat_watchdog_url
+  watchdog_ping_url: !secret floor_heating_watchdog_url
   notify: [notify.mobile_app_phone, notify.email]
   zones:
     - id: living_room
@@ -561,7 +562,7 @@ floorheat:
 
 ### 5.7 Dashboard requirements (D-53)
 The visual design (card types, layout, styling) is left to implementation. The dashboard must **show and control**:
-- **Per zone:** RoomTemp, SetPoint (adjustable), state, reason text (e.g. "Calling zone", "Waiting"; the timer end is the reason sensor's `until` attribute, D-123), valve on/off.
+- **Per zone:** RoomTemp, SetPoint (adjustable), state, reason text (e.g. "Calling zone", "Waiting period"; the timer end is the reason sensor's `until` attribute, D-123), valve on/off.
 - **Global:** heat pump request with running time, active mode, heating season switch, control active switch.
 - **Alerts:** visible only when active.
 - **Holiday:** temperature, end date/time, start/stop.
@@ -591,7 +592,7 @@ Docs are updated in the same commit(s) as the code they describe.
 ├── LICENSE                     # MIT (D-63)
 ├── hacs.json
 ├── .gitignore  .pre-commit-config.yaml
-├── custom_components/floorheat/
+├── custom_components/multizone_floor_heating_manager/
 │   ├── manifest.json
 │   ├── __init__.py             # setup, reconcile loop, heartbeat, watchdog
 │   ├── core/                   # pure logic, no HA imports
@@ -607,6 +608,8 @@ Docs are updated in the same commit(s) as the code they describe.
 
 ### 5.10 Phasing
 The three releases below are split into smaller **work phases** P0–P12 in `docs/implementation-plan.md` (D-82): P0–P8 = v1, P9–P10 = v1.1, P11–P12 = v1.2. Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The release contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
+
+**Releases (D-128):** nothing is tagged or released before 1.0.0, the first release. Until then, versions are set in `manifest.json` only (P7b inserted before P8: 0.7.5). Whether 1.0.0 contains only v1 or also v1.1 (P9/P10) is decided by the owner later.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
@@ -789,7 +792,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-86 | Parameter validation checks the inclusive §4 range only (plus finite numbers); the §4 step is UI granularity |
 | D-87 | Persisted core state is versioned; additive fields get defaults, breaking changes bump the version; newer-version or corrupt data is discarded and the integration starts as on a first start (D-78); state of removed zones is dropped |
 | D-88 | The plausibility range (§3.6) is checked against the raw sensor reading, before the per-zone offset |
-| D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events *(texts fixed by D-123; were countdowns like "Waiting, 12 min left")* |
+| D-89 | Per-zone reason texts are part of `step`'s outputs (current value per zone for the reason sensor), not events *(texts fixed by D-123; were countdowns like "Waiting, 12 min left"; fixed keys with translated texts since D-126)* |
 | D-90 | Reading validity and the SENSOR_FAULT state machine are implemented with the zone logic in P2; P3 keeps fault notifications, season OFF and the mismatch counter |
 | D-91 | First start with the heat source already ON and no persisted ON time: HpMinOnTime counts from startup |
 | D-92 | Request ON without a calling zone: the HEATING zone with the largest deficit (ties by YAML order) becomes the calling zone |
@@ -815,7 +818,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-112 | Going live after shadow mode: the real switch states count; a heat source that shadow mode had ON but that reads OFF counts as stopped, so HpMinOffTime applies before the first start. Accepted, noted in the go-live checklist |
 | D-113 | A shadow-mode trial without Shellys uses Template switch helpers without a state template as stand-in switches; the spec stays switch-only. `unknown` counts as unavailable, so a new stand-in is switched OFF once after it is created |
 | D-114 | Every §4 global parameter gets its number entity in v1 (P6), also those whose features follow in v1.1/v1.2; the docs name the release each is used from |
-| D-115 | Entity ids are fixed and built from the zone id (`<platform>.floorheat_<zone>_<key>`, global `<platform>.floorheat_<key>`); unique ids `floorheat_<key>`; display names use the zone name |
+| D-115 | *(entity ids superseded by D-125)* Entity ids are fixed and built from the zone id (`<platform>.floorheat_<zone>_<key>`, global `<platform>.floorheat_<key>`); unique ids `floorheat_<key>`; display names use the zone name |
 | D-116 | Climate `hvac_action` = heating while the request is ON and the zone gets flow (valve open or no valve); heat request binary sensor = desired request with `on_since` / `on_duration` (unrecorded) attributes *(present only while running, D-123)* |
 | D-117 | Notify targets are `notify.<name>`: a legacy notify service, otherwise a notify entity via `notify.send_message`; one title per event kind; failures logged, never blocking; unknown targets reported after start |
 | D-118 | Switches without a Shelly watchdog are listed explicitly in the YAML key `no_watchdog` (mapped switches only); they get no heartbeat and no heartbeat alert. Unlisted switches are expected to be Shellys with the script. No automatic detection or device-type check (owner, 2026-09-28). The user docs explain that a listed switch has no device failsafe when HA stops |
@@ -824,9 +827,14 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-121 | Heartbeat client: `POST` every HeartbeatInterval (also in shadow mode, and at once to the heat source on a season change); a failed call is a connection error/timeout (10 s), non-200, no status, `v` ≠ 1 or the wrong role; one alert after HeartbeatFailAlert failures naming the cause, recovery notified; parameter check of `heartbeat_timeout_s` (and `check_interval_s` if configured), alerted once and cleared silently; `GET` first after a start or a failure so `timed_out` and restarts can be logged (never notified); alert state persisted and shown in the alerts sensor (owner, 2026-09-29) |
 | D-122 | Heartbeats only while the reconcile loop works: the last completed run is at most 3 ReconcileIntervals old, so a broken integration triggers the Shelly failsafe (owner, 2026-09-29) |
 | D-123 | No per-minute countdowns in entity states: reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor's `until` attribute holds the end of the running timer and is present only while one runs; the heat request's `on_since` / `on_duration` are present only while it runs (owner, 2026-09-29). Amends D-89 and D-116 |
+| D-124 | The YAML is imported into a single config entry at startup (import flow, `single_config_entry`); the YAML stays the only configuration, the entry holds no data, the UI setup step only points to the YAML. No YAML section → the entry fails with a clear error, nothing deleted. Removing the entry keeps the stored settings and state (owner, 2026-09-29) |
+| D-125 | Devices and names follow HA's conventions: a *service* device per zone ("<zone name> floor heating") and a "Floor heating" device; `has_entity_name`, translated names and states, *config* category for settings; entity ids generated by HA from device + entity name, no integration name in them; unique ids from zone id + key; areas assigned in the UI. No per-zone valve entity (the relay's own entity shows it while live). Supersedes the fixed ids of D-115 (owner, 2026-09-29) |
+| D-126 | The reason sensor is an enum of fixed keys (`idle`, `waiting`, `calling_zone`, `heating`, `held_by_minimum_off_time`, `spreading_heat`, `too_warm_for_spreading`, `heat_source_unavailable`, `no_reading_yet`, `sensor_fault`, `season_off`, `sensor_fault_season_off`); the core returns the key, the texts are translations ("heat source" wording). Amends D-89 and D-123 (owner, 2026-09-29) |
+| D-127 | The integration is renamed from the working name `floorheat` to **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (YAML key, folder, storage file). Docs name it in full, then "the integration"; notification titles start with "Floor heating:". The Shelly scripts use the new name; the heat source script's KVS key becomes `multizone_floor_heating_manager_season` (owner, 2026-09-29) |
+| D-128 | No tag or GitHub release before the first release, which is 1.0.0; until then versions are set in `manifest.json` only (P7b: 0.7.5) and installed from the default branch. Whether P9/P10 go into 1.0.0 is decided later (owner, 2026-09-29) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b.
 
 ---
 

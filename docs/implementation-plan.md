@@ -14,7 +14,8 @@
 | P5 | HA adapter: config, reconcile, outputs, persistence | v1 | cloud | A21, A22, A25, A27 (HA test harness) |
 | P6 | HA entities & notifications | v1 | cloud | entity/notify tests |
 | P7 | HA heartbeat client | v1 | cloud + local check | S7, mismatch alert, shadow heartbeat |
-| P8 | v1 docs, release, shadow run, go-live | **v1 release** | local / owner | install test, V2–V6, go-live checklist |
+| P7b | HA naming conventions, config entry, rename (0.7.5) | v1 | local + owner check | config entry/device/naming tests, live check |
+| P8 | v1 docs, release, shadow run, go-live | **v1 release** (timing: D-128) | local / owner | install test, V2–V6, go-live checklist |
 | P9 | Core schedules & holiday | v1.1 | cloud | A10–A16, A24, A28 + DST/overlap tests |
 | P10 | HA schedules, holiday, dashboard | **v1.1 release** | cloud | service/form-entity tests, dashboard check |
 | P11 | Core failsafe & maintenance features | v1.2 | cloud | A19, A20 (exercise), actuator, long run, overshoot |
@@ -125,9 +126,19 @@ P4 can run in parallel with P5–P6 because it only depends on the protocol it d
   - *Parameter check (D-73, D-101):* compare `params.heartbeat_timeout_s` (and `check_interval_s` if configured) with the expected *config* values; alert once on a difference. Ignore params HA has no expectation for.
   - *Optional:* a response with `state: "timed_out"` or a small `uptime_s` shows that the watchdog acted or the device rebooted; log it (a notification is a P7 decision).
 
+## P7b — HA naming conventions, config entry, domain rename (0.7.5)
+Inserted before P8 on 2026-09-29 (owner): entity ids must be settled before the first release. Decisions D-124 to D-128.
+- Rename the integration to **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (folder, YAML key, storage file, texts; the Shelly scripts' messages and KVS key) (D-127). Docs: the full name, then "the integration".
+- Import the YAML into a single config entry; the YAML stays the only configuration; removing the entry keeps the stored settings (D-124).
+- Devices per zone ("<zone name> floor heating") and "Floor heating"; `has_entity_name`, translations (`translations/en.json`), icons (`icons.json`), *config* category for settings; HA generates the entity ids (D-125). Names as reviewed by the owner: "heat source" wording; "Manual max temperature", "Off-season valve exercise duration", reason `waiting` shown as "Waiting period"; no valve entity, no YAML `area` key.
+- The reason sensor becomes an enum of fixed keys returned by the core (D-126).
+- Version 0.7.5 in `manifest.json`; no tag, no release (D-128).
+- **Tests:** one entry from the YAML (also after a restart), the UI step aborts, devices and generated entity ids, *config* categories, reload and unload leave nothing running, removing the entry keeps the settings, a missing YAML section fails the entry without deleting anything, a removed zone loses its device, every reason key and state has a text; all existing adapter tests on the new ids.
+- **Owner (live):** switch over to 0.7.5 (YAML key, HACS, delete the old folder, re-enter settings, areas, dashboards) and check the names in the real UI. Touch-ups go out as 0.7.6 and up.
+
 ## P8 — v1 docs, release, shadow run, go-live
 - Docs per §5.8 for all of v1: README (logic in plain words, limitations, safety, hydraulic prerequisite D-80), installation (HACS + manual), configuration reference, entities, Shelly guide, troubleshooting, shadow mode and go-live checklist, CHANGELOG. `examples/configuration.example.yaml`.
-- Tag `v1.0.0` and publish a GitHub release; verify installation through HACS.
+- Tag `v1.0.0` and publish a GitHub release; verify installation through HACS. **Owner (2026-09-29, D-128):** no release before the owner says so; the first release is 1.0.0 and may also contain P9/P10. Until then, versions are bumped in `manifest.json` only.
 - **Owner (local):** install on the live HA in shadow mode; verify **V6** (`last_reported` moves for BTHome), **V4**, **V5** (wiring), **V1** (actuator power, needed later); run shadow mode for 1–2 weeks next to the Computherm and compare decisions (entity history). Then follow the go-live checklist: remove the Computherm, wire the Shelly 1, set Control active ON.
 - **Carried over:**
   - *`iot_class`* (review F): currently `local_polling`. Re-check before the release (the integration polls the Shellys locally for the heartbeat and pings healthchecks.io; `calculated` would claim no own communication).
