@@ -134,7 +134,6 @@ GLOBAL_PARAM_SPECS = _specs(
     ParamSpec("sensor_fault_timeout", 60, 15, 240, 5, _MIN),
     ParamSpec("manual_max_temp", 25.0, 18, 30, 0.5, _C),
     ParamSpec("manual_resume_delta", 1.0, 0.2, 3.0, 0.1, _DELTA),
-    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # unused since D-133; P10 removes it
     ParamSpec("failsafe_trigger", 24, 1, 72, 1, _H),
     ParamSpec("valve_exercise_duration", 15, 5, 30, 5, _MIN),
     ParamSpec("long_run_alarm", 12, 2, 48, 1, _H),
@@ -166,8 +165,7 @@ class GlobalParams:
     """Global values changed from the UI (§4).
 
     FailsafeWindow and the valve exercise weekday/time are added with their features in
-    P11. `holiday_temp` is per zone since D-133 (`ZoneParams`); this global value is no
-    longer used by the core and goes away in P10, which copies it into every zone.
+    P11. HolidayTemp is per zone since D-133 (`ZoneParams`).
     """
 
     hp_min_on_time: timedelta = timedelta(minutes=60)
@@ -176,7 +174,6 @@ class GlobalParams:
     sensor_fault_reminder: time = time(8, 0)  # local wall-clock time
     manual_max_temp: float = 25.0
     manual_resume_delta: float = 1.0
-    holiday_temp: float = 18.0
     failsafe_trigger: timedelta = timedelta(hours=24)
     valve_exercise_duration: timedelta = timedelta(minutes=15)
     long_run_alarm: timedelta = timedelta(hours=12)

@@ -17,6 +17,7 @@ written when HA stops.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -85,6 +86,7 @@ class Settings:
             for zone_id in config.zone_ids
         }
         global_data = data.get("global")
+        zone_params = _migrate_holiday_temp(zone_params, global_data)
         global_params = _params_from(
             GlobalParams, global_data, GLOBAL_PARAM_SPECS, warnings, _reminder(global_data)
         )
@@ -119,6 +121,23 @@ def _params_from[P: (ZoneParams, GlobalParams)](
     except ConfigError as err:
         warnings.append(f"Stored parameters are unusable ({err.errors}); using defaults.")
         return cls()
+
+
+def _migrate_holiday_temp(
+    zone_params: dict[str, ZoneParams], global_data: object
+) -> dict[str, ZoneParams]:
+    """Up to 0.7 HolidayTemp was global; it becomes every zone's value (D-133). The next
+    save no longer holds the global key."""
+    value = global_data.get("holiday_temp") if isinstance(global_data, Mapping) else None
+    spec = ZONE_PARAM_SPECS["holiday_temp"]
+    if value is None or spec.check(value) is not None:
+        return zone_params
+    assert isinstance(value, int | float)  # checked by the spec
+    _LOGGER.info("The global holiday temperature %s °C is now every zone's own value", value)
+    return {
+        zone_id: dataclasses.replace(params, holiday_temp=float(value))
+        for zone_id, params in zone_params.items()
+    }
 
 
 def _reminder(data: object) -> dict[str, time]:

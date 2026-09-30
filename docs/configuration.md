@@ -171,6 +171,7 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force (the base set point until schedules and holiday arrive in v1.1). |
 | `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
+| `number.<zone>_floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (default 18). The zone's target while holiday is on; it may be above or below the base set point. |
 
 ### Reasons
 
@@ -211,7 +212,6 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) | v1 |
 | `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit); manual schedules from v1.1 |
 | `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) | v1.1 (manual schedules) |
-| `number.floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (18) | Not used: from v1.1 each zone has its own holiday temperature (D-133), which replaces this entity; its value becomes every zone's starting value |
 | `number.floor_heating_failsafe_delay` (Failsafe delay) | 1–72 h (24) | v1.2 (failsafe) |
 | `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) | v1.2 (valve exercise) |
 | `number.floor_heating_long_run_alarm` (Long run alarm) | 2–48 h (12) | v1.2 (long run alarm) |

@@ -27,6 +27,7 @@ ZONE_ENTITIES = {
     "sensor.zone_{z}_floor_heating_effective_target_temperature": ("_setpoint", None),
     "number.zone_{z}_floor_heating_hysteresis": ("_hysteresis", EntityCategory.CONFIG),
     "number.zone_{z}_floor_heating_wait_time": ("_wait_time", EntityCategory.CONFIG),
+    "number.zone_{z}_floor_heating_holiday_temperature": ("_holiday_temp", EntityCategory.CONFIG),
 }
 GLOBAL_NUMBERS = {
     "hp_min_on_time": "heat_source_minimum_on_time",
@@ -34,7 +35,6 @@ GLOBAL_NUMBERS = {
     "sensor_fault_timeout": "sensor_fault_timeout",
     "manual_max_temp": "manual_max_temperature",
     "manual_resume_delta": "manual_resume_difference",
-    "holiday_temp": "holiday_temperature",
     "failsafe_trigger": "failsafe_delay",
     "valve_exercise_duration": "off_season_valve_exercise_duration",
     "long_run_alarm": "long_run_alarm",
@@ -93,7 +93,7 @@ async def test_entity_ids_follow_ha_naming(world: World, hass: HomeAssistant) ->
         assert entry.entity_category == category, entity_id
         assert _state(hass, entity_id).state != "unavailable", entity_id
     assert set(GLOBAL_NUMBERS) == set(GLOBAL_KEYS)  # every §4 global parameter (D-114)
-    assert len(GLOBAL_KEYS) == 9
+    assert len(GLOBAL_KEYS) == 8  # HolidayTemp is per zone (D-133)
     assert _state(hass, "climate.zone_1_floor_heating").name == "Zone 1 floor heating"
     assert _state(hass, "sensor.zone_2_floor_heating_reason").name == "Zone 2 floor heating Reason"
     assert _state(hass, number("hp_min_on_time")).name == (
@@ -250,7 +250,6 @@ async def test_every_global_parameter_reaches_the_core(world: World, hass: HomeA
         "sensor_fault_timeout": (30, timedelta(minutes=30)),
         "manual_max_temp": (26.5, 26.5),
         "manual_resume_delta": (1.5, 1.5),
-        "holiday_temp": (16, 16.0),
         "failsafe_trigger": (12, timedelta(hours=12)),
         "valve_exercise_duration": (10, timedelta(minutes=10)),
         "long_run_alarm": (8, timedelta(hours=8)),
@@ -267,9 +266,15 @@ async def test_zone_numbers(world: World, hass: HomeAssistant) -> None:
     assert await world.setup()
     await _call(hass, "number", "set_value", "number.zone_2_floor_heating_wait_time", value=15)
     await _call(hass, "number", "set_value", "number.zone_2_floor_heating_hysteresis", value=0.4)
+    await _call(
+        hass, "number", "set_value", "number.zone_2_floor_heating_holiday_temperature", value=16
+    )
     params = world.controller.settings.zone_params["zone_2"]
     assert params.wait_time == timedelta(minutes=15)
     assert params.hysteresis == pytest.approx(0.4)
+    assert params.holiday_temp == 16.0
+    assert world.controller.settings.zone_params["zone_1"].holiday_temp == 18.0
+    assert hass.states.get("number.floor_heating_holiday_temperature") is None  # D-133
     assert world.controller.settings.zone_params["zone_1"].wait_time == timedelta(minutes=30)
     hysteresis = _state(hass, "number.zone_2_floor_heating_hysteresis")
     assert hysteresis.state == "0.4"
@@ -287,11 +292,12 @@ async def test_temperature_numbers_in_fahrenheit(world: World, hass: HomeAssista
     assert hysteresis.attributes["max"] == pytest.approx(1.8)
     await _call(hass, "number", "set_value", "number.zone_1_floor_heating_hysteresis", value=0.9)
     assert world.controller.settings.zone_params["zone_1"].hysteresis == pytest.approx(0.5)
-    holiday = _state(hass, "number.floor_heating_holiday_temperature")
+    holiday_id = "number.zone_1_floor_heating_holiday_temperature"
+    holiday = _state(hass, holiday_id)
     assert holiday.attributes["unit_of_measurement"] == "°F"
     assert float(holiday.state) == pytest.approx(64.4)
-    await _call(hass, "number", "set_value", "number.floor_heating_holiday_temperature", value=59)
-    assert world.controller.settings.global_params.holiday_temp == pytest.approx(15.0)
+    await _call(hass, "number", "set_value", holiday_id, value=59)
+    assert world.controller.settings.zone_params["zone_1"].holiday_temp == pytest.approx(15.0)
 
 
 async def test_reminder_time(world: World, hass: HomeAssistant) -> None:

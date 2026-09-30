@@ -1,8 +1,9 @@
 """Parameter number entities (docs/design.md §4, §5.3).
 
-Per zone: Hysteresis and WaitTime. Global: every §4 global parameter (D-114), including
-the ones whose features follow in v1.1/v1.2. Ranges and steps come from the core's
-`ParamSpec`s; HA rejects values outside the range (e.g. HpMinOnTime 20 min, D-81).
+Per zone: Hysteresis, WaitTime and HolidayTemp (D-133). Global: every §4 global
+parameter (D-114), including the ones whose features follow in v1.2. Ranges and steps
+come from the core's `ParamSpec`s; HA rejects values outside the range (e.g. HpMinOnTime
+20 min, D-81).
 
 Units (D-77): absolute temperatures are °C and converted by HA; temperature differences
 are shown in HA's unit system and converted here (HA converts only absolute ones);
@@ -29,12 +30,11 @@ GLOBAL_KEYS = (
     "sensor_fault_timeout",
     "manual_max_temp",
     "manual_resume_delta",
-    "holiday_temp",
     "failsafe_trigger",
     "valve_exercise_duration",
     "long_run_alarm",
 )
-ZONE_KEYS = ("hysteresis", "wait_time")
+ZONE_KEYS = ("hysteresis", "wait_time", "holiday_temp")
 
 _TIME_UNITS = {ParamUnit.MINUTES: UnitOfTime.MINUTES, ParamUnit.HOURS: UnitOfTime.HOURS}
 

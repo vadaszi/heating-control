@@ -184,7 +184,7 @@ async def test_newer_state_is_discarded(
         ),
         ({"settings": {"control_active": "yes"}}, "control active are unusable"),
         (
-            {"settings": {"global": {"sensor_fault_reminder": "8 o'clock", "holiday_temp": 5}}},
+            {"settings": {"global": {"sensor_fault_reminder": "8 o'clock", "manual_max_temp": 5}}},
             "Stored parameters are unusable",
         ),
     ],
@@ -203,6 +203,31 @@ async def test_unusable_stored_data_falls_back_to_defaults(
     settings = world.controller.settings
     assert not settings.control_active
     assert settings.zone_params["zone_1"].base_setpoint == 22.0
+
+
+async def test_global_holiday_temperature_becomes_every_zones_value(
+    world: World, hass_storage: dict[str, Any]
+) -> None:
+    """D-133: a stored global HolidayTemp (up to 0.7) is copied into every zone."""
+    _preload(
+        hass_storage,
+        {"settings": {"global": {"holiday_temp": 16.5}, "zones": {"zone_2": {"holiday_temp": 20}}}},
+    )
+    world.setup_entities()
+    assert await world.setup(live=False)
+    zones = world.controller.settings.zone_params
+    assert (zones["zone_1"].holiday_temp, zones["zone_2"].holiday_temp) == (16.5, 16.5)
+    assert "holiday_temp" not in world.controller.settings.to_dict()["global"]
+
+
+async def test_zone_holiday_temperature_is_kept_without_the_global_one(
+    world: World, hass_storage: dict[str, Any]
+) -> None:
+    _preload(hass_storage, {"settings": {"zones": {"zone_2": {"holiday_temp": 20}}}})
+    world.setup_entities()
+    assert await world.setup(live=False)
+    zones = world.controller.settings.zone_params
+    assert (zones["zone_1"].holiday_temp, zones["zone_2"].holiday_temp) == (18.0, 20.0)
 
 
 async def test_removed_zone_is_dropped(

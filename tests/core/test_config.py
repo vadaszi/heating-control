@@ -56,7 +56,8 @@ def test_defaults_match_spec_section_4() -> None:
     assert glob.sensor_fault_reminder == time(8, 0)
     assert glob.manual_max_temp == 25.0
     assert glob.manual_resume_delta == 1.0
-    assert glob.holiday_temp == 18.0
+    assert not hasattr(glob, "holiday_temp")  # per zone since D-133
+    assert zone.holiday_temp == 18.0
     assert glob.failsafe_trigger == timedelta(hours=24)
     assert glob.valve_exercise_duration == timedelta(minutes=15)
     assert glob.long_run_alarm == timedelta(hours=12)
@@ -188,11 +189,11 @@ def test_all_param_errors_reported_together() -> None:
         GlobalParams(
             hp_min_on_time=timedelta(minutes=29),
             hp_min_off_time=timedelta(minutes=200),
-            holiday_temp=5.0,
+            manual_max_temp=5.0,
         )
     assert len(err.value.errors) == 3
     message = str(err.value)
-    for key in ("hp_min_on_time", "hp_min_off_time", "holiday_temp"):
+    for key in ("hp_min_on_time", "hp_min_off_time", "manual_max_temp"):
         assert key in message
 
 
