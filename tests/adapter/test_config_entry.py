@@ -16,8 +16,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.multizone_floor_heating_manager.const import DOMAIN, NAME, STORAGE_KEY
 from custom_components.multizone_floor_heating_manager.core.io import Reason
+from custom_components.multizone_floor_heating_manager.core.schedule import ScheduleKind
 from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 from custom_components.multizone_floor_heating_manager.number import GLOBAL_KEYS, ZONE_KEYS
+from custom_components.multizone_floor_heating_manager.schedules import DAY_OPTIONS, WEEKDAY_KEYS
 from custom_components.multizone_floor_heating_manager.sensor import MODES
 
 from .conftest import World, make_conf, valve
@@ -202,7 +204,10 @@ def test_every_key_has_a_text() -> None:
     climate = entity["climate"]["zone"]["state_attributes"]
     assert climate["reason"]["state"] == entity["sensor"]["reason"]["state"]
     assert climate["zone_state"]["state"] == entity["sensor"]["zone_state"]["state"]
-    assert set(entity["number"]) == set(GLOBAL_KEYS) | set(ZONE_KEYS)
+    assert set(entity["number"]) == set(GLOBAL_KEYS) | set(ZONE_KEYS) | {"schedule_temperature"}
+    assert set(entity["select"]["schedule_days"]["state"]) == set(DAY_OPTIONS)
+    assert set(entity["select"]["schedule_kind"]["state"]) == {k.value for k in ScheduleKind}
+    assert set(texts["selector"]["weekday"]["options"]) == set(WEEKDAY_KEYS)
     assert texts["config"]["abort"]["yaml_only"]
     icons = json.loads((PACKAGE / "icons.json").read_text())
     for platform, keys in icons["entity"].items():

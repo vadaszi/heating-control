@@ -60,6 +60,14 @@ class FloorheatEntity(Entity):
         self.async_on_remove(self.controller.async_add_listener(self.async_write_ha_state))
 
 
+class FormEntity(FloorheatEntity):
+    """A setting or part of the schedule form: usable before the first run."""
+
+    @property
+    def available(self) -> bool:
+        return True
+
+
 async def async_apply[T](change: Awaitable[T]) -> T:
     """Run a settings change; invalid values become a service validation error."""
     try:

@@ -19,8 +19,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
 from .core.config import GLOBAL_PARAM_SPECS, ZONE_PARAM_SPECS, ParamSpec, ParamUnit, ZoneConfig
+from .core.schedule import SCHEDULE_TEMPERATURE_SPEC
 from .core.units import TemperatureUnit, delta_from_celsius, delta_to_celsius
-from .entity import FloorheatEntity, async_apply
+from .entity import FloorheatEntity, FormEntity, async_apply
 from .runtime import FloorheatConfigEntry
 
 # Parameter keys; the names are translations (translations/en.json, D-125).
@@ -54,7 +55,7 @@ async def async_setup_entry(
     entities += [
         ParamNumber(controller, GLOBAL_PARAM_SPECS[key], unit, None) for key in GLOBAL_KEYS
     ]
-    async_add_entities(entities)
+    async_add_entities([*entities, ScheduleTemperature(controller)])
 
 
 class ParamNumber(FloorheatEntity, NumberEntity):
@@ -116,4 +117,26 @@ class ParamNumber(FloorheatEntity, NumberEntity):
             await async_apply(self.controller.async_set_global_params(**change))
         else:
             await async_apply(self.controller.async_set_zone_params(self._zone_id, **change))
+        self.async_write_ha_state()
+
+
+class ScheduleTemperature(FormEntity, NumberEntity):
+    """The schedule form's temperature (auto schedules; 10 to 30 °C, converted by HA)."""
+
+    _attr_mode = NumberMode.BOX
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_native_min_value = SCHEDULE_TEMPERATURE_SPEC.minimum
+    _attr_native_max_value = SCHEDULE_TEMPERATURE_SPEC.maximum
+    _attr_native_step = SCHEDULE_TEMPERATURE_SPEC.step
+
+    def __init__(self, controller: FloorheatController) -> None:
+        super().__init__(controller, "schedule_temperature")
+
+    @property
+    def native_value(self) -> float:
+        return self.controller.form.temperature
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.controller.form.temperature = round(value, 2)
         self.async_write_ha_state()

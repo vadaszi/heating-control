@@ -35,8 +35,12 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = (
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CLIMATE,
+    Platform.DATE,
+    Platform.DATETIME,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.TIME,

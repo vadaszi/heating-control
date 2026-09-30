@@ -49,6 +49,7 @@ from .core.io import Event as CoreEvent
 from .core.io import EventKind, Inputs, Outputs, OutputState, ZoneInput
 from .core.schedule import Schedule, ScheduleKind, check_new_schedule
 from .core.state import CoreState
+from .form import ScheduleForm
 from .inputs import SensorReader, read_switch
 from .outputs import OutputCommander
 from .schema import FloorheatConfig
@@ -91,6 +92,7 @@ class FloorheatController:
             for shelly in config.shellys
         }
         self._last_run_ok_at: datetime | None = None
+        self.form = ScheduleForm()  # the dashboard's schedule draft; not stored (D-138)
         self._outputs: Outputs | None = None
         self._commander = OutputCommander(hass)
         self._sensors = SensorReader()
@@ -151,6 +153,12 @@ class FloorheatController:
         return lambda: self._listeners.remove(listener)
 
     @callback
+    def async_update_listeners(self) -> None:
+        """Let the entities show the current state (after every run, or a form change)."""
+        for listener in list(self._listeners):
+            listener()
+
+    @callback
     def async_add_event_handler(self, handler: Callable[[CoreEvent], None]) -> CALLBACK_TYPE:
         """Call `handler` for every core event (notifications, P6)."""
         self._event_handlers.append(handler)
@@ -166,8 +174,7 @@ class FloorheatController:
         self._publish(events)
         if changed:
             self._schedule_save()
-            for listener in list(self._listeners):
-                listener()
+            self.async_update_listeners()
 
     # ------------------------------------------------------------ settings (D-106)
 
@@ -376,8 +383,7 @@ class FloorheatController:
             self._final_off(actual, now)
         self._settle(outputs)
         self._last_run_ok_at = now
-        for listener in list(self._listeners):
-            listener()
+        self.async_update_listeners()
 
     def _step(self, feedback: dict[str, OutputState], now: datetime, *, tick: bool) -> Outputs:
         inputs = self._inputs(feedback, tick=tick)

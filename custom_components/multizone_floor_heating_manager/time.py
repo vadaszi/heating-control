@@ -1,4 +1,5 @@
-"""SensorFaultReminder: the local time of the daily sensor fault reminder (§3.6, §4)."""
+"""Time entities: SensorFaultReminder, the local time of the daily sensor fault reminder
+(§3.6, §4); the schedule form's start and end (§5.3, D-74)."""
 
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
-from .entity import FloorheatEntity, async_apply
+from .entity import FloorheatEntity, FormEntity, async_apply
 from .runtime import FloorheatConfigEntry
 
 
@@ -19,7 +20,14 @@ async def async_setup_entry(
     entry: FloorheatConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([ReminderTime(entry.runtime_data.controller)])
+    controller = entry.runtime_data.controller
+    async_add_entities(
+        [
+            ReminderTime(controller),
+            ScheduleTime(controller, "schedule_start"),
+            ScheduleTime(controller, "schedule_end"),
+        ]
+    )
 
 
 class ReminderTime(FloorheatEntity, TimeEntity):
@@ -39,4 +47,21 @@ class ReminderTime(FloorheatEntity, TimeEntity):
     async def async_set_value(self, value: time) -> None:
         reminder = value.replace(second=0, microsecond=0, tzinfo=None)
         await async_apply(self.controller.async_set_global_params(sensor_fault_reminder=reminder))
+        self.async_write_ha_state()
+
+
+class ScheduleTime(FormEntity, TimeEntity):
+    """Start or end of the next schedule's window (local time)."""
+
+    def __init__(self, controller: FloorheatController, key: str) -> None:
+        super().__init__(controller, key)
+        self._field = key.removeprefix("schedule_")  # "start" / "end"
+
+    @property
+    def native_value(self) -> time:
+        value: time = getattr(self.controller.form, self._field)
+        return value
+
+    async def async_set_value(self, value: time) -> None:
+        setattr(self.controller.form, self._field, value.replace(second=0, microsecond=0))
         self.async_write_ha_state()

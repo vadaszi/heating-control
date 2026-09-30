@@ -1,7 +1,8 @@
-"""Heating season and Control active switches (docs/design.md §3.7, §5.5).
+"""Heating season, Control active and Holiday switches (docs/design.md §3.7, §5.5, §3.4).
 
 Their state is the controller's setting (D-106); switching Control active OFF sends the
-final safe command set (D-69, D-110).
+final safe command set (D-69, D-110). Holiday: switching it on with an end in the past
+is refused; switching it off clears the end (D-137).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
-from .entity import FloorheatEntity
+from .entity import FloorheatEntity, async_apply
 from .runtime import FloorheatConfigEntry
 
 
@@ -37,6 +38,12 @@ async def async_setup_entry(
                 "control_active",
                 lambda: controller.settings.control_active,
                 controller.async_set_control_active,
+            ),
+            SettingSwitch(
+                controller,
+                "holiday",
+                lambda: controller.settings.holiday_on,
+                controller.async_set_holiday,
             ),
         ]
     )
@@ -63,9 +70,9 @@ class SettingSwitch(FloorheatEntity, SwitchEntity):
         return self._get()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self._set(True)
+        await async_apply(self._set(True))
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self._set(False)
+        await async_apply(self._set(False))
         self.async_write_ha_state()

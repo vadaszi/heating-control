@@ -223,8 +223,8 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | Entity (name) | Shows / changes |
 |---|---|
 | `climate.<zone>_floor_heating` (named like the device) | Current temperature = the zone temperature (reading + offset); target = the zone's base set point (10–30 °C, step 0.1). Mode `heat` only. `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*. Attributes: `zone_state`, `reason` (the keys below), `valve` (desired state; none without a valve), `calling_zone`. |
-| `sensor.<zone>_floor_heating_state` (State) | `idle` (Idle), `waiting` (Waiting), `heating` (Heating), `forced` (Forced, v1.1), `sensor_fault` (Sensor fault). |
-| `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`, and `forced` from v1.1), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
+| `sensor.<zone>_floor_heating_state` (State) | `idle` (Idle), `waiting` (Waiting), `heating` (Heating), `forced` (Forced), `sensor_fault` (Sensor fault). |
+| `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`, `forced`), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
 | `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force: the zone's holiday temperature while holiday is on, otherwise the running auto schedule's temperature, otherwise the base set point. A manual schedule keeps the set point below it. |
 | `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
@@ -246,8 +246,8 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `sensor_fault` | Sensor fault, valve follows the heat source | No valid reading; the valve is open while the heat source runs; no demand. |
 | `season_off` | Heating season off | The heating season switch is off. |
 | `sensor_fault_season_off` | Sensor fault (heating season off) | Both. |
-| `forced` | Manual schedule | From v1.1. A manual schedule runs: valve open and heat demand regardless of the temperature (`until`: when the manual windows end). |
-| `forced_too_warm` | Manual schedule, paused: too warm | From v1.1. A manual schedule runs, but the zone reached the manual max temperature: closed, no demand, until it is below the manual max temperature minus the manual resume difference. |
+| `forced` | Manual schedule | A manual schedule runs: valve open and heat demand regardless of the temperature (`until`: when the manual windows end). |
+| `forced_too_warm` | Manual schedule, paused: too warm | A manual schedule runs, but the zone reached the manual max temperature: closed, no demand, until it is below the manual max temperature minus the manual resume difference. |
 
 ### Global (device "Floor heating")
 
@@ -260,6 +260,24 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `switch.floor_heating_heating_season` (Heating season) | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
 | `switch.floor_heating_control_active` (Control active) | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |
 | `time.floor_heating_sensor_fault_reminder_time` (Sensor fault reminder time) | Time of the daily sensor fault reminder (default 08:00). Configuration category. |
+| `switch.floor_heating_holiday` (Holiday) | Holiday on/off; see [Holiday](#holiday). Switching it on with an end in the past is refused; it turns off by itself at the end. |
+| `datetime.floor_heating_holiday_end` (Holiday end) | When holiday ends (date and time). Empty (unknown) until you set it; cleared when holiday ends. |
+
+### Schedule form (device "Floor heating")
+
+These entities are a form for adding and deleting schedules from the dashboard, so you need no helpers of your own. Fill in the draft, then press **Add schedule**. If the schedule is rejected (e.g. it overlaps another auto schedule), a persistent notification "Floor heating: schedule not added" names the problem and nothing is stored. The draft keeps its values after adding, so a similar schedule is quick to add; after a restart it starts from the defaults.
+
+| Entity (name) | Shows / changes |
+|---|---|
+| `select.floor_heating_schedule_type` (Schedule type) | `auto` (sets the target temperature) or `manual` (forces heating). Default auto. |
+| `select.floor_heating_schedule_zone` (Schedule zone) | "All zones" or one zone (default all zones). For several zones in one schedule use the `add_schedule` service. |
+| `select.floor_heating_schedule_days` (Schedule days) | Once (on the schedule date), every day, Monday to Friday, Saturday and Sunday, or one weekday (default every day). Other combinations: the `add_schedule` service, or one schedule per day. |
+| `date.floor_heating_schedule_date` (Schedule date) | The day of a one-shot ("Once") schedule. Default today. |
+| `time.floor_heating_schedule_start` (Schedule start), `time.floor_heating_schedule_end` (Schedule end) | The window, local time (default 06:00–08:00). An end before the start crosses midnight. |
+| `number.floor_heating_schedule_temperature` (Schedule temperature) | The target of an auto schedule, 10–30 °C (default 22). Ignored for manual schedules. |
+| `button.floor_heating_add_schedule` (Add schedule) | Adds the draft as a new schedule. |
+| `select.floor_heating_existing_schedule` (Existing schedule) | The schedules by label (e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`); the one chosen here is deleted by the button below. |
+| `button.floor_heating_delete_schedule` (Delete schedule) | Deletes the schedule chosen in Existing schedule. |
 
 ### Global parameters (device "Floor heating", configuration category)
 
@@ -268,7 +286,7 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `number.floor_heating_heat_source_minimum_on_time` (Heat source minimum on time) | 30–180 min (60) | v1 |
 | `number.floor_heating_heat_source_minimum_off_time` (Heat source minimum off time) | 30–180 min (60) | v1 |
 | `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) | v1 |
-| `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit); manual schedules from v1.1 |
+| `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit), v1.1 (manual schedules cap) |
 | `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) | v1.1 (manual schedules) |
 | `number.floor_heating_failsafe_delay` (Failsafe delay) | 1–72 h (24) | v1.2 (failsafe) |
 | `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) | v1.2 (valve exercise) |

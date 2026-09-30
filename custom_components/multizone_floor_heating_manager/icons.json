@@ -1,5 +1,45 @@
 {
   "entity": {
+    "button": {
+      "add_schedule": {
+        "default": "mdi:calendar-plus"
+      },
+      "delete_schedule": {
+        "default": "mdi:calendar-remove"
+      }
+    },
+    "date": {
+      "schedule_date": {
+        "default": "mdi:calendar"
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "default": "mdi:calendar-end"
+      }
+    },
+    "number": {
+      "schedule_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "holiday_temp": {
+        "default": "mdi:palm-tree"
+      }
+    },
+    "select": {
+      "schedule_kind": {
+        "default": "mdi:format-list-bulleted-type"
+      },
+      "schedule_zone": {
+        "default": "mdi:home-floor-1"
+      },
+      "schedule_days": {
+        "default": "mdi:calendar-week"
+      },
+      "existing_schedule": {
+        "default": "mdi:calendar-clock"
+      }
+    },
     "sensor": {
       "alerts": {
         "default": "mdi:alert"
@@ -23,11 +63,20 @@
       },
       "control_active": {
         "default": "mdi:robot"
+      },
+      "holiday": {
+        "default": "mdi:palm-tree"
       }
     },
     "time": {
       "sensor_fault_reminder": {
         "default": "mdi:bell-ring"
+      },
+      "schedule_start": {
+        "default": "mdi:clock-start"
+      },
+      "schedule_end": {
+        "default": "mdi:clock-end"
       }
     }
   }

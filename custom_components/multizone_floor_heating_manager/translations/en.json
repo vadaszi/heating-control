@@ -17,6 +17,14 @@
         "name": "Heat request"
       }
     },
+    "button": {
+      "add_schedule": {
+        "name": "Add schedule"
+      },
+      "delete_schedule": {
+        "name": "Delete schedule"
+      }
+    },
     "climate": {
       "zone": {
         "state_attributes": {
@@ -58,6 +66,16 @@
         }
       }
     },
+    "date": {
+      "schedule_date": {
+        "name": "Schedule date"
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Holiday end"
+      }
+    },
     "number": {
       "hysteresis": {
         "name": "Hysteresis"
@@ -91,6 +109,40 @@
       },
       "long_run_alarm": {
         "name": "Long run alarm"
+      },
+      "schedule_temperature": {
+        "name": "Schedule temperature"
+      }
+    },
+    "select": {
+      "schedule_kind": {
+        "name": "Schedule type",
+        "state": {
+          "auto": "Auto (sets the target temperature)",
+          "manual": "Manual (forces heating)"
+        }
+      },
+      "schedule_zone": {
+        "name": "Schedule zone"
+      },
+      "schedule_days": {
+        "name": "Schedule days",
+        "state": {
+          "once": "Once (on the schedule date)",
+          "every_day": "Every day",
+          "monday_to_friday": "Monday to Friday",
+          "saturday_and_sunday": "Saturday and Sunday",
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "saturday": "Saturday",
+          "sunday": "Sunday"
+        }
+      },
+      "existing_schedule": {
+        "name": "Existing schedule"
       }
     },
     "sensor": {
@@ -167,11 +219,20 @@
       },
       "control_active": {
         "name": "Control active"
+      },
+      "holiday": {
+        "name": "Holiday"
       }
     },
     "time": {
       "sensor_fault_reminder": {
         "name": "Sensor fault reminder time"
+      },
+      "schedule_start": {
+        "name": "Schedule start"
+      },
+      "schedule_end": {
+        "name": "Schedule end"
       }
     }
   },
