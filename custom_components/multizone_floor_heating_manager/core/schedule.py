@@ -216,20 +216,21 @@ class ZoneTarget:
     forced_until: datetime | None = None  # end of the running manual windows
 
 
-def holiday_active(holiday_until: datetime | None, now: datetime) -> bool:
-    """Holiday runs from activation until its end (D-59, D-136)."""
-    return holiday_until is not None and now < holiday_until
+def holiday_active(on: bool, until: datetime | None, now: datetime) -> bool:
+    """Holiday runs from activation until its end (D-59, D-136), or until it is switched
+    off if it has no end (D-137)."""
+    return on and (until is None or now < until)
 
 
 def zone_target(
     zone_id: str,
     params: ZoneParams,
     schedules: Sequence[Schedule],
-    holiday_until: datetime | None,
+    holiday: bool,
     now: datetime,
     time_zone: tzinfo,
 ) -> ZoneTarget:
-    """Holiday > manual > auto > BaseSetPoint (D-16).
+    """Holiday > manual > auto > BaseSetPoint (D-16); `holiday`: holiday is active.
 
     - Holiday: the zone's own holiday temperature (D-133); schedules are suspended.
     - Manual: the zone is forced; its SetPoint is the one below (auto or base, D-130).
@@ -237,7 +238,7 @@ def zone_target(
     - Auto: at most one covers a zone at a time (D-19); should stored data hold more,
       the first in list order wins.
     """
-    if holiday_active(holiday_until, now):
+    if holiday:
         return ZoneTarget(params.holiday_temp)
     mine = [s for s in schedules if s.covers(zone_id)]
     setpoint = params.base_setpoint

@@ -194,8 +194,14 @@ Unvalved zones compute state normally; only their output is a no-op.
 4. Auto schedule
 5. BaseSetPoint
 
-**Holiday mode (D-09, D-17, D-59, D-133)**
-- The user activates it with an end date/time. It starts immediately on activation and can be stopped manually at any time. It is active while the current time is before the end (D-136).
+**Holiday mode (D-09, D-17, D-59, D-133, D-137)**
+- The user activates it, normally with an end date and time. It starts immediately on activation and can be stopped manually at any time. It is active while it is switched on and the current time is before the end (D-136).
+- **Details (D-137):**
+  - the end is a full date and time, so a holiday can last any number of days;
+  - switched on without an end, holiday runs until it is switched off by hand;
+  - switching it on with an end already in the past is refused with an error;
+  - changing the end while holiday runs moves it: a later time extends it, a time in the past ends it at once;
+  - every end, reached or switched off by hand, clears the end, so the next holiday starts from an empty end.
 - While active, the effective SetPoint of **every** zone is **its own** `HolidayTemp` (per zone since D-133; each zone's value may be above or below its BaseSetPoint). BaseSetPoints are not modified, so "restore the previous setup" is automatic when holiday ends.
 - Manual and auto schedules are suspended during holiday.
 - No automatic preheat: the user sets the end time early enough.
@@ -435,7 +441,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
   - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap is shifted by the gap length (02:30 → 03:30, D-134), and one in the repeated autumn hour takes effect at its first occurrence;
-  - `inputs` also carry the schedules and the holiday end, which the adapter owns and stores (D-136). `desired_outputs` report whether holiday is active and which one-shot schedules have ended; the adapter then switches holiday off and deletes them;
+  - `inputs` also carry the schedules, whether holiday is switched on and its optional end, which the adapter owns and stores (D-136, D-137). `desired_outputs` report whether holiday is active and which one-shot schedules have ended; the adapter then switches holiday off and deletes them;
   - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason shown by the reason sensor (D-89): a fixed key (D-126) with the end of the timer it names (D-123);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
@@ -853,9 +859,10 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-134 | DST: a local time in the spring gap is shifted by the gap length (02:30 → 03:30), for schedules as for the sensor fault reminder; a window keeps its wall-clock length and is empty if its start ends up at or after its end. Clarifies D-96 (owner, 2026-09-30) |
 | D-135 | New reason keys `forced` ("Manual schedule", `until` = end of the running manual windows, their union) and `forced_too_warm` ("Manual schedule, paused: too warm"); a forced zone held by min OFF or with the heat source unavailable uses the existing keys; no holiday reason (the mode sensor shows holiday). Amends D-126 (owner, 2026-09-30) |
 | D-136 | Schedules and the holiday end are owned and stored by the adapter and passed to `step` as inputs; holiday is active while `now` is before its end. The core reports `holiday_active` and the ended one-shot schedules; the adapter switches holiday off and deletes them. The core provides the creation check and the (de)serialisation (owner, 2026-09-30) |
+| D-137 | Holiday end: a full date and time; switched on without an end, holiday runs until switched off by hand; an end in the past is refused when switching on; changing the end while it runs moves it (a past time ends it); every end (reached or by hand) clears the end. `Inputs.holiday_on` plus the optional `holiday_until`. Amends D-59, D-79 and D-136 (owner, 2026-09-30) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan).
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 and up on 2026-09-30 during P10 (owner answers on the P10 plan).
 
 ---
 

@@ -105,6 +105,7 @@ class Scenario:
         self.heating_season = True
         self.control_active = True
         self.schedules: list[Schedule] = []
+        self.holiday_on = False
         self.holiday_until: datetime | None = None
         self._next_schedule = 1
         self.outputs: Outputs | None = None
@@ -190,7 +191,12 @@ class Scenario:
     def holiday(self, until: str | None, day: date | None = None) -> None:
         """Activate holiday until a local time (on the start day unless `day` is given),
         or stop it with None."""
+        self.holiday_on = until is not None
         self.holiday_until = None if until is None else at(until, day or self.day, self.tz)
+
+    def holiday_without_end(self) -> None:
+        """Activate holiday with no end (D-137)."""
+        self.holiday_on, self.holiday_until = True, None
 
     def restart(self, downtime: int = 0) -> None:
         """HA restart: persist, reload through JSON, and continue after `downtime` min."""
@@ -222,6 +228,7 @@ class Scenario:
             time_zone=self.tz,
             reconcile_tick=True,
             schedules=tuple(self.schedules),
+            holiday_on=self.holiday_on,
             holiday_until=self.holiday_until,
         )
 
@@ -234,8 +241,8 @@ class Scenario:
         self.events.extend(events)
         # The adapter's bookkeeping (D-136).
         self.schedules = [s for s in self.schedules if s.id not in outputs.ended_schedules]
-        if not outputs.holiday_active:
-            self.holiday_until = None
+        if self.holiday_on and not outputs.holiday_active:
+            self.holiday_on, self.holiday_until = False, None  # the end clears (D-137)
         return outputs
 
     def step(self) -> Outputs:

@@ -796,6 +796,30 @@ def test_holiday_temperature_is_per_zone() -> None:
     assert sc.mode(2) is HEATING  # a raise: no wait (D-26)
 
 
+def test_holiday_without_end_runs_until_switched_off() -> None:
+    """D-137: no end: active for days until switched OFF by hand."""
+    sc = Scenario(1, temps=20.0)
+    sc.holiday_without_end()
+    sc.step()
+    assert sc.setpoint(1) == 18.0
+    sc.advance(minutes=3 * 24 * 60)
+    assert sc.holiday_active
+    assert sc.holiday_on  # the adapter keeps it on
+    sc.holiday(None)
+    sc.step()
+    assert sc.setpoint(1) == 22.0
+    assert not sc.holiday_active
+
+
+def test_holiday_end_is_ignored_while_off() -> None:
+    """D-137: the end only counts while holiday is switched ON."""
+    sc = Scenario(1, temps=20.0)
+    sc.holiday_until = at("12:00", DAY + timedelta(days=1), sc.tz)  # set, but not switched ON
+    sc.step()
+    assert sc.setpoint(1) == 22.0
+    assert not sc.holiday_active
+
+
 def test_outputs_report_ended_one_shots() -> None:
     sc = Scenario(1, start="10:00")
     sc.add_manual([1], "08:00", "09:00")

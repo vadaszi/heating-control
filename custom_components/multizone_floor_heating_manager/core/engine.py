@@ -109,6 +109,7 @@ def step(
     min_off_end = off_since + params.hp_min_off_time if not running and off_since else None
     min_on_left = min_on_end - now if min_on_end else _ZERO
     min_off_left = min_off_end - now if min_off_end else _ZERO
+    holiday = holiday_active(inputs.holiday_on, inputs.holiday_until, now)
 
     zones: dict[str, _Zone] = {}
     zone_states: dict[str, ZoneState] = {}
@@ -126,7 +127,7 @@ def step(
             zone_config.id,
             zone_params,
             inputs.schedules,
-            inputs.holiday_until,
+            holiday,
             now,
             inputs.time_zone,
         )
@@ -171,7 +172,7 @@ def step(
         heat_source_on=request.on,
         valves={z.id: valves[z.id] for z in config.zones if z.has_valve},  # rule 8
         zones=reports,
-        holiday_active=holiday_active(inputs.holiday_until, now),
+        holiday_active=holiday,
         ended_schedules=ended_schedules(inputs.schedules, now, inputs.time_zone),
     )
     events, reminder_on = fault_events(

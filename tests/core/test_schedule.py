@@ -240,9 +240,7 @@ def test_night_window_across_dst_keeps_its_wall_clock_ends(day: date) -> None:
 # ---------------------------------------------------------------- targets (D-16)
 
 
-def _target(
-    schedules: list[Schedule], now: datetime, holiday: datetime | None = None
-) -> ZoneTarget:
+def _target(schedules: list[Schedule], now: datetime, *, holiday: bool = False) -> ZoneTarget:
     return zone_target("zone_1", PARAMS, schedules, holiday, now, UTC)
 
 
@@ -263,20 +261,26 @@ def test_manual_schedule_keeps_the_setpoint_below_it() -> None:
 
 def test_holiday_beats_every_schedule() -> None:
     schedules = [manual("11:00", "13:00"), auto("10:00", "14:00", 23.5)]
-    target = _target(schedules, local("12:00"), holiday=local("12:01"))
+    target = _target(schedules, local("12:00"), holiday=True)
     assert (target.setpoint, target.forced) == (17.0, False)  # the zone's holiday temp
-    assert _target(schedules, local("12:01"), holiday=local("12:01")).forced  # over
+    assert _target(schedules, local("12:00")).forced  # no holiday
 
 
 def test_holiday_active_until_its_end() -> None:
-    assert holiday_active(local("15:00"), local("14:59"))
-    assert not holiday_active(local("15:00"), local("15:00"))
-    assert not holiday_active(None, local("15:00"))
+    assert holiday_active(True, local("15:00"), local("14:59"))
+    assert not holiday_active(True, local("15:00"), local("15:00"))
+
+
+def test_holiday_without_end_is_active_until_switched_off() -> None:
+    """D-137: switched ON with no end, holiday runs until it is switched OFF."""
+    assert holiday_active(True, None, local("15:00"))
+    assert not holiday_active(False, None, local("15:00"))
+    assert not holiday_active(False, local("15:00"), local("14:59"))
 
 
 def test_all_zones_schedule_covers_every_zone() -> None:
     target = zone_target(
-        "zone_3", PARAMS, [auto("10:00", "14:00", 21.0, zones=None)], None, local("12:00"), UTC
+        "zone_3", PARAMS, [auto("10:00", "14:00", 21.0, zones=None)], False, local("12:00"), UTC
     )
     assert target.setpoint == 21.0
 

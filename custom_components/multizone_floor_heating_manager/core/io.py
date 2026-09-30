@@ -51,8 +51,9 @@ class Inputs:
     - `reconcile_tick`: True only for the run started by the ReconcileInterval timer, not
       for runs on sensor updates or heat source changes. The mismatch counter counts
       these ticks (D-67, D-99).
-    - `schedules` and `holiday_until`: owned and stored by the adapter (D-136). Holiday
-      is active while `now < holiday_until`.
+    - `schedules`, `holiday_on` and `holiday_until`: owned and stored by the adapter
+      (D-136). Holiday is active while it is switched on and `now` is before its end;
+      without an end it runs until switched off (D-137).
     """
 
     zones: Mapping[str, ZoneInput]
@@ -64,7 +65,8 @@ class Inputs:
     time_zone: tzinfo
     reconcile_tick: bool
     schedules: Sequence[Schedule] = ()
-    holiday_until: datetime | None = None
+    holiday_on: bool = False
+    holiday_until: datetime | None = None  # the holiday end; None: no end (D-137)
 
 
 class Reason(StrEnum):
