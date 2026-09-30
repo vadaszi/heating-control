@@ -126,6 +126,7 @@ ZONE_PARAM_SPECS = _specs(
     ParamSpec("base_setpoint", 22.0, 10, 30, 0.1, _C),
     ParamSpec("hysteresis", 0.2, 0.1, 1.0, 0.1, _DELTA),
     ParamSpec("wait_time", 30, 0, 120, 5, _MIN),
+    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # per zone (D-133)
 )
 GLOBAL_PARAM_SPECS = _specs(
     ParamSpec("hp_min_on_time", 60, 30, 180, 5, _MIN),  # never below 30 min (D-81)
@@ -133,7 +134,7 @@ GLOBAL_PARAM_SPECS = _specs(
     ParamSpec("sensor_fault_timeout", 60, 15, 240, 5, _MIN),
     ParamSpec("manual_max_temp", 25.0, 18, 30, 0.5, _C),
     ParamSpec("manual_resume_delta", 1.0, 0.2, 3.0, 0.1, _DELTA),
-    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),
+    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # unused since D-133; P10 removes it
     ParamSpec("failsafe_trigger", 24, 1, 72, 1, _H),
     ParamSpec("valve_exercise_duration", 15, 5, 30, 5, _MIN),
     ParamSpec("long_run_alarm", 12, 2, 48, 1, _H),
@@ -153,6 +154,7 @@ class ZoneParams:
     base_setpoint: float = 22.0
     hysteresis: float = 0.2
     wait_time: timedelta = timedelta(minutes=30)
+    holiday_temp: float = 18.0  # effective SetPoint while holiday is active (D-133)
 
     def __post_init__(self) -> None:
         if errors := _param_errors(self, ZONE_PARAM_SPECS):
@@ -163,8 +165,9 @@ class ZoneParams:
 class GlobalParams:
     """Global values changed from the UI (§4).
 
-    FailsafeWindow, the valve exercise weekday/time and ActuatorFaultThreshold are
-    added with their features in P11.
+    FailsafeWindow and the valve exercise weekday/time are added with their features in
+    P11. `holiday_temp` is per zone since D-133 (`ZoneParams`); this global value is no
+    longer used by the core and goes away in P10, which copies it into every zone.
     """
 
     hp_min_on_time: timedelta = timedelta(minutes=60)

@@ -1,4 +1,4 @@
-"""Unit tests per rule of the step function (docs/design.md §3.2, §3.3, §3.5, §3.6)."""
+"""Unit tests per rule of the step function (docs/design.md §3.2 to §3.6)."""
 
 from __future__ import annotations
 
@@ -26,12 +26,13 @@ from custom_components.multizone_floor_heating_manager.core.state import (
     ZoneState,
 )
 
-from .harness import Scenario, at, make_config
+from .harness import DAY, Scenario, at, make_config
 
-IDLE, WAITING, HEATING, FAULT = (
+IDLE, WAITING, HEATING, FORCED, FAULT = (
     ZoneMode.IDLE,
     ZoneMode.WAITING,
     ZoneMode.HEATING,
+    ZoneMode.FORCED,
     ZoneMode.SENSOR_FAULT,
 )
 
@@ -561,6 +562,256 @@ def test_reading_timestamps_are_used_as_reported() -> None:
     assert state.zones["zone_1"].last_valid_at == now
     state = run(state, 23.0, now - timedelta(minutes=5))  # older than what we have
     assert state.zones["zone_1"].last_valid_value == 21.0
+
+
+# ---------------------------------------------------------------- manual schedules (§3.4)
+
+
+def _hp_off_at_0400(zones: int = 2, temps: dict[int | str, float] | None = None) -> Scenario:
+    """First start at 03:00 with the heat source ON and no demand: OFF at 04:00, so min
+    OFF runs until 05:00."""
+    sc = Scenario(zones, temps=temps or {}, start="03:00", hp_on=True)
+    sc.step()
+    sc.advance_to("04:00")
+    assert not sc.hp
+    return sc
+
+
+def test_forced_zone_is_held_by_min_off_with_its_valve_open() -> None:
+    sc = _hp_off_at_0400()
+    sc.add_manual([1], "04:10", "06:00")
+    sc.advance_to("04:10")
+    assert sc.mode(1) is FORCED
+    assert sc.valve(1) is True  # like D-64
+    assert not sc.hp
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
+    assert sc.until(1) == at("05:00")
+    sc.advance_to("05:00")
+    assert sc.hp
+    assert sc.reason(1) == Reason.FORCED
+    assert sc.until(1) == at("06:00")
+
+
+def test_calling_zone_forced_hands_the_role_over() -> None:
+    """D-131: a forced zone never calls; the heating zone with the largest deficit
+    takes over."""
+    sc = Scenario(3, temps={1: 21.8})
+    sc.add_manual([1], "06:40", "07:00")
+    sc.step()
+    sc.advance_to("06:30")
+    assert sc.calling_zone == "zone_1"
+    sc.advance_to("06:35")
+    sc.temp(2, 21.7)
+    sc.temp(3, 21.5)
+    sc.step()
+    assert sc.modes() == {"zone_1": HEATING, "zone_2": HEATING, "zone_3": HEATING}
+    sc.advance_to("06:40")
+    assert sc.mode(1) is FORCED
+    assert sc.calling_zone == "zone_3"
+    assert sc.reason(3) == Reason.CALLING_ZONE
+    assert not sc.sync_fired
+
+
+def test_forced_calling_zone_passes_the_role_to_the_next_joining_zone() -> None:
+    sc = Scenario(2, temps={1: 21.8})
+    sc.add_manual([1], "06:40", "08:00")
+    sc.step()
+    sc.advance_to("06:40")
+    assert sc.mode(1) is FORCED
+    assert sc.calling_zone is None
+    assert sc.hp
+    sc.advance_to("06:50")
+    sc.temp(2, 21.8)
+    sc.step()
+    assert sc.calling_zone == "zone_2"  # D-44
+
+
+def test_window_end_while_running_joins_without_wait() -> None:
+    """D-130: after the window the zone is IDLE and evaluated at once (rule 3)."""
+    sc = Scenario(2, start="04:00")
+    sc.add_manual([1], "04:00", "05:00")
+    sc.step()
+    sc.temp(1, 21.8)
+    sc.advance_to("05:00")
+    assert sc.mode(1) is HEATING
+    assert sc.hp
+    assert sc.calling_zone == "zone_1"  # D-92
+
+
+def test_window_end_while_the_hp_is_off_starts_the_wait() -> None:
+    sc = _hp_off_at_0400()
+    sc.add_manual([1], "04:10", "04:40")
+    sc.advance_to("04:10")
+    assert sc.mode(1) is FORCED
+    sc.temp(1, 21.8)
+    sc.advance_to("04:40")
+    assert sc.mode(1) is WAITING  # rule 1: a full WaitTime from the window end
+    assert sc.until(1) == at("05:10")
+
+
+def test_zone_without_a_reading_is_not_forced() -> None:
+    """D-130: like SENSOR_FAULT (D-70), the cap cannot be checked."""
+    sc = Scenario(2, temps={1: None}, start="04:00")
+    sc.add_manual([1], "04:00", "06:00")
+    sc.step()
+    assert sc.mode(1) is IDLE
+    assert sc.reason(1) == Reason.NO_READING_YET
+    assert not sc.hp
+    sc.advance(1)
+    sc.temp(1, 22.0)
+    sc.step()
+    assert sc.mode(1) is FORCED
+    assert sc.hp
+
+
+def test_fault_recovery_inside_the_window_forces_at_once() -> None:
+    sc = Scenario(2, start="02:00")
+    sc.add_manual([1], "04:00", "06:00")
+    sc.step()
+    sc.silence(1)
+    sc.advance_to("04:00")
+    assert sc.mode(1) is FAULT
+    sc.temp(1, 22.0)
+    sc.advance(1)
+    assert sc.mode(1) is FORCED
+    assert sc.state.zones["zone_1"].fault_since is None
+
+
+@pytest.mark.parametrize(("temp", "capped"), [(24.5, False), (24.99, False), (25.0, True)])
+def test_cap_on_entering_the_window(temp: float, capped: bool) -> None:
+    sc = Scenario(2, temps={1: temp}, start="04:00")
+    sc.add_manual([1], "04:00", "06:00")
+    sc.step()
+    assert sc.capped(1) is capped
+    assert sc.valve(1) is not capped
+    assert sc.hp is not capped
+
+
+def test_cap_survives_a_restart() -> None:
+    sc = Scenario(2, temps={1: 25.0}, start="04:00")
+    sc.add_manual([1], "04:00", "06:00")
+    sc.step()
+    sc.temp(1, 24.5)
+    sc.restart(downtime=5)
+    sc.step()
+    assert sc.capped(1)
+    assert sc.valve(1) is False
+
+
+def test_forced_zone_outside_the_season() -> None:
+    sc = Scenario(2, start="04:00")
+    sc.add_manual([1], "04:00", "08:00")
+    sc.step()
+    assert sc.hp
+    sc.advance_to("04:20")
+    sc.set_season(False)
+    sc.step()
+    assert sc.mode(1) is IDLE  # D-97
+    assert sc.reason(1) == Reason.SEASON_OFF
+    assert not sc.hp
+    assert sc.valve(1) is False
+    sc.advance_to("04:30")
+    sc.set_season(True)
+    sc.step()
+    assert sc.mode(1) is FORCED
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF  # min OFF from the actual OFF at 04:20
+    sc.advance_to("05:20")
+    assert sc.hp
+
+
+def test_forced_zone_with_the_heat_source_unavailable() -> None:
+    sc = Scenario(2, start="04:00")
+    sc.add_manual([1], "04:00", "06:00")
+    sc.step()
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(1)
+    assert sc.mode(1) is FORCED
+    assert sc.valve(1) is True
+    assert sc.reason(1) == Reason.HEAT_SOURCE_UNAVAILABLE
+    assert sc.until(1) is None
+
+
+def test_unvalved_forced_zone_creates_demand() -> None:
+    sc = Scenario(2, unvalved=[2], start="04:00")
+    sc.add_manual([2], "04:00", "06:00")
+    sc.step()
+    assert sc.mode(2) is FORCED
+    assert sc.hp
+    assert sc.valve(2) is None  # no output (rule 8)
+
+
+def test_forced_zone_is_left_alone_by_the_sync_rule() -> None:
+    sc = Scenario(3, temps={1: 21.8})
+    sc.add_manual([2], "06:00", "08:00")
+    sc.step()
+    sc.advance_to("06:30")
+    assert sc.calling_zone == "zone_1"
+    sc.temp(1, 22.0)
+    sc.step()
+    assert sc.sync_fired
+    assert sc.mode(2) is FORCED
+    assert sc.mode(3) is HEATING  # 22.0 < StopTemp
+
+
+# ---------------------------------------------------------------- auto schedules and holiday
+
+
+def test_auto_schedule_end_ends_the_wait() -> None:
+    """D-94 for an auto schedule: its end lowers the SetPoint during the wait."""
+    sc = Scenario(2, temps={1: 22.5}, start="06:00")
+    sc.add_auto([1], "05:00", "06:10", 23.0)
+    sc.step()  # no previous SetPoint: rule 1, not a raise
+    assert sc.mode(1) is WAITING
+    sc.advance_to("06:10")
+    assert sc.mode(1) is IDLE
+
+
+def test_holiday_start_mid_cycle_switches_zones_off() -> None:
+    sc = Scenario(2, temps={1: 21.8})
+    sc.step()
+    sc.advance_to("06:40")
+    assert sc.mode(1) is HEATING
+    sc.holiday("12:00", DAY + timedelta(days=3))
+    sc.step()
+    assert sc.setpoint(1) == 18.0
+    assert sc.mode(1) is IDLE  # rule 6 with the holiday SetPoint
+    assert sc.hp  # min ON from 06:30: the heat is spread
+    sc.advance_to("07:30")
+    assert not sc.hp
+
+
+def test_holiday_temperature_is_per_zone() -> None:
+    """D-133: each zone has its own holiday temperature, above or below its base."""
+    sc = Scenario(2, temps=20.0)
+    sc.zone_params["zone_1"] = ZoneParams(base_setpoint=16.0, holiday_temp=15.0)
+    sc.zone_params["zone_2"] = ZoneParams(holiday_temp=19.5)
+    sc.holiday("12:00")
+    sc.step()
+    assert (sc.setpoint(1), sc.setpoint(2)) == (15.0, 19.5)
+    assert sc.holiday_active
+    sc.holiday(None)  # stopped manually
+    sc.step()
+    assert (sc.setpoint(1), sc.setpoint(2)) == (16.0, 22.0)
+    assert not sc.holiday_active
+    assert sc.mode(2) is HEATING  # a raise: no wait (D-26)
+
+
+def test_outputs_report_ended_one_shots() -> None:
+    sc = Scenario(1, start="10:00")
+    sc.add_manual([1], "08:00", "09:00")
+    daily = sc.add_manual([1], "08:00", "09:00", weekdays=range(7))
+    outputs, _, _ = step(sc.config, sc.state, sc.inputs(), sc.now)
+    assert outputs.ended_schedules == ("s1",)
+    sc.step()
+    assert sc.schedules == [daily]
+
+
+def test_holiday_until_must_be_timezone_aware() -> None:
+    sc = Scenario(1)
+    naive = datetime(2026, 1, 13, 12, 0)  # noqa: DTZ001
+    inputs = dataclasses.replace(sc.inputs(), holiday_until=naive)
+    with pytest.raises(ValueError, match="holiday_until must carry a time zone"):
+        step(sc.config, sc.state, inputs, sc.now)
 
 
 # ---------------------------------------------------------------- step contract

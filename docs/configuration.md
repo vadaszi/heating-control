@@ -167,7 +167,7 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 |---|---|
 | `climate.<zone>_floor_heating` (named like the device) | Current temperature = the zone temperature (reading + offset); target = the zone's base set point (10–30 °C, step 0.1). Mode `heat` only. `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*. Attributes: `zone_state`, `reason` (the keys below), `valve` (desired state; none without a valve), `calling_zone`. |
 | `sensor.<zone>_floor_heating_state` (State) | `idle` (Idle), `waiting` (Waiting), `heating` (Heating), `forced` (Forced, v1.1), `sensor_fault` (Sensor fault). |
-| `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
+| `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`, and `forced` from v1.1), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
 | `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force (the base set point until schedules and holiday arrive in v1.1). |
 | `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
@@ -188,6 +188,8 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `sensor_fault` | Sensor fault, valve follows the heat source | No valid reading; the valve is open while the heat source runs; no demand. |
 | `season_off` | Heating season off | The heating season switch is off. |
 | `sensor_fault_season_off` | Sensor fault (heating season off) | Both. |
+| `forced` | Manual schedule | From v1.1. A manual schedule runs: valve open and heat demand regardless of the temperature (`until`: when the manual windows end). |
+| `forced_too_warm` | Manual schedule, paused: too warm | From v1.1. A manual schedule runs, but the zone reached the manual max temperature: closed, no demand, until it is below the manual max temperature minus the manual resume difference. |
 
 ### Global (device "Floor heating")
 
@@ -209,7 +211,7 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) | v1 |
 | `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit); manual schedules from v1.1 |
 | `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) | v1.1 (manual schedules) |
-| `number.floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (18) | v1.1 (holiday) |
+| `number.floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (18) | Not used: from v1.1 each zone has its own holiday temperature (D-133), which replaces this entity; its value becomes every zone's starting value |
 | `number.floor_heating_failsafe_delay` (Failsafe delay) | 1–72 h (24) | v1.2 (failsafe) |
 | `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) | v1.2 (valve exercise) |
 | `number.floor_heating_long_run_alarm` (Long run alarm) | 2–48 h (12) | v1.2 (long run alarm) |

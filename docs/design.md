@@ -194,9 +194,9 @@ Unvalved zones compute state normally; only their output is a no-op.
 4. Auto schedule
 5. BaseSetPoint
 
-**Holiday mode (D-09, D-17, D-59)**
-- The user activates it with an end date/time. It starts immediately on activation and can be stopped manually at any time.
-- While active, the effective SetPoint of **all** zones is `HolidayTemp`. BaseSetPoints are not modified, so "restore the previous setup" is automatic when holiday ends.
+**Holiday mode (D-09, D-17, D-59, D-133)**
+- The user activates it with an end date/time. It starts immediately on activation and can be stopped manually at any time. It is active while the current time is before the end (D-136).
+- While active, the effective SetPoint of **every** zone is **its own** `HolidayTemp` (per zone since D-133; each zone's value may be above or below its BaseSetPoint). BaseSetPoints are not modified, so "restore the previous setup" is automatic when holiday ends.
 - Manual and auto schedules are suspended during holiday.
 - No automatic preheat: the user sets the end time early enough.
 - At holiday end, raised SetPoints start heating immediately (rule 3.3.4).
@@ -209,6 +209,14 @@ Unvalved zones compute state normally; only their output is a no-op.
 - Manual schedules for the same zone may overlap; the result is the union of their windows.
 - When the window ends, the zone returns to normal logic immediately.
 - **Faulty sensor (D-70):** a zone in `SENSOR_FAULT` is not forced, because the safety cap cannot be checked. It stays `SENSOR_FAULT` (follows the house, no demand).
+- **Details (D-130, D-131):**
+  - a manual schedule has no temperature: the SetPoint below it (auto schedule, otherwise BaseSetPoint) stays in force, is shown as the effective SetPoint and applies again when the window ends;
+  - a zone without any valid reading yet (D-93) is not forced either (the cap cannot be checked); it becomes `FORCED` with its first valid reading inside the window;
+  - the cap engages at RoomTemp ≥ ManualMaxTemp, also when the window starts at that temperature; a capped zone stays closed during the D-20 spread, even below ManualMaxTemp, until it has resumed;
+  - forced demand is subject to §3.5 like `HEATING` (held by HpMinOffTime with the valve open, D-64); no WaitTime applies;
+  - when the window ends, the zone is `IDLE` and evaluated in the same step: it joins a running heat pump if RoomTemp ≤ StartTemp (rule 3), enters `WAITING` if the heat pump is off, otherwise stays `IDLE`;
+  - a forced zone is never the calling zone (D-44). If the calling zone becomes forced mid-cycle, it loses the role; the `HEATING` zone with the largest `StartTemp − RoomTemp` takes it (D-92), otherwise the next zone that joins (D-131);
+  - outside the heating season a zone in a manual window is `IDLE` (D-97); holiday suspends manual schedules.
 
 **Auto schedule (D-19)**
 - An auto schedule overrides the SetPoint for one or more zones during a time window.
@@ -217,11 +225,20 @@ Unvalved zones compute state normally; only their output is a no-op.
   - Sunday, all zones, 10:00–16:00 → 21 °C.
 - A new auto schedule that overlaps an existing auto schedule for the same zone is **rejected** at creation, with a clear error message.
 - When the window ends, SetPoint returns to BaseSetPoint.
+- The temperature range is BaseSetPoint's, 10–30 °C (D-132).
 
-**Schedule times (D-57)**
+**Schedule times (D-57, D-132, D-134)**
 - Local wall-clock time in HA's time zone, DST-aware.
 - Windows may cross midnight (e.g. 22:00–02:00).
 - One-shot schedules (manual and auto) are deleted automatically after their window ends.
+- **Details (D-132):**
+  - a window is half-open: 13:00–17:00 is active from 13:00 until just before 17:00; windows that touch (10:00–12:00 and 12:00–14:00) do not overlap;
+  - an end before the start crosses midnight; start = end is rejected;
+  - a recurring window belongs to the weekday it starts on ("Sunday 22:00–02:00" = Sunday night into Monday), a one-shot window to its date; "daily" = all seven weekdays;
+  - the overlap check (D-19) compares local wall-clock times on the days both schedules apply;
+  - a one-shot schedule whose window is already over is rejected at creation;
+  - a schedule covers a list of zones or **all zones**; "all zones" is kept as such, so it also covers zones added to the YAML later. At startup a zone no longer configured is removed from every schedule, and a schedule left without zones is deleted, both with a logged warning;
+  - DST (D-96, D-134): a time in the repeated autumn hour is its first occurrence; a time in the spring gap is shifted by the gap length (02:30 → 03:30), so a window keeps its wall-clock length. A window whose start ends up at or after its end is empty that day.
 
 ### 3.5 Heat pump protection (D-07, D-20, D-30, D-39, D-64, D-66, D-68, D-71, D-78)
 - `HpMinOnTime` and `HpMinOffTime` are user-configurable (default 60 / 60 min, range 30–180 min). The purpose is to stop the heat pump switching on or off too often, so neither can be set below 30 min (D-81). The config validation and the number entities enforce this.
@@ -320,7 +337,7 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - time of the last heat pump request ON/OFF;
   - calling zone and whether the sync rule has fired;
   - holiday state and end time;
-  - schedules;
+  - schedules (holiday and schedules are owned and stored by the adapter, like the UI settings, and passed to `step` as inputs, D-136);
   - FORCED cap state;
   - the values changed from the UI: parameters, heating season, Control active (D-106).
 - **Persistence format (D-87):**
@@ -370,7 +387,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | Plausible temperature range | global | 0–40 °C | | *config* (D-77) |
 | ManualMaxTemp | global | 25 °C | 18–30 °C / 0.5 | Also the D-20 exclusion limit (D-71) |
 | ManualResumeDelta | global | 1.0 °C | 0.2–3.0 °C / 0.1 | |
-| HolidayTemp | global | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint |
+| HolidayTemp | per zone | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint; per zone since D-133 (was global) |
 | FailsafeTrigger | global | 24 h | 1–72 h / 1 | HA case 1 only; the Shelly value is *script config* (D-73) |
 | FailsafeWindow | global | 10:00–15:00 | time of day | HA case 1 only; the Shelly value is *script config* (D-73) |
 | HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73, D-101); HA's expected value is *config* `heartbeat_timeout` (D-121) |
@@ -417,7 +434,8 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - a single deterministic step function:
   `step(config, state, inputs, now) → (desired_outputs, new_state, events)`
   - `inputs`: per-zone temperature + last-report time, actual output states (unavailable = OFF; in shadow mode the adapter passes the commanded states, D-66), parameter values, schedules, holiday, season, control-active flag;
-  - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap takes effect right after the gap, and one in the repeated autumn hour at its first occurrence;
+  - `inputs` also carry whether this run is a reconcile tick (D-99) and HA's time zone (D-96). `now` may be in any time zone; the core converts it for local wall-clock rules (the daily reminder, schedules). Local times are compared as aware datetimes: a time inside the spring DST gap is shifted by the gap length (02:30 → 03:30, D-134), and one in the repeated autumn hour takes effect at its first occurrence;
+  - `inputs` also carry the schedules and the holiday end, which the adapter owns and stores (D-136). `desired_outputs` report whether holiday is active and which one-shot schedules have ended; the adapter then switches holiday off and deletes them;
   - `desired_outputs`: per-zone valve on/off, heat pump request on/off, and the per-zone reason shown by the reason sensor (D-89): a fixed key (D-126) with the end of the timer it names (D-123);
   - `events`: notifications and log entries;
 - time is always passed in; the core never reads the clock;
@@ -474,7 +492,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - **no per-minute countdowns (D-123):** no entity state changes every minute only because time passes. Reasons are fixed keys (D-126; e.g. `waiting` shown as "Waiting period", `held_by_minimum_off_time`, `spreading_heat`); the reason sensor has an `until` attribute (aware ISO timestamp, the end of the running wait, min OFF or min ON timer) only while such a timer runs. The climate entity's `reason` attribute holds the same key;
   - temperatures: climate, effective SetPoint and absolute temperature numbers are in °C and converted by HA; temperature differences (Hysteresis, ManualResumeDelta) are converted by the adapter to HA's unit system, because HA converts only absolute temperatures (D-77);
   - the alerts sensor derives its list from the core state (`active_alerts`): faulty zones and outputs whose mismatch alert was sent.
-- **Holiday (D-79):** HolidayTemp number, end date/time entity, "Holiday active" switch.
+- **Holiday (D-79):** HolidayTemp number per zone (D-133), end date/time entity, "Holiday active" switch.
 - **Schedules:** managed through integration services (add / delete / list) with validation. The list is exposed as a sensor attribute for the dashboard.
 - **Schedule form entities (D-74):** the integration provides its own draft entities so the dashboard needs no user-created helpers: type (auto/manual) and zone selects, one-shot date or weekday selection, start/end time, temperature, an "Add schedule" button, plus a select of existing schedules and a "Delete schedule" button. The buttons call the same validated logic as the services, and errors (e.g. overlap, D-19) are shown as a persistent notification.
 
@@ -715,7 +733,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-14 | No WaitTime when heat pump is already running |
 | D-15 | Sync rule fires on the first calling zone, once per cycle |
 | D-16 | Precedence: failsafe > holiday > manual > auto > base |
-| D-17 | Holiday: one temperature for all zones; schedules suspended |
+| D-17 | Holiday: one temperature for all zones; schedules suspended *(temperature per zone since D-133)* |
 | D-18 | Manual schedule: ManualMaxTemp cap; other zones may join |
 | D-19 | Overlapping auto schedules (same zone) rejected at creation |
 | D-20 | All zones satisfied before min ON elapsed → all valves open until it elapses |
@@ -794,7 +812,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-93 | No valid reading since startup and none persisted: SensorFaultTimeout counts from startup; the zone is IDLE with no demand until then |
 | D-94 | A SetPoint decrease that leaves RoomTemp above the new StartTemp ends a running WaitTime at once (IDLE) |
 | D-95 | Heat source switch unavailable, then back: back ON after ON means it never stopped (min ON and the cycle continue); back OFF means OFF since it became unavailable; the cycle is kept while unavailable. Refines D-66; relies on the Shelly power-on default OFF |
-| D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence |
+| D-96 | Time zone contract: `step` gets HA's time zone in its inputs and converts `now` itself for local wall-clock rules; `now` may be in any time zone. Local times in the DST gap take effect after the gap, repeated times at the first occurrence *(gap: shifted by the gap length, D-134)* |
 | D-97 | Heating season OFF: zones without a fault are IDLE, the cycle ends, request OFF and all valves closed at once (faulty zones too); fault detection and SetPoint tracking continue; season ON is not a SetPoint raise (normal rules, WaitTime); HpMinOffTime counts from the actual OFF |
 | D-98 | Sensor fault notifications: start/recovery on the state change (not repeated after a restart; also in shadow mode); one daily reminder per local day for zones faulty since an earlier day, due from SensorFaultReminder to midnight with catch-up, heating season only |
 | D-99 | Output mismatch counted on reconcile ticks only (flag from the adapter; once per `now`); unavailable always counts, a differing state counts only if the desired state is unchanged since the previous tick; alert once at OutputMismatchAlert, recovery when following again; reset silently in shadow mode |
@@ -824,13 +842,20 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-123 | No per-minute countdowns in entity states: reason texts are fixed ("Waiting", "Held by min OFF", "Spreading heat (min ON)"); the reason sensor's `until` attribute holds the end of the running timer and is present only while one runs; the heat request's `on_since` / `on_duration` are present only while it runs (owner, 2026-09-29). Amends D-89 and D-116 |
 | D-124 | The YAML is imported into a single config entry at startup (import flow, `single_config_entry`); the YAML stays the only configuration, the entry holds no data, the UI setup step only points to the YAML. No YAML section → the entry fails with a clear error, nothing deleted. Removing the entry keeps the stored settings and state (owner, 2026-09-29) |
 | D-125 | Devices and names follow HA's conventions: a *service* device per zone ("<zone name> floor heating") and a "Floor heating" device; `has_entity_name`, translated names and states, *config* category for settings; entity ids generated by HA from device + entity name, no integration name in them; unique ids from zone id + key; areas assigned in the UI. No per-zone valve entity (the relay's own entity shows it while live). Supersedes the fixed ids of D-115 (owner, 2026-09-29) |
-| D-126 | The reason sensor is an enum of fixed keys (`idle`, `waiting`, `calling_zone`, `heating`, `held_by_minimum_off_time`, `spreading_heat`, `too_warm_for_spreading`, `heat_source_unavailable`, `no_reading_yet`, `sensor_fault`, `season_off`, `sensor_fault_season_off`); the core returns the key, the texts are translations ("heat source" wording). Amends D-89 and D-123 (owner, 2026-09-29) |
+| D-126 | The reason sensor is an enum of fixed keys (`idle`, `waiting`, `calling_zone`, `heating`, `held_by_minimum_off_time`, `spreading_heat`, `too_warm_for_spreading`, `heat_source_unavailable`, `no_reading_yet`, `sensor_fault`, `season_off`, `sensor_fault_season_off`); the core returns the key, the texts are translations ("heat source" wording). Amends D-89 and D-123 (owner, 2026-09-29) *(keys `forced`, `forced_too_warm` added by D-135)* |
 | D-127 | The integration is renamed from the working name `floorheat` to **Multizone Floor Heating Manager**, domain `multizone_floor_heating_manager` (YAML key, folder, storage file). Docs name it in full, then "the integration"; notification titles start with "Floor heating:". The Shelly scripts use the new name; the heat source script's KVS key becomes `multizone_floor_heating_manager_season` (owner, 2026-09-29) |
 | D-128 | No tag or GitHub release before the first release, which is 1.0.0; until then versions are set in `manifest.json` only (P7b: 0.7.5) and installed from the default branch. Whether P9/P10 go into 1.0.0 is decided later (owner, 2026-09-29) *(settled by D-129)* |
 | D-129 | Phase order after P7b: P9 → P10 → P11 → P12 → P8 → release 1.0.0 with v1, v1.1 and v1.2. P8 is documentation and release preparation only (the user docs keep a shadow-mode-to-live section); there is no go-live step, the owner is live since P7b. The actuator fault check by power measurement is removed: D-41 withdrawn, V1, ActuatorFaultThreshold and the `power_sensor` YAML key dropped (owner, 2026-09-29) |
+| D-130 | Manual schedule details: the SetPoint below it (auto or base) stays in force and is shown; a zone without a valid reading yet is not forced (like D-70); the cap engages at ≥ ManualMaxTemp also at the window start, and a capped zone stays closed during the D-20 spread; forced demand is subject to §3.5 without WaitTime; at the window end the zone is IDLE and evaluated in the same step (owner, 2026-09-30) |
+| D-131 | A calling zone that becomes FORCED mid-cycle loses the role; the HEATING zone with the largest deficit takes it (D-92), otherwise the next zone that joins (owner, 2026-09-30) |
+| D-132 | Schedule windows: half-open, end before start crosses midnight, start = end rejected, weekday/date = start day, touching windows don't overlap, overlap checked on local wall-clock time, an already ended one-shot rejected, "daily" = all weekdays; auto temperature 10–30 °C; "all zones" is a flag that also covers zones added later; zones removed from the YAML are dropped from schedules, a schedule without zones is deleted, with warnings (owner, 2026-09-30) |
+| D-133 | HolidayTemp is per zone (default 18 °C, 10–25 °C): holiday sets every zone to its own holiday temperature; the global value becomes every zone's starting value when the entities move to the zones (P10). Holiday still ends at its end date/time or when switched off. Amends D-17 (owner, 2026-09-30) |
+| D-134 | DST: a local time in the spring gap is shifted by the gap length (02:30 → 03:30), for schedules as for the sensor fault reminder; a window keeps its wall-clock length and is empty if its start ends up at or after its end. Clarifies D-96 (owner, 2026-09-30) |
+| D-135 | New reason keys `forced` ("Manual schedule", `until` = end of the running manual windows, their union) and `forced_too_warm` ("Manual schedule, paused: too warm"); a forced zone held by min OFF or with the heat source unavailable uses the existing keys; no holiday reason (the mode sensor shows holiday). Amends D-126 (owner, 2026-09-30) |
+| D-136 | Schedules and the holiday end are owned and stored by the adapter and passed to `step` as inputs; holiday is active while `now` is before its end. The core reports `holiday_active` and the ended one-shot schedules; the adapter switches holiday off and deletes them. The core provides the creation check and the (de)serialisation (owner, 2026-09-30) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan).
 
 ---
 

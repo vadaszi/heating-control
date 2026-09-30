@@ -44,7 +44,9 @@
               "no_reading_yet": "Waiting for a sensor reading",
               "sensor_fault": "Sensor fault, valve follows the heat source",
               "season_off": "Heating season off",
-              "sensor_fault_season_off": "Sensor fault (heating season off)"
+              "sensor_fault_season_off": "Sensor fault (heating season off)",
+              "forced": "Manual schedule",
+              "forced_too_warm": "Manual schedule, paused: too warm"
             }
           },
           "valve": {
@@ -116,7 +118,9 @@
           "no_reading_yet": "Waiting for a sensor reading",
           "sensor_fault": "Sensor fault, valve follows the heat source",
           "season_off": "Heating season off",
-          "sensor_fault_season_off": "Sensor fault (heating season off)"
+          "sensor_fault_season_off": "Sensor fault (heating season off)",
+          "forced": "Manual schedule",
+          "forced_too_warm": "Manual schedule, paused: too warm"
         },
         "state_attributes": {
           "until": {

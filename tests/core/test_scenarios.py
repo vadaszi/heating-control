@@ -1,4 +1,4 @@
-"""§6 acceptance scenarios covered by the core in P2 and P3 (docs/design.md §6).
+"""§6 acceptance scenarios covered by the core in P2, P3 and P9 (docs/design.md §6).
 
 Defaults from §4: SetPoint 22.0, Hysteresis 0.2 (StartTemp 21.8, StopTemp 22.2),
 WaitTime 30 min, HpMinOnTime/HpMinOffTime 60 min, SensorFaultTimeout 60 min,
@@ -8,17 +8,26 @@ ManualMaxTemp 25.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
+from custom_components.multizone_floor_heating_manager.core.config import CoreConfig
 from custom_components.multizone_floor_heating_manager.core.io import EventKind, OutputState, Reason
+from custom_components.multizone_floor_heating_manager.core.schedule import (
+    WEEKDAYS,
+    Schedule,
+    ScheduleKind,
+    check_new_schedule,
+)
 from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
 from .harness import DAY, Scenario, at
 
-IDLE, WAITING, HEATING, FAULT = (
+IDLE, WAITING, HEATING, FORCED, FAULT = (
     ZoneMode.IDLE,
     ZoneMode.WAITING,
     ZoneMode.HEATING,
+    ZoneMode.FORCED,
     ZoneMode.SENSOR_FAULT,
 )
 NEXT_DAY = DAY + timedelta(days=1)
@@ -576,3 +585,235 @@ def test_a29_heat_source_unavailable_alerts_mismatch() -> None:
     sc.advance(1)
     assert sc.hp
     assert len(sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)) == 1
+
+
+# ---------------------------------------------------------------- P9: schedules and holiday
+
+
+def test_a10_auto_schedule_raise_starts_without_wait() -> None:
+    sc = Scenario(2, temps={1: 22.1}, start="12:00")
+    sc.add_auto([1], "13:00", "17:00", 23.0)
+    sc.step()
+    sc.advance_to("12:59")
+    assert sc.mode(1) is IDLE
+    assert sc.setpoint(1) == 22.0
+    sc.advance_to("13:00")
+    assert sc.setpoint(1) == 23.0
+    assert sc.mode(1) is HEATING  # no WaitTime (D-26)
+    assert sc.hp
+    assert sc.calling_zone == "zone_1"
+    assert sc.reason(1) == Reason.CALLING_ZONE
+
+
+def test_a10_auto_schedule_raise_is_held_by_min_off() -> None:
+    sc = Scenario(2, temps={1: 22.1}, start="11:30", hp_on=True)  # min ON from startup
+    sc.add_auto([1], "13:00", "17:00", 23.0)
+    sc.step()
+    sc.advance_to("12:30")
+    assert not sc.hp  # OFF at 12:30: min OFF until 13:30
+    sc.advance_to("13:00")
+    assert sc.mode(1) is HEATING
+    assert sc.valve(1) is True  # open while held (D-64)
+    assert not sc.hp
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
+    assert sc.until(1) == at("13:30")
+    sc.advance_to("13:30")
+    assert sc.hp
+    assert sc.calling_zone == "zone_1"
+
+
+def test_a11_auto_schedule_end_stops_the_zone() -> None:
+    sc = Scenario(2, temps={1: 22.5, 2: 22.3}, start="12:59")  # zone 2 above StopTemp
+    sc.add_auto([1], "13:00", "17:00", 23.0)
+    sc.step()
+    sc.advance_to("13:00")
+    assert sc.mode(1) is HEATING
+    sc.advance_to("16:59")
+    assert sc.mode(1) is HEATING
+    assert sc.hp
+    sc.advance_to("17:00")
+    assert sc.setpoint(1) == 22.0
+    assert sc.mode(1) is IDLE  # 22.5 >= StopTemp 22.2 (rule 6)
+    assert not sc.hp  # min ON (from 13:00) has elapsed
+
+
+def test_a12_overlapping_auto_schedule_is_rejected() -> None:
+    config = CoreConfig(zones=Scenario(2).config.zones)
+    existing = Schedule(
+        id="daily",
+        kind=ScheduleKind.AUTO,
+        start=time(13, 0),
+        end=time(17, 0),
+        zone_ids=("zone_1",),
+        weekdays=WEEKDAYS,
+        temperature=23.0,
+    )
+    new = Schedule(
+        id="sunday",
+        kind=ScheduleKind.AUTO,
+        start=time(16, 0),
+        end=time(18, 0),
+        zone_ids=("zone_1", "zone_2"),
+        weekdays=frozenset({6}),
+        temperature=21.0,
+    )
+    stored = [existing]
+    errors = check_new_schedule(new, stored, config, at("12:00"), UTC)
+    assert errors == [
+        "overlaps auto schedule 'daily' for zone_1; auto schedules for the same zone may "
+        "not overlap"
+    ]
+    assert stored == [existing]  # nothing stored (the adapter only stores without errors)
+
+
+def _manual_zone_2(zones: int = 3, temps: Mapping[int | str, float] | None = None) -> Scenario:
+    """All zones satisfied; a manual schedule forces zone 2 from 04:00 to 06:00."""
+    sc = Scenario(zones, temps={**(temps or {})}, start="03:30")
+    sc.add_manual([2], "04:00", "06:00")
+    sc.step()
+    assert not sc.hp
+    sc.advance_to("04:00")
+    return sc
+
+
+def test_a13_manual_schedule_forces_the_zone() -> None:
+    sc = _manual_zone_2()
+    assert sc.modes() == {"zone_1": IDLE, "zone_2": FORCED, "zone_3": IDLE}
+    assert sc.hp
+    assert sc.open_valves() == {"zone_2"}
+    assert sc.calling_zone is None  # a forced zone never calls (D-44)
+    assert sc.reason(2) == Reason.FORCED
+    assert sc.until(2) == at("06:00")
+    assert sc.setpoint(2) == 22.0  # the SetPoint below the manual schedule (D-130)
+    sc.advance_to("05:59")
+    assert sc.hp
+    assert sc.mode(2) is FORCED
+    sc.advance_to("06:00")
+    assert sc.mode(2) is IDLE
+    assert not sc.hp  # min ON (from 04:00) is satisfied
+    assert sc.open_valves() == set()
+    assert sc.schedules == []  # the one-shot schedule was deleted after its window
+
+
+def test_a14_zone_joining_a_manual_cycle_becomes_the_calling_zone() -> None:
+    sc = _manual_zone_2(temps={1: 22.1})
+    sc.advance_to("05:00")
+    sc.temp(3, 21.8)
+    sc.step()
+    assert sc.mode(3) is HEATING  # joins without wait (rule 3)
+    assert sc.calling_zone == "zone_3"  # D-44
+    assert not sc.sync_fired
+    sc.advance_to("05:30")
+    sc.temp(3, 22.0)  # reaches SetPoint
+    sc.step()
+    assert sc.sync_fired
+    assert sc.mode(1) is HEATING  # 22.1 < StopTemp: tops up
+    assert sc.mode(2) is FORCED
+
+
+def test_a15_forced_zone_capped_at_manual_max_temp() -> None:
+    sc = Scenario(2, temps={1: 24.9}, start="04:00")
+    sc.add_manual([1], "04:00", "08:00")
+    sc.step()
+    assert sc.mode(1) is FORCED
+    assert sc.valve(1) is True
+    assert sc.hp
+    sc.advance_to("04:10")
+    sc.temp(1, 25.0)
+    sc.step()
+    assert sc.mode(1) is FORCED
+    assert sc.capped(1)
+    assert sc.valve(1) is False  # closed, no demand
+    assert sc.reason(1) == Reason.FORCED_TOO_WARM
+    assert sc.until(1) is None
+    assert sc.hp  # min ON (from 04:00): the heat is spread over zone 2
+    assert sc.open_valves() == {"zone_2"}
+    sc.advance_to("04:20")
+    sc.temp(1, 24.5)  # below ManualMaxTemp but not below the resume limit
+    sc.step()
+    assert sc.capped(1)
+    assert sc.valve(1) is False  # the cap wins over the spread (D-130)
+    sc.advance_to("05:00")
+    assert not sc.hp  # no demand once min ON has elapsed
+    sc.temp(1, 24.0)
+    sc.advance(1)
+    assert sc.capped(1)  # resumes only below 24.0
+    sc.temp(1, 23.9)
+    sc.advance_to("05:30")
+    assert not sc.capped(1)
+    assert sc.valve(1) is True
+    assert sc.reason(1) == Reason.HELD_BY_MIN_OFF  # min OFF from 05:00
+    sc.advance_to("06:00")
+    assert sc.hp
+    assert sc.reason(1) == Reason.FORCED
+
+
+def test_a16_holiday_until_sunday_1500() -> None:
+    sunday = date(2026, 1, 18)
+    sc = Scenario(3, temps={1: 20.0, 2: 20.0, 3: 19.5}, day=sunday, start="12:00")
+    sc.holiday("15:00")
+    sc.add_auto([1], "10:00", "16:00", 23.0)
+    sc.add_manual([2], "12:00", "16:00")
+    sc.step()
+    assert [sc.setpoint(z) for z in (1, 2, 3)] == [18.0, 18.0, 18.0]
+    assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE}  # schedules ignored
+    assert sc.holiday_active
+    sc.advance_to("14:59")
+    assert not sc.hp
+    sc.advance_to("15:00")
+    assert [sc.setpoint(z) for z in (1, 2, 3)] == [23.0, 22.0, 22.0]
+    assert sc.modes() == {"zone_1": HEATING, "zone_2": FORCED, "zone_3": HEATING}  # no wait
+    assert sc.hp
+    assert sc.calling_zone == "zone_1"  # largest deficit (2.8 vs 2.3)
+    assert not sc.holiday_active
+    assert sc.holiday_until is None  # switched off by the adapter
+
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def _local_setpoints(sc: Scenario, until: datetime) -> dict[str, float]:
+    """Effective SetPoint of zone 1 per local time, minute by minute."""
+    seen: dict[str, float] = {}
+    while sc.now < until:
+        sc.advance(1)
+        seen[sc.local_now().strftime("%H:%M%z")] = sc.setpoint(1)
+    return seen
+
+
+def test_a24_night_window_across_the_spring_dst_change() -> None:
+    sc = Scenario(1, tz=BERLIN, day=date(2026, 3, 28), start="21:00", temps=22.5)
+    sc.add_auto([1], "22:00", "02:00", 23.0, weekdays=WEEKDAYS)
+    sc.step()
+    seen = _local_setpoints(sc, datetime(2026, 3, 29, 2, 0, tzinfo=UTC))  # 04:00 CEST
+    assert seen["21:59+0100"] == 22.0
+    assert seen["22:00+0100"] == 23.0
+    assert seen["01:59+0100"] == 23.0
+    assert seen["03:00+0200"] == 22.0  # 02:00 does not exist: the window ends at 03:00
+    assert sum(1 for value in seen.values() if value == 23.0) == 4 * 60
+
+
+def test_a24_night_window_across_the_autumn_dst_change() -> None:
+    sc = Scenario(1, tz=BERLIN, day=date(2026, 10, 24), start="21:00", temps=22.5)
+    sc.add_auto([1], "22:00", "02:00", 23.0, weekdays=WEEKDAYS)
+    sc.step()
+    seen = _local_setpoints(sc, datetime(2026, 10, 25, 3, 0, tzinfo=UTC))  # 04:00 CET
+    assert seen["22:00+0200"] == 23.0
+    assert seen["01:59+0200"] == 23.0
+    assert seen["02:00+0200"] == 22.0  # the first 02:00 ends it
+    assert seen["02:30+0100"] == 22.0  # the repeated hour stays outside
+    assert sum(1 for value in seen.values() if value == 23.0) == 4 * 60
+
+
+def test_a28_manual_schedule_does_not_force_a_faulty_zone() -> None:
+    sc = Scenario(2, start="03:00")
+    sc.add_manual([2], "04:30", "06:00")
+    sc.step()
+    sc.silence(2)
+    sc.advance_to("04:01")
+    assert sc.mode(2) is FAULT
+    sc.advance_to("04:30")
+    assert sc.mode(2) is FAULT  # D-70
+    assert sc.reason(2) == Reason.SENSOR_FAULT
+    assert not sc.hp  # no demand from it
+    assert sc.valve(2) is False  # follows the house

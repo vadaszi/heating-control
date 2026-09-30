@@ -71,6 +71,7 @@ class Sample:
     temps: dict[str, float]
     season: bool = True
     events: tuple[Event, ...] = ()  # emitted in this minute
+    setpoints: dict[str, float] = field(default_factory=dict)  # effective SetPoints
 
 
 @dataclass
@@ -125,6 +126,7 @@ def simulate(
                 temps={z: m.temp for z, m in house.items()},
                 season=sc.heating_season,
                 events=tuple(sc.events[seen:]),
+                setpoints={z: sc.setpoint(z) for z in house},
             )
         )
     return trace

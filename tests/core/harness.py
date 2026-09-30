@@ -4,9 +4,11 @@ A `Scenario` owns the config, the core state and the simulated world (sensor rea
 actual switch states). `step()` runs `step` at the current time as a reconcile tick.
 Like the reconcile loop, it makes the actual switches follow the commanded state and,
 when the heat source changed, steps again at the same time, so transitions are seen
-without delay. Every call checks that `step` is idempotent: running it again on its own
-result changes nothing and emits no further events. A second `step()` at the same time
-(after changing the world) is not a new reconcile tick for the mismatch counter (D-99).
+without delay. Like the adapter (D-136), it deletes one-shot schedules the core reports
+as ended and clears the holiday end once holiday is over. Every call checks that `step`
+is idempotent: running it again on its own result changes nothing and emits no further
+events. A second `step()` at the same time (after changing the world) is not a new
+reconcile tick for the mismatch counter (D-99).
 
 Times are given as local wall-clock times in the scenario's time zone (UTC by default).
 """
@@ -15,7 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from custom_components.multizone_floor_heating_manager.core.config import (
@@ -32,6 +34,10 @@ from custom_components.multizone_floor_heating_manager.core.io import (
     Outputs,
     OutputState,
     ZoneInput,
+)
+from custom_components.multizone_floor_heating_manager.core.schedule import (
+    Schedule,
+    ScheduleKind,
 )
 from custom_components.multizone_floor_heating_manager.core.state import (
     CoreState,
@@ -98,6 +104,9 @@ class Scenario:
         self.valves_follow = dict.fromkeys(self.valves_actual, True)
         self.heating_season = True
         self.control_active = True
+        self.schedules: list[Schedule] = []
+        self.holiday_until: datetime | None = None
+        self._next_schedule = 1
         self.outputs: Outputs | None = None
         self.events: list[Event] = []
 
@@ -129,6 +138,60 @@ class Scenario:
     def set_season(self, on: bool) -> None:
         self.heating_season = on
 
+    def add_auto(
+        self,
+        zones: Sequence[ZoneRef] | None,
+        start: str,
+        end: str,
+        temperature: float,
+        *,
+        on: date | None = None,
+        weekdays: Iterable[int] | None = None,
+    ) -> Schedule:
+        """Add an auto schedule; `zones` None = all zones. One-shot on the start day
+        unless `on` or `weekdays` is given."""
+        return self._add(ScheduleKind.AUTO, zones, start, end, temperature, on, weekdays)
+
+    def add_manual(
+        self,
+        zones: Sequence[ZoneRef] | None,
+        start: str,
+        end: str,
+        *,
+        on: date | None = None,
+        weekdays: Iterable[int] | None = None,
+    ) -> Schedule:
+        return self._add(ScheduleKind.MANUAL, zones, start, end, None, on, weekdays)
+
+    def _add(
+        self,
+        kind: ScheduleKind,
+        zones: Sequence[ZoneRef] | None,
+        start: str,
+        end: str,
+        temperature: float | None,
+        on: date | None,
+        weekdays: Iterable[int] | None,
+    ) -> Schedule:
+        schedule = Schedule(
+            id=f"s{self._next_schedule}",
+            kind=kind,
+            start=time.fromisoformat(start),
+            end=time.fromisoformat(end),
+            zone_ids=None if zones is None else tuple(zone_id(z) for z in zones),
+            on_date=None if weekdays is not None else (on or self.day),
+            weekdays=frozenset(weekdays or ()),
+            temperature=temperature,
+        )
+        self._next_schedule += 1
+        self.schedules.append(schedule)
+        return schedule
+
+    def holiday(self, until: str | None, day: date | None = None) -> None:
+        """Activate holiday until a local time (on the start day unless `day` is given),
+        or stop it with None."""
+        self.holiday_until = None if until is None else at(until, day or self.day, self.tz)
+
     def restart(self, downtime: int = 0) -> None:
         """HA restart: persist, reload through JSON, and continue after `downtime` min."""
         data = json.loads(json.dumps(self.state.to_dict()))
@@ -158,6 +221,8 @@ class Scenario:
             control_active=self.control_active,
             time_zone=self.tz,
             reconcile_tick=True,
+            schedules=tuple(self.schedules),
+            holiday_until=self.holiday_until,
         )
 
     def _step_once(self) -> Outputs:
@@ -167,6 +232,10 @@ class Scenario:
         assert again == (outputs, new_state, []), f"step is not idempotent at {self.now}"
         self.state, self.outputs = new_state, outputs
         self.events.extend(events)
+        # The adapter's bookkeeping (D-136).
+        self.schedules = [s for s in self.schedules if s.id not in outputs.ended_schedules]
+        if not outputs.holiday_active:
+            self.holiday_until = None
         return outputs
 
     def step(self) -> Outputs:
@@ -224,6 +293,17 @@ class Scenario:
     def until(self, zone: ZoneRef) -> datetime | None:
         """End of the timer named by the zone's reason (D-123)."""
         return self._out().zones[zone_id(zone)].until
+
+    def setpoint(self, zone: ZoneRef) -> float:
+        """Effective SetPoint (§3.4)."""
+        return self._out().zones[zone_id(zone)].setpoint
+
+    @property
+    def holiday_active(self) -> bool:
+        return self._out().holiday_active
+
+    def capped(self, zone: ZoneRef) -> bool:
+        return self.state.zones[zone_id(zone)].forced_capped
 
     def room_temp(self, zone: ZoneRef) -> float | None:
         return self._out().zones[zone_id(zone)].room_temp
