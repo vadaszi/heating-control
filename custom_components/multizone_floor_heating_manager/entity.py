@@ -60,9 +60,9 @@ class FloorheatEntity(Entity):
         self.async_on_remove(self.controller.async_add_listener(self.async_write_ha_state))
 
 
-async def async_apply(change: Awaitable[None]) -> None:
+async def async_apply[T](change: Awaitable[T]) -> T:
     """Run a settings change; invalid values become a service validation error."""
     try:
-        await change
+        return await change
     except ConfigError as err:
         raise ServiceValidationError("; ".join(err.errors)) from err

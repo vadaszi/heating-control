@@ -172,6 +172,29 @@ While holiday is on, every zone's target is its own **holiday temperature** (a n
 - Holiday ends at its end time or when you switch it off; either way the end is cleared for the next holiday.
 - There is no automatic preheat: set the end early enough for the house to warm up. At the end, zones below their start temperature begin heating at once.
 
+## Services
+
+The schedule services act like the schedule form on the dashboard, but they also take several zones or any combination of weekdays in one schedule. Use them in automations, scripts or *Developer tools → Actions*.
+
+| Service | Fields | Result |
+|---|---|---|
+| `multizone_floor_heating_manager.add_schedule` | `kind`: `auto` or `manual`; `zones`: a list of zone ids from the YAML, or `all`; either `date` (one-shot, the day the window starts) or `weekdays` (recurring: any of `mon` `tue` `wed` `thu` `fri` `sat` `sun`); `start`, `end` (local time); `temperature` (auto only, in your unit system) | Adds the schedule and returns it (`schedule`, as in the Schedules sensor). A schedule that is not valid, or an auto schedule that overlaps another one for the same zone, is rejected with an error naming the problem, and nothing is stored. |
+| `multizone_floor_heating_manager.delete_schedule` | `schedule_id`: the number from the label (`3` or `#3`) | Deletes the schedule. |
+| `multizone_floor_heating_manager.list_schedules` | none | Returns `schedules`, the list in the Schedules sensor's attribute. |
+
+Example: every Monday, Wednesday and Friday 13:00–17:00, Living room and Kitchen at 23 °C:
+
+```yaml
+action: multizone_floor_heating_manager.add_schedule
+data:
+  kind: auto
+  zones: [living_room, kitchen]
+  weekdays: [mon, wed, fri]
+  start: "13:00"
+  end: "17:00"
+  temperature: 23
+```
+
 ## Notifications
 
 Every notification goes to every `notify` target, with a title and a message:

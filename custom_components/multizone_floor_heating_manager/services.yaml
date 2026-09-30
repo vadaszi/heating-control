@@ -1,0 +1,63 @@
+# Schedule services (docs/configuration.md#services). Names and descriptions are in
+# translations/en.json.
+add_schedule:
+  fields:
+    kind:
+      required: true
+      example: auto
+      selector:
+        select:
+          options:
+            - auto
+            - manual
+          translation_key: schedule_kind
+    zones:
+      required: true
+      example: living_room
+      selector:
+        text:
+          multiple: true
+    date:
+      example: "2026-10-05"
+      selector:
+        date:
+    weekdays:
+      example: mon
+      selector:
+        select:
+          multiple: true
+          options:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+          translation_key: weekday
+    start:
+      required: true
+      example: "13:00"
+      selector:
+        time:
+    end:
+      required: true
+      example: "17:00"
+      selector:
+        time:
+    temperature:
+      example: 23
+      selector:
+        number:
+          mode: box
+          step: 0.1
+
+delete_schedule:
+  fields:
+    schedule_id:
+      required: true
+      example: "3"
+      selector:
+        text:
+
+list_schedules:

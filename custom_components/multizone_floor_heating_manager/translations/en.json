@@ -174,5 +174,74 @@
         "name": "Sensor fault reminder time"
       }
     }
+  },
+  "selector": {
+    "schedule_kind": {
+      "options": {
+        "auto": "Auto: sets the target temperature",
+        "manual": "Manual: forces heating"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "services": {
+    "add_schedule": {
+      "name": "Add schedule",
+      "description": "Adds an auto or manual schedule. A schedule that is not valid, or an auto schedule that overlaps another one for the same zone, is rejected and nothing is stored.",
+      "fields": {
+        "kind": {
+          "name": "Type",
+          "description": "Auto sets the zones' target temperature during the window; manual forces the zones to heat during the window."
+        },
+        "zones": {
+          "name": "Zones",
+          "description": "Zone ids from the YAML configuration (e.g. living_room), or all for every zone, including zones added later."
+        },
+        "date": {
+          "name": "Date",
+          "description": "For a one-shot schedule: the day its window starts. Give either a date or weekdays."
+        },
+        "weekdays": {
+          "name": "Weekdays",
+          "description": "For a recurring schedule: the days its window starts on (all seven for every day). Give either a date or weekdays."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start of the window, local time."
+        },
+        "end": {
+          "name": "End",
+          "description": "End of the window, local time (not included). An end before the start crosses midnight."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Auto schedules only: the target temperature during the window (10–30 °C), in your unit system."
+        }
+      }
+    },
+    "delete_schedule": {
+      "name": "Delete schedule",
+      "description": "Deletes a schedule.",
+      "fields": {
+        "schedule_id": {
+          "name": "Schedule number",
+          "description": "The schedule's number, as in its label (#3 or 3)."
+        }
+      }
+    },
+    "list_schedules": {
+      "name": "List schedules",
+      "description": "Returns every schedule, as in the Schedules sensor's attribute."
+    }
   }
 }
