@@ -603,7 +603,7 @@ The repository must contain **detailed instructions** so another user can instal
 - **Installation:** via HACS custom repository and manually.
 - **Configuration reference:** every YAML key with type, default and example; every entity and service.
 - **Shelly scripts:** which script goes on which device, how to upload it, how to configure it, and how to test it.
-- **Example dashboard** YAML and screenshots.
+- **Example dashboard** YAML and screenshots (the YAML since P10, [`dashboard.md`](dashboard.md); screenshots in P8, D-140).
 - **Shadow mode and go-live checklist.**
 - **Troubleshooting:** sensor faults, heartbeat, failsafe, logs.
 - **Update notes / changelog** per release.
@@ -635,7 +635,7 @@ Docs are updated in the same commit(s) as the code they describe.
 ### 5.10 Phasing
 The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phases** in `docs/implementation-plan.md` (D-82): P0–P7b = v1, P9–P10 = v1.1, P11–P12 = v1.2, and P8 (documentation and release preparation) runs last (D-129). Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
 
-**Releases (D-128, D-129):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are set in `manifest.json` only (P7b: 0.7.5) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
+**Releases (D-128, D-129, D-140):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are 0.x.x and set in `manifest.json` only (P7b: 0.7.5, P10: 0.8.0) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);

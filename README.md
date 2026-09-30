@@ -11,12 +11,13 @@ A Home Assistant custom integration for room-by-room control of underfloor heati
 - Shadow mode to run next to an existing controller before going live.
 - Shelly watchdog scripts that put the valves and heat source into a safe state if Home Assistant stops.
 
-Later releases add schedules, holiday mode, a dashboard example (v1.1), and a 24 h failsafe, valve exercise and external watchdog (v1.2).
+v1.1 adds auto and manual schedules, holiday mode and an example dashboard; v1.2 will add a 24 h failsafe, valve exercise and an external watchdog.
 
 ## Documentation
 - Design and functional specification: [`docs/design.md`](docs/design.md)
 - Getting started (install, stand-in switches, shadow-mode trial): [`docs/getting-started.md`](docs/getting-started.md)
-- Configuration reference (YAML keys, devices and entities, notifications, shadow mode, upgrading from `floorheat`): [`docs/configuration.md`](docs/configuration.md)
+- Configuration reference (YAML keys, devices and entities, schedules and holiday, services, notifications, shadow mode, upgrading from `floorheat`): [`docs/configuration.md`](docs/configuration.md)
+- Example dashboard: [`docs/dashboard.md`](docs/dashboard.md)
 - Shelly watchdog scripts (which device, upload, configure, bench tests): [`docs/shelly-scripts.md`](docs/shelly-scripts.md)
 - Heartbeat protocol between the integration and the scripts: [`docs/heartbeat-protocol.md`](docs/heartbeat-protocol.md)
 - Installation and safety notes will be added before the first release (1.0.0).

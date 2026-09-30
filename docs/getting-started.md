@@ -83,7 +83,7 @@ Run it for one to two weeks next to your current controller. Compare in the enti
 - the `valve` attribute of `climate.<zone>_floor_heating`: which valves the integration would open;
 - `sensor.floor_heating_alerts` and the notifications: sensor faults are also reported in shadow mode.
 
-Any climate or history card works for this; an example dashboard comes with v1.1.
+The [example dashboard](dashboard.md) shows all of this, with a 24-hour graph per zone and a card that explains every state and reason.
 
 A step-by-step checklist with space for notes: [trial checklist](trial-checklist.md).
 
