@@ -3,8 +3,8 @@
 One `helpers.storage.Store` file holds:
 - `core`: `CoreState.to_dict()`, restored with `load_state` (versioned by the core);
 - `settings`: the values changed from the UI (zone and global parameters, heating
-  season, control active); the adapter owns them and the entities only show and change
-  them (D-106);
+  season, control active, schedules, holiday); the adapter owns them and the entities
+  and services only show and change them (D-106, D-136);
 - `pending_off`: switches that still have to confirm the final OFF after Control active
   was switched OFF (D-110);
 - `heartbeat`: per Shelly (`ShellyWiring.key`), failed heartbeat calls in a row and the
@@ -21,7 +21,7 @@ import dataclasses
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import time
+from datetime import UTC, datetime, time
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -38,6 +38,7 @@ from .core.config import (
     ZoneParams,
 )
 from .core.heartbeat import HeartbeatTracking
+from .core.schedule import Schedule, load_schedules, schedules_to_list
 from .core.state import CoreState, load_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +52,10 @@ class Settings:
     global_params: GlobalParams = field(default_factory=GlobalParams)
     heating_season: bool = True
     control_active: bool = False  # shadow mode on first install (§5.5)
+    schedules: tuple[Schedule, ...] = ()
+    schedule_counter: int = 0  # the last schedule number handed out; never reused
+    holiday_on: bool = False
+    holiday_end: datetime | None = None  # aware; None: no end (D-137)
 
     @classmethod
     def defaults(cls, config: CoreConfig) -> Settings:
@@ -68,6 +73,12 @@ class Settings:
             },
             "heating_season": self.heating_season,
             "control_active": self.control_active,
+            "schedules": schedules_to_list(self.schedules),
+            "schedule_counter": self.schedule_counter,
+            "holiday_on": self.holiday_on,
+            "holiday_end": None
+            if self.holiday_end is None
+            else self.holiday_end.astimezone(UTC).isoformat(),
         }
 
     @classmethod
@@ -95,7 +106,38 @@ class Settings:
         if not isinstance(season, bool) or not isinstance(control, bool):
             warnings.append("Stored heating season / control active are unusable; using defaults.")
             season, control = defaults.heating_season, defaults.control_active
-        return cls(zone_params, global_params, season, control), warnings
+        schedules, schedule_warnings = load_schedules(data.get("schedules"), config)
+        warnings += schedule_warnings
+        holiday_on, holiday_end = _holiday(data, warnings)
+        return cls(
+            zone_params,
+            global_params,
+            season,
+            control,
+            schedules,
+            _counter(data.get("schedule_counter"), schedules),
+            holiday_on,
+            holiday_end,
+        ), warnings
+
+
+def _counter(value: object, schedules: tuple[Schedule, ...]) -> int:
+    """The stored schedule counter, never below a number already in use."""
+    counter = value if isinstance(value, int) and not isinstance(value, bool) else 0
+    used = [int(s.id) for s in schedules if s.id.isdigit()]
+    return max([counter, *used])
+
+
+def _holiday(data: Mapping[str, Any], warnings: list[str]) -> tuple[bool, datetime | None]:
+    on, end = data.get("holiday_on", False), data.get("holiday_end")
+    try:
+        parsed = None if end is None else datetime.fromisoformat(end)
+    except TypeError, ValueError:
+        parsed = None
+    if not isinstance(on, bool) or (end is not None and (parsed is None or parsed.tzinfo is None)):
+        warnings.append("Stored holiday is unusable; holiday is off.")
+        return False, None
+    return on, parsed
 
 
 def _params_to_dict(params: object, specs: Mapping[str, ParamSpec]) -> dict[str, Any]:

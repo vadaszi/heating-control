@@ -138,6 +138,40 @@ After the first installation **Control active is OFF** (shadow mode). The integr
 - **Switching Control active ON** (shadow → live) sets every output to the desired state at the next run.
 - **Going live after shadow mode:** from then on the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF. That counts as a stop, so the minimum OFF time (default 60 min) runs before the heat source is first requested. The zones that need heat already open their valves.
 
+## Schedules and holiday
+
+Schedules and holiday change a zone's target for a while. They are stored by the integration (they survive restarts) and changed from the dashboard or with the [services](#services). What is in force, highest first: **holiday**, then a **manual schedule**, then an **auto schedule**, then the zone's **base set point** (the climate entity's target).
+
+### Auto schedules
+An auto schedule sets the target of one or more zones during a time window, e.g. every day 13:00–17:00 Living room 23 °C, or Sunday 10:00–16:00 all zones 21 °C (10–30 °C).
+- Two auto schedules for the same zone may not overlap: the second one is rejected with an error, and nothing is stored.
+- When the window ends, the target returns to the base set point. A target raised at the window start starts heating at once, without the wait time (the heat source minimum off time still applies).
+
+### Manual schedules
+A manual schedule forces one or more zones to heat during a window: valve open and heat demand, whatever the temperature (state `forced`, reason "Manual schedule").
+- Safety cap: at the **manual max temperature** (default 25 °C) the zone closes and stops asking for heat ("Manual schedule, paused: too warm"). It resumes below the manual max temperature minus the **manual resume difference** (default 1.0 °C).
+- A manual schedule has no temperature of its own: the target below it (auto schedule or base set point) stays in force and applies again when the window ends.
+- Manual schedules for the same zone may overlap; together they cover the union of their windows.
+- Other zones that get cold while a manual schedule runs the heat source join it.
+- A zone with a sensor fault, or without any reading yet, is not forced (the cap cannot be checked).
+- Outside the heating season, and during holiday, manual schedules do nothing.
+
+### Times
+- Windows are local wall-clock times in HA's time zone. 13:00–17:00 runs from 13:00 until just before 17:00, so 10:00–12:00 and 12:00–14:00 don't overlap.
+- An end before the start crosses midnight: 22:00–02:00. Start and end must differ.
+- **One-shot** schedules run once, on a date; they are deleted automatically when their window is over. A one-shot schedule whose window is already over is rejected. **Recurring** schedules run on selected weekdays (every day = all seven); a window belongs to the day it starts on ("Sunday 22:00–02:00" runs Sunday night into Monday).
+- Daylight saving time: a time in the repeated autumn hour means its first occurrence; a time in the skipped spring hour moves by an hour (02:30 → 03:30), so the window keeps its length.
+- A schedule covers a list of zones or **all zones**. "All zones" also covers zones you add to the YAML later. A zone removed from the YAML is removed from every schedule at the next start, and a schedule left without zones is deleted (both logged as warnings).
+- Every schedule gets a number (`#1`, `#2`, …), which is never reused. Its label is built from its content, e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`.
+
+### Holiday
+While holiday is on, every zone's target is its own **holiday temperature** (a number per zone, default 18 °C, 10–25 °C; it may be above or below the base set point), and schedules are suspended. The base set points are not changed, so everything returns to normal when holiday ends. The mode sensor shows `holiday`.
+- Holiday starts when you switch it on. Set its **end** (date and time) before or while it runs, so it can last any number of days. Without an end it runs until you switch it off.
+- Switching it on with an end in the past is refused with an error.
+- Changing the end while holiday runs moves it: a later time extends it, a time in the past ends it at once.
+- Holiday ends at its end time or when you switch it off; either way the end is cleared for the next holiday.
+- There is no automatic preheat: set the end early enough for the house to warm up. At the end, zones below their start temperature begin heating at once.
+
 ## Notifications
 
 Every notification goes to every `notify` target, with a title and a message:
@@ -168,7 +202,7 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `climate.<zone>_floor_heating` (named like the device) | Current temperature = the zone temperature (reading + offset); target = the zone's base set point (10–30 °C, step 0.1). Mode `heat` only. `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*. Attributes: `zone_state`, `reason` (the keys below), `valve` (desired state; none without a valve), `calling_zone`. |
 | `sensor.<zone>_floor_heating_state` (State) | `idle` (Idle), `waiting` (Waiting), `heating` (Heating), `forced` (Forced, v1.1), `sensor_fault` (Sensor fault). |
 | `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`, and `forced` from v1.1), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
-| `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force (the base set point until schedules and holiday arrive in v1.1). |
+| `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force: the zone's holiday temperature while holiday is on, otherwise the running auto schedule's temperature, otherwise the base set point. A manual schedule keeps the set point below it. |
 | `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
 | `number.<zone>_floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (default 18). The zone's target while holiday is on; it may be above or below the base set point. |
@@ -197,7 +231,8 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | Entity (name) | Shows / changes |
 |---|---|
 | `binary_sensor.floor_heating_heat_request` (Heat request) | The heat source request the integration wants (in shadow mode: the simulated one). While the heat source runs: attributes `on_since` and `on_duration` (minutes; not kept in the history). Both are left out while it is not running. |
-| `sensor.floor_heating_mode` (Mode) | `normal` (`holiday` from v1.1, `failsafe` from v1.2). Attribute `shadow`: true while Control active is OFF. |
+| `sensor.floor_heating_mode` (Mode) | `normal`, `holiday` while holiday is on (`failsafe` from v1.2). Attribute `shadow`: true while Control active is OFF. |
+| `sensor.floor_heating_schedules` (Schedules) | Number of schedules; attribute `schedules` lists them, each with `id`, `label` (e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`), `kind`, `zones` (zone ids or `all`), `date` (one-shot) or `weekdays` (`mon` … `sun`), `start`, `end`, `temperature` (auto, in your unit system). See [Schedules and holiday](#schedules-and-holiday). |
 | `sensor.floor_heating_alerts` (Alerts) | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults, switches not following, Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`). |
 | `switch.floor_heating_heating_season` (Heating season) | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
 | `switch.floor_heating_control_active` (Control active) | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |

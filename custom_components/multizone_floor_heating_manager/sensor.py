@@ -1,5 +1,6 @@
 """Sensors (docs/design.md §5.3): per zone state, reason and effective SetPoint; the
-mode sensor with the shadow attribute (D-79); the alerts sensor (count + list).
+mode sensor with the shadow attribute (D-79); the alerts sensor (count + list); the
+schedules sensor (count + list, D-139).
 
 State and reason are enums of fixed keys; their texts are translations (D-126)."""
 
@@ -16,10 +17,12 @@ from .controller import FloorheatController
 from .core.config import ZoneConfig
 from .core.io import Reason
 from .core.state import ZoneMode
+from .core.units import TemperatureUnit
 from .entity import FloorheatEntity
 from .runtime import FloorheatConfigEntry
+from .schedules import schedule_view
 
-MODES = ["normal", "holiday", "failsafe"]  # holiday from v1.1, failsafe from v1.2
+MODES = ["normal", "holiday", "failsafe"]  # failsafe from v1.2
 
 
 async def async_setup_entry(
@@ -35,7 +38,12 @@ async def async_setup_entry(
             ZoneReasonSensor(controller, zone),
             ZoneSetpointSensor(controller, zone),
         ]
-    entities += [ModeSensor(controller), AlertsSensor(controller)]
+    unit = TemperatureUnit(hass.config.units.temperature_unit)
+    entities += [
+        ModeSensor(controller),
+        AlertsSensor(controller),
+        SchedulesSensor(controller, unit),
+    ]
     async_add_entities(entities)
 
 
@@ -111,7 +119,8 @@ class ModeSensor(FloorheatEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        return "normal"  # holiday: v1.1 (P10), failsafe: v1.2 (P11)
+        outputs = self.controller.outputs  # failsafe: v1.2 (P11)
+        return "holiday" if outputs is not None and outputs.holiday_active else "normal"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -134,5 +143,27 @@ class AlertsSensor(FloorheatEntity, SensorEntity):
             "alerts": [
                 {"kind": alert.kind.value, "zone_id": alert.zone_id, "message": alert.message}
                 for alert in self.controller.alerts
+            ]
+        }
+
+
+class SchedulesSensor(FloorheatEntity, SensorEntity):
+    """Number of schedules; the list is the `schedules` attribute (D-139)."""
+
+    def __init__(self, controller: FloorheatController, unit: TemperatureUnit) -> None:
+        super().__init__(controller, "schedules")
+        self._unit = unit
+
+    @property
+    def native_value(self) -> int:
+        return len(self.controller.settings.schedules)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        config = self.controller.config.core
+        return {
+            "schedules": [
+                schedule_view(schedule, config, self._unit)
+                for schedule in self.controller.settings.schedules
             ]
         }

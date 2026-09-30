@@ -16,6 +16,10 @@ Shadow mode (Control active OFF, §5.5):
 The loop starts once HA has started, so entities that are still loading neither get
 commands nor count as mismatches (D-109).
 
+Schedules and holiday are settings too (D-136): the controller validates new schedules,
+passes them to `step`, deletes the one-shot schedules that are over and ends a holiday
+whose end has passed (D-137).
+
 The controller also keeps the heartbeat alert state of every Shelly (D-121; the calls
 are made by `heartbeat.HeartbeatClient`) and the time of the last completed run, which
 the heartbeat client checks before it sends (D-122).
@@ -27,7 +31,7 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 from homeassistant.components import persistent_notification
@@ -38,11 +42,12 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .core.alerts import active_alerts
-from .core.config import GlobalParams
+from .core.config import ConfigError, GlobalParams
 from .core.engine import step
 from .core.heartbeat import HeartbeatTracking, heartbeat_alerts
 from .core.io import Event as CoreEvent
 from .core.io import EventKind, Inputs, Outputs, OutputState, ZoneInput
+from .core.schedule import Schedule, ScheduleKind, check_new_schedule
 from .core.state import CoreState
 from .inputs import SensorReader, read_switch
 from .outputs import OutputCommander
@@ -193,6 +198,72 @@ class FloorheatController:
         params: GlobalParams = dataclasses.replace(self._settings.global_params, **changes)
         await self._async_update_settings(global_params=params)
 
+    # ------------------------------------------------------------ schedules and holiday
+
+    async def async_add_schedule(
+        self,
+        *,
+        kind: ScheduleKind,
+        zone_ids: tuple[str, ...] | None,
+        start: time,
+        end: time,
+        on_date: date | None = None,
+        weekdays: frozenset[int] = frozenset(),
+        temperature: float | None = None,
+    ) -> Schedule:
+        """Store a new schedule (§3.4); raises `ConfigError` if it is rejected, and then
+        nothing is stored (D-19, D-132)."""
+        number = self._settings.schedule_counter + 1
+        schedule_id = str(number)
+        try:
+            schedule = Schedule(
+                schedule_id, kind, start, end, zone_ids, on_date, weekdays, temperature
+            )
+        except ConfigError as err:
+            prefix = f"schedule {schedule_id!r}: "
+            raise ConfigError([e.removeprefix(prefix) for e in err.errors]) from None
+        errors = check_new_schedule(
+            schedule,
+            self._settings.schedules,
+            self.config.core,
+            dt_util.utcnow(),
+            dt_util.get_default_time_zone(),
+        )
+        if errors:
+            raise ConfigError(errors)
+        _LOGGER.info("Schedule #%s added", schedule_id)
+        await self._async_update_settings(
+            schedules=(*self._settings.schedules, schedule), schedule_counter=number
+        )
+        return schedule
+
+    async def async_delete_schedule(self, schedule_id: str) -> None:
+        """Delete a schedule; raises `ConfigError` if there is none with this id."""
+        kept = tuple(s for s in self._settings.schedules if s.id != schedule_id)
+        if len(kept) == len(self._settings.schedules):
+            raise ConfigError([f"there is no schedule #{schedule_id}"])
+        _LOGGER.info("Schedule #%s deleted", schedule_id)
+        await self._async_update_settings(schedules=kept)
+
+    async def async_set_holiday(self, on: bool) -> None:
+        """Switch holiday on or off (D-137): on is refused with an end in the past; off
+        clears the end."""
+        if on == self._settings.holiday_on:
+            return
+        if not on:
+            await self._async_update_settings(holiday_on=False, holiday_end=None)
+            return
+        end = self._settings.holiday_end
+        if end is not None and end <= dt_util.utcnow():
+            raise ConfigError(["the holiday end is in the past; set a later end first"])
+        await self._async_update_settings(holiday_on=True)
+
+    async def async_set_holiday_end(self, end: datetime) -> None:
+        """Set the holiday end; while holiday runs this moves its end (D-137)."""
+        if end.tzinfo is None:
+            raise ConfigError(["the holiday end must carry a time zone"])
+        await self._async_update_settings(holiday_end=end.astimezone(UTC))
+
     async def _async_update_settings(self, **changes: Any) -> None:
         self._settings = dataclasses.replace(self._settings, **changes)
         self._schedule_save()
@@ -303,6 +374,7 @@ class FloorheatController:
             self._commander.apply(desired, actual, now)
         else:
             self._final_off(actual, now)
+        self._settle(outputs)
         self._last_run_ok_at = now
         for listener in list(self._listeners):
             listener()
@@ -314,6 +386,24 @@ class FloorheatController:
         self._publish(events)
         self._schedule_save()
         return outputs
+
+    def _settle(self, outputs: Outputs) -> None:
+        """Delete the one-shot schedules that are over and end a holiday whose end has
+        passed (D-136); an ended holiday clears its end (D-137)."""
+        settings = self._settings
+        changes: dict[str, Any] = {}
+        if outputs.ended_schedules:
+            for schedule_id in outputs.ended_schedules:
+                _LOGGER.info("One-shot schedule #%s is over and was deleted", schedule_id)
+            changes["schedules"] = tuple(
+                s for s in settings.schedules if s.id not in outputs.ended_schedules
+            )
+        if settings.holiday_on and not outputs.holiday_active:
+            _LOGGER.info("Holiday ended")
+            changes |= {"holiday_on": False, "holiday_end": None}
+        if changes:
+            self._settings = dataclasses.replace(settings, **changes)
+            self._schedule_save()
 
     def _publish(self, events: list[CoreEvent]) -> None:
         for event in events:
@@ -340,6 +430,9 @@ class FloorheatController:
             control_active=settings.control_active,
             time_zone=dt_util.get_default_time_zone(),  # follows HA's setting (D-96)
             reconcile_tick=tick,
+            schedules=settings.schedules,
+            holiday_on=settings.holiday_on,
+            holiday_until=settings.holiday_end,
         )
 
     def _commanded_states(self) -> dict[str, OutputState]:

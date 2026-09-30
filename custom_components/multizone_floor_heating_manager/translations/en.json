@@ -151,6 +151,14 @@
             "name": "Alerts"
           }
         }
+      },
+      "schedules": {
+        "name": "Schedules",
+        "state_attributes": {
+          "schedules": {
+            "name": "Schedules"
+          }
+        }
       }
     },
     "switch": {

@@ -43,6 +43,7 @@ GLOBAL_ENTITIES = {
     "binary_sensor.floor_heating_heat_request": ("heat_request", None),
     "sensor.floor_heating_mode": ("mode", None),
     "sensor.floor_heating_alerts": ("alerts", None),
+    "sensor.floor_heating_schedules": ("schedules", None),
     "switch.floor_heating_heating_season": ("heating_season", None),
     "switch.floor_heating_control_active": ("control_active", None),
     "time.floor_heating_sensor_fault_reminder_time": (

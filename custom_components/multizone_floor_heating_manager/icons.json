@@ -12,6 +12,9 @@
       },
       "mode": {
         "default": "mdi:home-thermometer"
+      },
+      "schedules": {
+        "default": "mdi:calendar-clock"
       }
     },
     "switch": {
