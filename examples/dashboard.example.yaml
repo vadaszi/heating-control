@@ -16,6 +16,69 @@ views:
   - title: Floor heating
     path: floor-heating
     icon: mdi:heating-coil
+    # At a glance: badges at the top, always shown. The zone badges show the zone
+    # temperature, state and reason; "valve wanted" is what the integration wants for the
+    # valve, "valve relay" what the relay actually does.
+    badges:
+      - type: entity
+        entity: binary_sensor.floor_heating_heat_request
+        name: Heat request
+        show_name: true
+        state_content:
+          - state
+          - on_duration
+      - type: entity
+        entity: sensor.floor_heating_heat_source
+        name: Heat source
+        show_name: true
+      - type: entity
+        entity: switch.heat_pump_request
+        name: Heat pump relay
+        show_name: true
+      - type: entity
+        entity: sensor.floor_heating_alerts
+        name: Alerts
+        show_name: true
+      - type: entity
+        entity: sensor.floor_heating_mode
+        name: Mode
+        show_name: true
+      - type: entity
+        entity: switch.floor_heating_heating_season
+        name: Heating season
+        show_name: true
+      - type: entity
+        entity: switch.floor_heating_control_active
+        name: Control active
+        show_name: true
+      # zone: Living room
+      - type: entity
+        entity: climate.living_room_floor_heating
+        name: Living room
+        show_name: true
+        state_content:
+          - current_temperature
+          - zone_state
+          - reason
+      - type: entity
+        entity: climate.living_room_floor_heating
+        name: Living room valve wanted
+        show_name: true
+        state_content:
+          - valve
+      - type: entity
+        entity: switch.valve_living_room
+        name: Living room valve relay
+        show_name: true
+      # zone: Bathroom (no valve)
+      - type: entity
+        entity: climate.bathroom_floor_heating
+        name: Bathroom
+        show_name: true
+        state_content:
+          - current_temperature
+          - zone_state
+          - reason
     cards:
       # Alerts: shown only while there is at least one.
       - type: conditional
@@ -26,7 +89,7 @@ views:
         card:
           type: markdown
           title: Alerts
-          content: >-
+          content: |
             {% for alert in state_attr('sensor.floor_heating_alerts', 'alerts') or [] %}
             - {{ alert.message }}
             {% endfor %}
@@ -34,6 +97,7 @@ views:
       # The house: heat source request with its running time, mode, main switches.
       - type: entities
         title: House
+        show_header_toggle: false
         entities:
           - entity: binary_sensor.floor_heating_heat_request
           - type: attribute
@@ -57,6 +121,7 @@ views:
           - type: thermostat
             entity: climate.living_room_floor_heating
           - type: entities
+            show_header_toggle: false
             entities:
               - entity: sensor.living_room_floor_heating_state
               - entity: sensor.living_room_floor_heating_reason
@@ -91,6 +156,7 @@ views:
           - type: thermostat
             entity: climate.bathroom_floor_heating
           - type: entities
+            show_header_toggle: false
             entities:
               - entity: sensor.bathroom_floor_heating_state
               - entity: sensor.bathroom_floor_heating_reason
@@ -113,24 +179,37 @@ views:
               - entity: sensor.bathroom_floor_heating_reason
                 name: Reason
 
-      # Holiday: start/stop, end, each zone's holiday temperature.
-      - type: entities
-        title: Holiday
-        entities:
-          - entity: switch.floor_heating_holiday
-          - entity: date.floor_heating_holiday_end_date
-            name: End date (empty = no end)
-          - entity: time.floor_heating_holiday_end_time
-            name: End time
-          - entity: number.living_room_floor_heating_holiday_temperature
-            name: Living room
-          - entity: number.bathroom_floor_heating_holiday_temperature
-            name: Bathroom
+      # Holiday: start/stop, end, each zone's holiday temperature, and the stored end
+      # as text.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Holiday
+            show_header_toggle: false
+            entities:
+              - entity: switch.floor_heating_holiday
+              - entity: date.floor_heating_holiday_end_date
+                name: End date (empty = no end)
+              - entity: time.floor_heating_holiday_end_time
+                name: End time
+              - entity: number.living_room_floor_heating_holiday_temperature
+                name: Living room
+              - entity: number.bathroom_floor_heating_holiday_temperature
+                name: Bathroom
+          - type: markdown
+            content: |
+              {% set day = states('date.floor_heating_holiday_end_date') %}
+              {% set at = states('time.floor_heating_holiday_end_time') %}
+              {% if day in ['unknown', 'unavailable'] %}
+              **No end date:** holiday runs until you switch it off.
+              {% else %}
+              **Ends:** {{ as_datetime(day ~ 'T' ~ at).strftime('%a %Y-%m-%d %H:%M') }}
+              {% endif %}
 
       # Schedules: the list, then the form to add and delete.
       - type: markdown
         title: Schedules
-        content: >-
+        content: |
           {% set schedules = state_attr('sensor.floor_heating_schedules', 'schedules') or [] %}
           {% for schedule in schedules %}
           - {{ schedule.label }}
@@ -139,6 +218,7 @@ views:
           {% endfor %}
       - type: entities
         title: New schedule
+        show_header_toggle: false
         entities:
           - entity: select.floor_heating_schedule_type
             name: Type
@@ -173,6 +253,14 @@ views:
           - **Forced**: a manual schedule runs. The valve is open and the zone asks for heat, whatever its temperature.
           - **Sensor fault**: no valid reading for longer than the sensor fault timeout. The zone asks for no heat; its valve opens whenever the heat source runs for another zone.
 
+          **Heat source** (what the heat source does, and why):
+          - **Heating**: at least one zone wants heat, and the heat source is requested.
+          - **Off, no heat demand**: no zone needs heat.
+          - **Waiting for minimum off time**: a zone wants heat, but the heat source stopped less than its minimum off time ago. It starts at the "Until" time. This protects the heat pump from starting too often.
+          - **Running for minimum on time (spreading heat)**: no zone needs heat any more, but the heat source must run until its minimum on time (the "Until" time); the valves open to spread the heat.
+          - **Heating season off**: the heating season switch is off.
+          - **Switch unavailable**: the heat source switch does not report (e.g. a Wi-Fi problem). It counts as off, but it is not switched off because of that.
+
           **Reason** of a zone (the "Until" row shows when a running timer ends):
           - **Idle**: warm enough; nothing to do.
           - **Waiting period**: too cold while the heat source is off; the wait time runs. If it is still too cold at the end, the zone starts heating.
@@ -195,18 +283,21 @@ views:
     cards:
       - type: entities
         title: Heat source
+        show_header_toggle: false
         entities:
           - entity: number.floor_heating_heat_source_minimum_on_time
           - entity: number.floor_heating_heat_source_minimum_off_time
           - entity: number.floor_heating_long_run_alarm
       - type: entities
         title: Sensors
+        show_header_toggle: false
         entities:
           - entity: number.floor_heating_sensor_fault_timeout
           - entity: time.floor_heating_sensor_fault_reminder_time
           - entity: number.floor_heating_failsafe_delay
       - type: entities
         title: Manual schedules and maintenance
+        show_header_toggle: false
         entities:
           - entity: number.floor_heating_manual_max_temperature
           - entity: number.floor_heating_manual_resume_difference
@@ -214,12 +305,14 @@ views:
       # zone: Living room
       - type: entities
         title: Living room
+        show_header_toggle: false
         entities:
           - entity: number.living_room_floor_heating_hysteresis
           - entity: number.living_room_floor_heating_wait_time
       # zone: Bathroom
       - type: entities
         title: Bathroom
+        show_header_toggle: false
         entities:
           - entity: number.bathroom_floor_heating_hysteresis
           - entity: number.bathroom_floor_heating_wait_time
