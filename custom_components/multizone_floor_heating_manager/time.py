@@ -1,5 +1,6 @@
 """Time entities: SensorFaultReminder, the local time of the daily sensor fault reminder
-(§3.6, §4); the schedule form's start and end (§5.3, D-74)."""
+(§3.6, §4); the schedule form's start and end (§5.3, D-74); the holiday end time (§3.4,
+D-142)."""
 
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ async def async_setup_entry(
             ReminderTime(controller),
             ScheduleTime(controller, "schedule_start"),
             ScheduleTime(controller, "schedule_end"),
+            HolidayEndTime(controller),
         ]
     )
 
@@ -64,4 +66,20 @@ class ScheduleTime(FormEntity, TimeEntity):
 
     async def async_set_value(self, value: time) -> None:
         setattr(self.controller.form, self._field, value.replace(second=0, microsecond=0))
+        self.async_write_ha_state()
+
+
+class HolidayEndTime(FormEntity, TimeEntity):
+    """With the holiday end date, the end of holiday (local time, D-142). Never empty; it
+    keeps its value when holiday ends."""
+
+    def __init__(self, controller: FloorheatController) -> None:
+        super().__init__(controller, "holiday_end_time")
+
+    @property
+    def native_value(self) -> time:
+        return self.controller.settings.holiday_end_time
+
+    async def async_set_value(self, value: time) -> None:
+        await async_apply(self.controller.async_set_holiday_end_time(value))
         self.async_write_ha_state()

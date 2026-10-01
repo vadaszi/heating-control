@@ -118,7 +118,10 @@ views:
         title: Holiday
         entities:
           - entity: switch.floor_heating_holiday
-          - entity: datetime.floor_heating_holiday_end
+          - entity: date.floor_heating_holiday_end_date
+            name: End date (empty = no end)
+          - entity: time.floor_heating_holiday_end_time
+            name: End time
           - entity: number.living_room_floor_heating_holiday_temperature
             name: Living room
           - entity: number.bathroom_floor_heating_holiday_temperature

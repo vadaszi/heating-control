@@ -115,8 +115,8 @@ class Schedule:
     def window_on(self, day: date, time_zone: tzinfo) -> tuple[datetime, datetime]:
         """The window starting on `day` as UTC instants; empty (start == end) if DST
         leaves nothing of it. The caller checks `applies_on`."""
-        start = _instant(day, self.start, time_zone)
-        end = _instant(day + _DAY if self.end < self.start else day, self.end, time_zone)
+        start = local_instant(day, self.start, time_zone)
+        end = local_instant(day + _DAY if self.end < self.start else day, self.end, time_zone)
         return start, max(start, end)
 
     def active_window(self, now: datetime, time_zone: tzinfo) -> tuple[datetime, datetime] | None:
@@ -176,8 +176,10 @@ class Schedule:
             raise ConfigError([f"schedule {data.get('id')!r}: unusable ({err})"]) from None
 
 
-def _instant(day: date, at: time, time_zone: tzinfo) -> datetime:
-    """A local wall-clock time as a UTC instant (fold=0, D-134)."""
+def local_instant(day: date, at: time, time_zone: tzinfo) -> datetime:
+    """A local wall-clock time as a UTC instant (fold=0, D-134): a time in the repeated
+    autumn hour is its first occurrence, one in the spring gap is shifted by the gap.
+    Also used by the adapter for the holiday end (D-142)."""
     return datetime.combine(day, at.replace(fold=0), tzinfo=time_zone).astimezone(UTC)
 
 

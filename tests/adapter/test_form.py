@@ -19,7 +19,8 @@ from .conftest import PKG, START, World
 from .test_restart import restarted
 
 HOLIDAY = "switch.floor_heating_holiday"
-HOLIDAY_END = "datetime.floor_heating_holiday_end"
+HOLIDAY_DATE = "date.floor_heating_holiday_end_date"
+HOLIDAY_TIME = "time.floor_heating_holiday_end_time"
 KIND = "select.floor_heating_schedule_type"
 ZONE = "select.floor_heating_schedule_zone"
 DAYS = "select.floor_heating_schedule_days"
@@ -35,7 +36,8 @@ DASH = "\u2013"  # en dash in the labels
 
 FORM_ENTITIES = {
     HOLIDAY: "holiday",
-    HOLIDAY_END: "holiday_end",
+    HOLIDAY_DATE: "holiday_end_date",
+    HOLIDAY_TIME: "holiday_end_time",
     KIND: "schedule_kind",
     ZONE: "schedule_zone",
     DAYS: "schedule_days",
@@ -106,7 +108,8 @@ async def test_form_entities_exist_on_the_global_device(world: World) -> None:
     )
     assert world.state(DATE) == START.date().isoformat()
     assert world.state(EXISTING) == "unknown"  # no schedules yet
-    assert world.state(HOLIDAY_END) == "unknown"  # empty until set
+    assert world.state(HOLIDAY_DATE) == "unknown"  # empty until set: no end (D-142)
+    assert world.state(HOLIDAY_TIME) == "12:00:00"  # never empty
 
 
 async def test_add_and_delete_through_the_form(world: World) -> None:
@@ -200,25 +203,31 @@ async def test_drafts_reset_after_a_restart(world: World) -> None:
         assert (new.state(KIND), new.state(START_TIME)) == ("auto", "06:00:00")
 
 
+async def _set_end(hass: HomeAssistant, day: str, at: str) -> None:
+    await _call(hass, "date", "set_value", HOLIDAY_DATE, date=day)
+    await _call(hass, "time", "set_value", HOLIDAY_TIME, time=at)
+
+
 async def test_holiday_through_the_entities(world: World) -> None:
-    """D-137: on without an end; the end moves it; off clears the end."""
+    """D-137, D-142: on without an end date; the end moves it; off clears the date."""
     world.setup_entities()
     assert await world.setup()
     hass = world.hass
     await _call(hass, "switch", "turn_on", HOLIDAY)
     assert (world.state(HOLIDAY), world.state(MODE)) == ("on", "holiday")
-    await _call(hass, "datetime", "set_value", HOLIDAY_END, datetime="2026-01-14 12:00:00")
-    assert world.state(HOLIDAY_END) == "2026-01-14T12:00:00+00:00"
+    await _set_end(hass, "2026-01-14", "15:30")
+    assert (world.state(HOLIDAY_DATE), world.state(HOLIDAY_TIME)) == ("2026-01-14", "15:30:00")
     await _call(hass, "switch", "turn_off", HOLIDAY)
     assert (world.state(HOLIDAY), world.state(MODE)) == ("off", "normal")
-    assert world.state(HOLIDAY_END) == "unknown"
+    assert (world.state(HOLIDAY_DATE), world.state(HOLIDAY_TIME)) == ("unknown", "15:30:00")
 
 
 async def test_holiday_with_a_past_end_is_refused(world: World) -> None:
     world.setup_entities()
     assert await world.setup()
     hass = world.hass
-    await _call(hass, "datetime", "set_value", HOLIDAY_END, datetime="2026-01-12 05:00:00")
+    await _set_end(hass, "2026-01-12", "05:00")  # entering it is not checked
+    assert world.state(HOLIDAY_DATE) == "2026-01-12"
     with pytest.raises(ServiceValidationError, match="the holiday end is in the past"):
         await _call(hass, "switch", "turn_on", HOLIDAY)
     assert world.state(HOLIDAY) == "off"
@@ -228,10 +237,10 @@ async def test_holiday_switch_turns_off_at_the_end(world: World) -> None:
     world.setup_entities()
     assert await world.setup()
     hass = world.hass
-    await _call(hass, "datetime", "set_value", HOLIDAY_END, datetime="2026-01-12 07:00:00")
+    await _set_end(hass, "2026-01-12", "07:00")
     await _call(hass, "switch", "turn_on", HOLIDAY)
     await world.advance(60)
-    assert (world.state(HOLIDAY), world.state(HOLIDAY_END), world.state(MODE)) == (
+    assert (world.state(HOLIDAY), world.state(HOLIDAY_DATE), world.state(MODE)) == (
         "off",
         "unknown",
         "normal",

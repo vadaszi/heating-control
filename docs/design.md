@@ -196,12 +196,12 @@ Unvalved zones compute state normally; only their output is a no-op.
 
 **Holiday mode (D-09, D-17, D-59, D-133, D-137)**
 - The user activates it, normally with an end date and time. It starts immediately on activation and can be stopped manually at any time. It is active while it is switched on and the current time is before the end (D-136).
-- **Details (D-137):**
-  - the end is a full date and time, so a holiday can last any number of days;
-  - switched on without an end, holiday runs until it is switched off by hand;
-  - switching it on with an end already in the past is refused with an error;
-  - changing the end while holiday runs moves it: a later time extends it, a time in the past ends it at once;
-  - every end, reached or switched off by hand, clears the end, so the next holiday starts from an empty end.
+- **Details (D-137, D-142):**
+  - the end is a date and a time of day, so a holiday can last any number of days; they are two entities (D-142), because a combined date-time row in HA's frontend saves the date and the time separately;
+  - switched on without an end date, holiday runs until it is switched off by hand; a date alone ends at the stored end time (default 12:00);
+  - entered values are not checked when entered (e.g. an end set on 1 October for 5 October); the end is checked when holiday is switched on: an end already in the past is refused with an error;
+  - changing the end while holiday runs moves it: a later end extends it, an end in the past ends it at once (the user's responsibility, owner 2026-10-01);
+  - every end, reached or switched off by hand, clears the end date, so the next holiday starts without an end; the end time is kept.
 - While active, the effective SetPoint of **every** zone is **its own** `HolidayTemp` (per zone since D-133; each zone's value may be above or below its BaseSetPoint). BaseSetPoints are not modified, so "restore the previous setup" is automatic when holiday ends.
 - Manual and auto schedules are suspended during holiday.
 - No automatic preheat: the user sets the end time early enough.
@@ -499,7 +499,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - **no per-minute countdowns (D-123):** no entity state changes every minute only because time passes. Reasons are fixed keys (D-126; e.g. `waiting` shown as "Waiting period", `held_by_minimum_off_time`, `spreading_heat`); the reason sensor has an `until` attribute (aware ISO timestamp, the end of the running wait, min OFF or min ON timer) only while such a timer runs. The climate entity's `reason` attribute holds the same key;
   - temperatures: climate, effective SetPoint and absolute temperature numbers are in °C and converted by HA; temperature differences (Hysteresis, ManualResumeDelta) are converted by the adapter to HA's unit system, because HA converts only absolute temperatures (D-77);
   - the alerts sensor derives its list from the core state (`active_alerts`): faulty zones and outputs whose mismatch alert was sent.
-- **Holiday (D-79, D-137):** HolidayTemp number per zone (D-133), "Holiday end" date/time entity (empty until set, cleared when holiday ends), "Holiday" switch.
+- **Holiday (D-79, D-137, D-142):** HolidayTemp number per zone (D-133), "Holiday end date" (date entity; empty = no end, cleared when holiday ends) and "Holiday end time" (time entity, default 12:00, kept), "Holiday" switch.
 - **Schedules:** managed through integration services (add / delete / list) with validation. The list is exposed as a sensor attribute for the dashboard.
   - **Services (D-139):** `add_schedule` (type, zones as YAML zone ids or `all`, a date or weekdays `mon`…`sun`, start, end, temperature for auto schedules in HA's unit system; returns the new schedule), `delete_schedule` (the schedule number), `list_schedules` (response only). A rejected schedule raises a validation error naming the problem, and nothing is stored;
   - the "Schedules" sensor: state = number of schedules, attribute `schedules` with id, label, type, zones, date or weekdays, start, end and temperature (D-139);
@@ -871,6 +871,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-139 | Schedule services `add_schedule` / `delete_schedule` / `list_schedules`; zones as YAML zone ids or `all`; temperatures in HA's unit system; rejected schedules raise a validation error and store nothing; a "Schedules" sensor lists them (owner, 2026-09-30) |
 | D-140 | Example dashboard: one history graph per zone and the state/reason explanation card; screenshots in P8. Versions stay 0.x.x until the first real release (P10: 0.8.0). The integration does not clean up entities left over from earlier versions; the user deletes them, and P8 checks this for upgrading users before the release (owner, 2026-09-30) |
 | D-141 | Heat source sensor: a global enum sensor that says what the heat source does and why — switch unavailable, heating season off, waiting for minimum off time, running for minimum on time (spreading heat), heating, off (no demand); the first that applies wins, in this order; `until` = end of the running min OFF/ON timer; computed by the core (`Outputs.heat_source_status` / `heat_source_until`) (owner, 2026-10-01) |
+| D-142 | The holiday end is a "Holiday end date" (date entity) plus a "Holiday end time" (time entity, default 12:00): HA's date-time row saves date and time separately (a date alone with 00:00; a time while empty not at all), which ended holidays at once or left them without an end. Empty date = no end; when holiday ends only the date is cleared, the time is kept. Entered values are checked only when holiday is switched on; while it runs, an end in the past ends it. A 0.8.0 end is migrated to local date and time. Amends D-137 (owner, 2026-10-01) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
 D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 and up on 2026-09-30 during P10 (owner answers on the P10 plan).

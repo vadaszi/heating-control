@@ -69,11 +69,9 @@
     "date": {
       "schedule_date": {
         "name": "Schedule date"
-      }
-    },
-    "datetime": {
-      "holiday_end": {
-        "name": "Holiday end"
+      },
+      "holiday_end_date": {
+        "name": "Holiday end date"
       }
     },
     "number": {
@@ -249,6 +247,9 @@
       },
       "schedule_end": {
         "name": "Schedule end"
+      },
+      "holiday_end_time": {
+        "name": "Holiday end time"
       }
     }
   },

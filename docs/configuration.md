@@ -166,10 +166,10 @@ A manual schedule forces one or more zones to heat during a window: valve open a
 
 ### Holiday
 While holiday is on, every zone's target is its own **holiday temperature** (a number per zone, default 18 °C, 10–25 °C; it may be above or below the base set point), and schedules are suspended. The base set points are not changed, so everything returns to normal when holiday ends. The mode sensor shows `holiday`.
-- Holiday starts when you switch it on. Set its **end** (date and time) before or while it runs, so it can last any number of days. Without an end it runs until you switch it off.
-- Switching it on with an end in the past is refused with an error.
-- Changing the end while holiday runs moves it: a later time extends it, a time in the past ends it at once.
-- Holiday ends at its end time or when you switch it off; either way the end is cleared for the next holiday.
+- Holiday starts when you switch it on. Its end is an **end date** and an **end time** (two entities), set before or while it runs, so it can last any number of days. **Without an end date it runs until you switch it off.** A date alone ends at the end time shown (default 12:00).
+- What you enter is not checked when you enter it, e.g. you may set the end on 1 October for 5 October. It is checked when you switch holiday on: switching it on with an end in the past is refused with an error.
+- Changing the end while holiday runs moves it: a later end extends it; an end in the past ends holiday at once (within a minute). Make sure the end you enter is still ahead.
+- Holiday ends at its end or when you switch it off; either way the end date is cleared for the next holiday, and the end time is kept.
 - There is no automatic preheat: set the end early enough for the house to warm up. At the end, zones below their start temperature begin heating at once.
 
 ## Services
@@ -262,7 +262,8 @@ Settings (the parameter numbers and the reminder time) have the *configuration* 
 | `switch.floor_heating_control_active` (Control active) | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |
 | `time.floor_heating_sensor_fault_reminder_time` (Sensor fault reminder time) | Time of the daily sensor fault reminder (default 08:00). Configuration category. |
 | `switch.floor_heating_holiday` (Holiday) | Holiday on/off; see [Holiday](#holiday). Switching it on with an end in the past is refused; it turns off by itself at the end. |
-| `datetime.floor_heating_holiday_end` (Holiday end) | When holiday ends (date and time). Empty (unknown) until you set it; cleared when holiday ends. |
+| `date.floor_heating_holiday_end_date` (Holiday end date) | The day holiday ends. Empty (unknown) = no end. Cleared when holiday ends. |
+| `time.floor_heating_holiday_end_time` (Holiday end time) | The time of day holiday ends on the end date (default 12:00). Never empty; kept when holiday ends. |
 
 ### Schedule form (device "Floor heating")
 

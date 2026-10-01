@@ -17,6 +17,7 @@ from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 from .const import DATA_YAML, DOMAIN, GLOBAL_DEVICE
 from .controller import FloorheatController
@@ -38,7 +39,6 @@ PLATFORMS = (
     Platform.BUTTON,
     Platform.CLIMATE,
     Platform.DATE,
-    Platform.DATETIME,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -80,7 +80,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
         )
     store = FloorheatStore(hass)
     stored = await store.async_load(
-        config.core, config.switches, tuple(shelly.key for shelly in config.shellys)
+        config.core,
+        config.switches,
+        tuple(shelly.key for shelly in config.shellys),
+        dt_util.get_default_time_zone(),
     )
     for warning in stored.warnings:
         _LOGGER.warning("%s", warning)

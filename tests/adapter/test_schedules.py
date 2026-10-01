@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -111,12 +111,21 @@ async def test_delete_schedule(world: World) -> None:
     assert world.state(SCHEDULES) == "0"
 
 
+async def _end(world: World, when: datetime) -> None:
+    """Set the holiday end date and time (the tests run in UTC: local = UTC)."""
+    await world.controller.async_set_holiday_end_date(when.date())
+    await world.controller.async_set_holiday_end_time(when.time())
+    await world.hass.async_block_till_done()
+
+
 async def test_holiday_without_end_runs_until_switched_off(world: World) -> None:
-    """D-137: switched on without an end, holiday runs until switched off by hand."""
+    """D-137: switched on without an end date, holiday runs until switched off."""
     world.setup_entities()
     assert await world.setup()
+    await world.controller.async_set_holiday_end_time(time(15, 0))  # a time alone: no end
     await world.controller.async_set_holiday(True)
     await world.hass.async_block_till_done()
+    assert world.controller.holiday_end is None
     assert world.state(MODE) == "holiday"
     assert world.state(SETPOINT_1) == "18.0"
     await world.advance(24 * 60)
@@ -127,58 +136,78 @@ async def test_holiday_without_end_runs_until_switched_off(world: World) -> None
     assert world.state(SETPOINT_1) == "22.0"
 
 
-async def test_holiday_end_reached_switches_off_and_clears_the_end(world: World) -> None:
+async def test_holiday_end_reached_switches_off_and_clears_the_date(world: World) -> None:
     world.setup_entities()
     assert await world.setup()
-    await world.controller.async_set_holiday_end(START + timedelta(hours=2))
+    await _end(world, START + timedelta(hours=2))
     await world.controller.async_set_holiday(True)
     await world.advance(119)
     assert world.state(MODE) == "holiday"
     await world.advance()
     settings = world.controller.settings
-    assert (settings.holiday_on, settings.holiday_end) == (False, None)
+    assert (settings.holiday_on, settings.holiday_end_date) == (False, None)
+    assert settings.holiday_end_time == time(8, 0)  # the time stays (D-142)
     assert world.state(MODE) == "normal"
 
 
-async def test_holiday_with_an_end_in_the_past_is_refused(world: World) -> None:
+async def test_values_are_checked_only_when_switching_on(world: World) -> None:
+    """D-137: entering a past end is accepted; switching on with it is refused."""
     world.setup_entities()
     assert await world.setup()
-    await world.controller.async_set_holiday_end(START - timedelta(minutes=1))
+    await _end(world, START - timedelta(days=1))  # accepted while off
+    assert world.controller.settings.holiday_end_date == (START - timedelta(days=1)).date()
     with pytest.raises(ConfigError, match="the holiday end is in the past"):
         await world.controller.async_set_holiday(True)
     assert not world.controller.settings.holiday_on
 
 
-async def test_switching_holiday_off_clears_the_end(world: World) -> None:
+async def test_date_only_ends_at_the_stored_time(world: World) -> None:
+    """A date alone uses the stored end time (12:00 on a first install)."""
     world.setup_entities()
     assert await world.setup()
-    await world.controller.async_set_holiday_end(START + timedelta(days=3))
+    await world.controller.async_set_holiday_end_date(START.date())
+    assert world.controller.holiday_end == START.replace(hour=12)
+
+
+async def test_switching_holiday_off_clears_the_date(world: World) -> None:
+    world.setup_entities()
+    assert await world.setup()
+    await _end(world, START + timedelta(days=3))
     await world.controller.async_set_holiday(True)
     await world.controller.async_set_holiday(True)  # already on: nothing changes
-    assert world.controller.settings.holiday_end == START + timedelta(days=3)
+    assert world.controller.holiday_end == START + timedelta(days=3)
     await world.controller.async_set_holiday(False)
-    assert world.controller.settings.holiday_end is None
+    assert world.controller.settings.holiday_end_date is None
+    assert world.controller.settings.holiday_end_time == time(6, 0)
 
 
-async def test_changing_the_end_while_on_moves_it(world: World) -> None:
+async def test_changing_the_end_while_on_moves_it_or_ends_it(world: World) -> None:
+    """D-137: a later end extends the holiday; an end in the past ends it at once."""
     world.setup_entities()
     assert await world.setup()
-    await world.controller.async_set_holiday_end(START + timedelta(hours=1))
+    await _end(world, START + timedelta(hours=1))
     await world.controller.async_set_holiday(True)
-    await world.controller.async_set_holiday_end(START + timedelta(hours=3))
+    await world.controller.async_set_holiday_end_time(time(9, 0))
     await world.advance(90)
     assert world.state(MODE) == "holiday"
-    await world.controller.async_set_holiday_end(START)  # in the past: ends at once
+    await world.controller.async_set_holiday_end_time(time(7, 0))  # now in the past
     await world.hass.async_block_till_done()
     assert world.state(MODE) == "normal"
     assert not world.controller.settings.holiday_on
 
 
-async def test_naive_holiday_end_is_rejected(world: World) -> None:
+async def test_holiday_end_in_the_local_time_zone(world: World) -> None:
+    """The end is local wall-clock time (here Budapest, UTC+1 in January)."""
+    await world.hass.config.async_set_time_zone("Europe/Budapest")
     world.setup_entities()
     assert await world.setup()
-    with pytest.raises(ConfigError, match="time zone"):
-        await world.controller.async_set_holiday_end(START.replace(tzinfo=None))
+    await world.controller.async_set_holiday_end_date(START.date())
+    await world.controller.async_set_holiday_end_time(time(8, 0))  # 07:00 UTC
+    await world.controller.async_set_holiday(True)
+    await world.advance(59)
+    assert world.controller.settings.holiday_on
+    await world.advance()
+    assert not world.controller.settings.holiday_on
 
 
 async def test_schedules_and_holiday_survive_a_restart(world: World) -> None:
@@ -187,8 +216,8 @@ async def test_schedules_and_holiday_survive_a_restart(world: World) -> None:
     await _add(world)
     await world.controller.async_delete_schedule("1")
     await _add(world, zone_ids=None, temperature=21.0)
-    end = START + timedelta(days=2)
-    await world.controller.async_set_holiday_end(end)
+    end = START + timedelta(days=2, hours=9, minutes=30)
+    await _end(world, end)
     await world.controller.async_set_holiday(True)
 
     async with restarted(world, prepare=lambda new: new.setup_entities()) as new:
@@ -198,8 +227,23 @@ async def test_schedules_and_holiday_survive_a_restart(world: World) -> None:
             ("2", None, 21.0)
         ]
         assert settings.schedule_counter == 2
-        assert (settings.holiday_on, settings.holiday_end) == (True, end)
+        assert (settings.holiday_on, new.controller.holiday_end) == (True, end)
         assert new.state(MODE) == "holiday"
+
+
+async def test_holiday_end_of_0_8_0_is_migrated(world: World, hass_storage: dict[str, Any]) -> None:
+    """D-142: the 0.8.0 end (an aware datetime) becomes local date and time."""
+    await world.hass.config.async_set_time_zone("Europe/Budapest")
+    _preload(
+        hass_storage,
+        {"settings": {"holiday_on": True, "holiday_end": "2026-01-12T22:00:00+00:00"}},
+    )
+    world.setup_entities()
+    assert await world.setup(live=False)
+    settings = world.controller.settings
+    assert (settings.holiday_end_date, settings.holiday_end_time) == (date(2026, 1, 12), time(23))
+    assert settings.holiday_on
+    assert "holiday_end" not in settings.to_dict()
 
 
 async def test_stored_schedule_for_a_removed_zone_is_dropped(
@@ -225,6 +269,8 @@ async def test_stored_schedule_for_a_removed_zone_is_dropped(
         {"holiday_on": "yes"},
         {"holiday_on": True, "holiday_end": "tomorrow"},
         {"holiday_on": True, "holiday_end": "2026-01-13T12:00:00"},  # no time zone
+        {"holiday_on": True, "holiday_end_date": "13 January"},
+        {"holiday_on": True, "holiday_end_date": None, "holiday_end_time": "noon"},
     ],
 )
 async def test_unusable_stored_holiday_is_off(

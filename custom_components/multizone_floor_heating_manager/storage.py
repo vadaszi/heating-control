@@ -21,7 +21,7 @@ import dataclasses
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, tzinfo
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -43,6 +43,8 @@ from .core.state import CoreState, load_state
 
 _LOGGER = logging.getLogger(__name__)
 
+HOLIDAY_END_TIME = time(12, 0)  # the holiday end time on a first install (D-142)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -55,7 +57,8 @@ class Settings:
     schedules: tuple[Schedule, ...] = ()
     schedule_counter: int = 0  # the last schedule number handed out; never reused
     holiday_on: bool = False
-    holiday_end: datetime | None = None  # aware; None: no end (D-137)
+    holiday_end_date: date | None = None  # None: no end (D-137, D-142)
+    holiday_end_time: time = HOLIDAY_END_TIME  # local; never empty, kept when holiday ends
 
     @classmethod
     def defaults(cls, config: CoreConfig) -> Settings:
@@ -76,14 +79,20 @@ class Settings:
             "schedules": schedules_to_list(self.schedules),
             "schedule_counter": self.schedule_counter,
             "holiday_on": self.holiday_on,
-            "holiday_end": None
-            if self.holiday_end is None
-            else self.holiday_end.astimezone(UTC).isoformat(),
+            "holiday_end_date": None
+            if self.holiday_end_date is None
+            else self.holiday_end_date.isoformat(),
+            "holiday_end_time": self.holiday_end_time.isoformat(),
         }
 
     @classmethod
-    def from_dict(cls, data: object, config: CoreConfig) -> tuple[Settings, list[str]]:
-        """Parse `to_dict` output; unusable parts fall back to their defaults."""
+    def from_dict(
+        cls, data: object, config: CoreConfig, time_zone: tzinfo = UTC
+    ) -> tuple[Settings, list[str]]:
+        """Parse `to_dict` output; unusable parts fall back to their defaults.
+
+        `time_zone` (HA's) turns a 0.8.0 holiday end into a local date and time (D-142).
+        """
         defaults = cls.defaults(config)
         if data is None:
             return defaults, []
@@ -108,7 +117,7 @@ class Settings:
             season, control = defaults.heating_season, defaults.control_active
         schedules, schedule_warnings = load_schedules(data.get("schedules"), config)
         warnings += schedule_warnings
-        holiday_on, holiday_end = _holiday(data, warnings)
+        holiday_on, end_date, end_time = _holiday(data, warnings, time_zone)
         return cls(
             zone_params,
             global_params,
@@ -117,7 +126,8 @@ class Settings:
             schedules,
             _counter(data.get("schedule_counter"), schedules),
             holiday_on,
-            holiday_end,
+            end_date,
+            end_time,
         ), warnings
 
 
@@ -128,16 +138,38 @@ def _counter(value: object, schedules: tuple[Schedule, ...]) -> int:
     return max([counter, *used])
 
 
-def _holiday(data: Mapping[str, Any], warnings: list[str]) -> tuple[bool, datetime | None]:
-    on, end = data.get("holiday_on", False), data.get("holiday_end")
+def _holiday(
+    data: Mapping[str, Any], warnings: list[str], time_zone: tzinfo
+) -> tuple[bool, date | None, time]:
+    """Holiday on, its end date and its end time (D-142)."""
+    on = data.get("holiday_on", False)
     try:
-        parsed = None if end is None else datetime.fromisoformat(end)
+        end_date, end_time = _holiday_end(data, time_zone)
     except TypeError, ValueError:
-        parsed = None
-    if not isinstance(on, bool) or (end is not None and (parsed is None or parsed.tzinfo is None)):
         warnings.append("Stored holiday is unusable; holiday is off.")
-        return False, None
-    return on, parsed
+        return False, None, HOLIDAY_END_TIME
+    if not isinstance(on, bool):
+        warnings.append("Stored holiday is unusable; holiday is off.")
+        return False, None, end_time
+    return on, end_date, end_time
+
+
+def _holiday_end(data: Mapping[str, Any], time_zone: tzinfo) -> tuple[date | None, time]:
+    """The stored end; a 0.8.0 `holiday_end` (an aware datetime) becomes local date and
+    time. Raises `TypeError` / `ValueError` if it is unusable."""
+    if "holiday_end" in data and "holiday_end_date" not in data:
+        old = data["holiday_end"]
+        if old is None:
+            return None, HOLIDAY_END_TIME
+        end = datetime.fromisoformat(old)
+        if end.tzinfo is None:
+            raise ValueError("the stored holiday end has no time zone")
+        local = end.astimezone(time_zone)
+        return local.date(), local.time().replace(second=0, microsecond=0)
+    stored_date, stored_time = data.get("holiday_end_date"), data.get("holiday_end_time")
+    end_date = None if stored_date is None else date.fromisoformat(stored_date)
+    end_time = HOLIDAY_END_TIME if stored_time is None else time.fromisoformat(stored_time)
+    return end_date, end_time
 
 
 def _params_to_dict(params: object, specs: Mapping[str, ParamSpec]) -> dict[str, Any]:
@@ -211,7 +243,11 @@ class FloorheatStore:
         self._save_pending = False
 
     async def async_load(
-        self, config: CoreConfig, switches: tuple[str, ...], shellys: tuple[str, ...] = ()
+        self,
+        config: CoreConfig,
+        switches: tuple[str, ...],
+        shellys: tuple[str, ...] = (),
+        time_zone: tzinfo = UTC,
     ) -> StoredData:
         """Restore the stored data for `config`; unusable parts start as on a first start.
 
@@ -230,7 +266,7 @@ class FloorheatStore:
             warnings.append(f"Stored data is unusable ({data!r}); starting fresh.")
             data = {}
         core, core_warnings = load_state(data.get("core"), config)
-        settings, settings_warnings = Settings.from_dict(data.get("settings"), config)
+        settings, settings_warnings = Settings.from_dict(data.get("settings"), config, time_zone)
         pending = data.get("pending_off")
         pending_off = frozenset(
             entity_id

@@ -11,10 +11,8 @@
     "date": {
       "schedule_date": {
         "default": "mdi:calendar"
-      }
-    },
-    "datetime": {
-      "holiday_end": {
+      },
+      "holiday_end_date": {
         "default": "mdi:calendar-end"
       }
     },
@@ -79,6 +77,9 @@
         "default": "mdi:clock-start"
       },
       "schedule_end": {
+        "default": "mdi:clock-end"
+      },
+      "holiday_end_time": {
         "default": "mdi:clock-end"
       }
     }

@@ -18,7 +18,8 @@ commands nor count as mismatches (D-109).
 
 Schedules and holiday are settings too (D-136): the controller validates new schedules,
 passes them to `step`, deletes the one-shot schedules that are over and ends a holiday
-whose end has passed (D-137).
+whose end has passed (D-137). The holiday end is stored as a local date and time; an
+empty date means no end (D-142).
 
 The controller also keeps the heartbeat alert state of every Shelly (D-121; the calls
 are made by `heartbeat.HeartbeatClient`) and the time of the last completed run, which
@@ -31,7 +32,7 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Callable, Mapping
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time
 from typing import Any
 
 from homeassistant.components import persistent_notification
@@ -47,7 +48,7 @@ from .core.engine import step
 from .core.heartbeat import HeartbeatTracking, heartbeat_alerts
 from .core.io import Event as CoreEvent
 from .core.io import EventKind, Inputs, Outputs, OutputState, ZoneInput
-from .core.schedule import Schedule, ScheduleKind, check_new_schedule
+from .core.schedule import Schedule, ScheduleKind, check_new_schedule, local_instant
 from .core.state import CoreState
 from .form import ScheduleForm
 from .inputs import SensorReader, read_switch
@@ -252,24 +253,40 @@ class FloorheatController:
         _LOGGER.info("Schedule #%s deleted", schedule_id)
         await self._async_update_settings(schedules=kept)
 
+    @property
+    def holiday_end(self) -> datetime | None:
+        """The holiday end: its local date and time in HA's time zone (D-142); None
+        without a date (no end, D-137)."""
+        end_date = self._settings.holiday_end_date
+        if end_date is None:
+            return None
+        return local_instant(
+            end_date, self._settings.holiday_end_time, dt_util.get_default_time_zone()
+        )
+
     async def async_set_holiday(self, on: bool) -> None:
         """Switch holiday on or off (D-137): on is refused with an end in the past; off
-        clears the end."""
+        clears the end date (D-142)."""
         if on == self._settings.holiday_on:
             return
         if not on:
-            await self._async_update_settings(holiday_on=False, holiday_end=None)
+            await self._async_update_settings(holiday_on=False, holiday_end_date=None)
             return
-        end = self._settings.holiday_end
+        end = self.holiday_end
         if end is not None and end <= dt_util.utcnow():
             raise ConfigError(["the holiday end is in the past; set a later end first"])
         await self._async_update_settings(holiday_on=True)
 
-    async def async_set_holiday_end(self, end: datetime) -> None:
-        """Set the holiday end; while holiday runs this moves its end (D-137)."""
-        if end.tzinfo is None:
-            raise ConfigError(["the holiday end must carry a time zone"])
-        await self._async_update_settings(holiday_end=end.astimezone(UTC))
+    async def async_set_holiday_end_date(self, end_date: date) -> None:
+        """Set the holiday end date. Not checked: only switching holiday on checks the end;
+        while holiday runs, an end in the past ends it at the next run (D-137)."""
+        await self._async_update_settings(holiday_end_date=end_date)
+
+    async def async_set_holiday_end_time(self, end_time: time) -> None:
+        """Set the holiday end time (local); not checked, as the date."""
+        await self._async_update_settings(
+            holiday_end_time=end_time.replace(second=0, microsecond=0, tzinfo=None)
+        )
 
     async def _async_update_settings(self, **changes: Any) -> None:
         self._settings = dataclasses.replace(self._settings, **changes)
@@ -406,7 +423,7 @@ class FloorheatController:
             )
         if settings.holiday_on and not outputs.holiday_active:
             _LOGGER.info("Holiday ended")
-            changes |= {"holiday_on": False, "holiday_end": None}
+            changes |= {"holiday_on": False, "holiday_end_date": None}  # the time stays
         if changes:
             self._settings = dataclasses.replace(settings, **changes)
             self._schedule_save()
@@ -438,7 +455,7 @@ class FloorheatController:
             reconcile_tick=tick,
             schedules=settings.schedules,
             holiday_on=settings.holiday_on,
-            holiday_until=settings.holiday_end,
+            holiday_until=self.holiday_end,
         )
 
     def _commanded_states(self) -> dict[str, OutputState]:
