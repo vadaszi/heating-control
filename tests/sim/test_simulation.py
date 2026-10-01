@@ -26,7 +26,7 @@ from itertools import pairwise
 import pytest
 
 from custom_components.multizone_floor_heating_manager.core.config import GlobalParams, ZoneParams
-from custom_components.multizone_floor_heating_manager.core.io import EventKind
+from custom_components.multizone_floor_heating_manager.core.io import EventKind, HeatSourceStatus
 from custom_components.multizone_floor_heating_manager.core.schedule import check_new_schedule
 from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
@@ -104,6 +104,14 @@ def check_invariants(
         if not sample.season:
             assert not sample.request, f"request ON at {sample.now}"
             assert not sample.hp_running, f"heat pump running at {sample.now}"
+
+    # The heat source sensor agrees with the request (D-141; the switch is always there).
+    requesting = {HeatSourceStatus.HEATING, HeatSourceStatus.SPREADING_HEAT}
+    for sample in samples:
+        if not sample.season:
+            assert sample.source_status == HeatSourceStatus.SEASON_OFF, sample.now
+        else:
+            assert sample.request == (sample.source_status in requesting), sample.now
 
     # Temperature bounds after warm-up, against the effective SetPoint (P9).
     has_valve = {z.id: z.has_valve for z in sc.config.zones}

@@ -1,6 +1,6 @@
 """Sensors (docs/design.md §5.3): per zone state, reason and effective SetPoint; the
-mode sensor with the shadow attribute (D-79); the alerts sensor (count + list); the
-schedules sensor (count + list, D-139).
+mode sensor with the shadow attribute (D-79); the heat source sensor (D-141); the alerts
+sensor (count + list); the schedules sensor (count + list, D-139).
 
 State and reason are enums of fixed keys; their texts are translations (D-126)."""
 
@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
 from .core.config import ZoneConfig
-from .core.io import Reason
+from .core.io import HeatSourceStatus, Reason
 from .core.state import ZoneMode
 from .core.units import TemperatureUnit
 from .entity import FloorheatEntity
@@ -41,6 +41,7 @@ async def async_setup_entry(
     unit = TemperatureUnit(hass.config.units.temperature_unit)
     entities += [
         ModeSensor(controller),
+        HeatSourceSensor(controller),
         AlertsSensor(controller),
         SchedulesSensor(controller, unit),
     ]
@@ -125,6 +126,29 @@ class ModeSensor(FloorheatEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"shadow": not self.controller.settings.control_active}
+
+
+class HeatSourceSensor(FloorheatEntity, SensorEntity):
+    """What the heat source does and why (D-141), e.g. `held_by_minimum_off_time`. Like
+    the reason sensor, it never counts down: `until` holds the end of the running min
+    OFF/ON timer and is present only while one runs (D-123)."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [status.value for status in HeatSourceStatus]  # noqa: RUF012 - HA's attribute convention
+
+    def __init__(self, controller: FloorheatController) -> None:
+        super().__init__(controller, "heat_source")
+
+    @property
+    def native_value(self) -> str | None:
+        outputs = self.controller.outputs
+        return None if outputs is None else outputs.heat_source_status.value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        outputs = self.controller.outputs
+        until = None if outputs is None else outputs.heat_source_until
+        return {} if until is None else {"until": until.isoformat()}
 
 
 class AlertsSensor(FloorheatEntity, SensorEntity):

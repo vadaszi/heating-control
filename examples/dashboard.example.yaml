@@ -41,6 +41,12 @@ views:
             attribute: on_duration
             name: Running for
             suffix: min
+          - entity: sensor.floor_heating_heat_source
+          - type: attribute
+            entity: sensor.floor_heating_heat_source
+            attribute: until
+            name: Until
+            format: time
           - entity: sensor.floor_heating_mode
           - entity: switch.floor_heating_heating_season
           - entity: switch.floor_heating_control_active

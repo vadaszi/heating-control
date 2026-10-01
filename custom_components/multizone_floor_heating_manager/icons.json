@@ -55,6 +55,9 @@
       },
       "schedules": {
         "default": "mdi:calendar-clock"
+      },
+      "heat_source": {
+        "default": "mdi:heat-pump-outline"
       }
     },
     "switch": {

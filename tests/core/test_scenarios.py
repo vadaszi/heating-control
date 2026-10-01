@@ -12,7 +12,12 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from custom_components.multizone_floor_heating_manager.core.config import CoreConfig
-from custom_components.multizone_floor_heating_manager.core.io import EventKind, OutputState, Reason
+from custom_components.multizone_floor_heating_manager.core.io import (
+    EventKind,
+    HeatSourceStatus,
+    OutputState,
+    Reason,
+)
 from custom_components.multizone_floor_heating_manager.core.schedule import (
     WEEKDAYS,
     Schedule,
@@ -227,6 +232,51 @@ def test_a09_demand_held_back_by_min_off() -> None:
     sc.advance_to("09:00")
     assert sc.hp
     assert sc.calling_zone == "zone_2"
+
+
+# ---------------------------------------------------------------- heat source status (D-141)
+
+
+def test_heat_source_status_through_a_cycle() -> None:
+    """Idle -> heating -> spreading heat (until min ON end) -> idle."""
+    sc = Scenario(2, temps={1: 22.0, 2: 22.2})  # zone 2 at StopTemp: no sync join
+    sc.step()
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.IDLE, None)
+    sc.temp(1, 21.8)
+    sc.step()
+    assert sc.source_status == HeatSourceStatus.IDLE  # waiting: no demand yet
+    sc.advance_to("06:30")
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.HEATING, None)
+    sc.advance_to("07:10")
+    sc.temp(1, 22.2)
+    sc.step()
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.SPREADING_HEAT, at("07:30"))
+    sc.advance_to("07:30")
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.IDLE, None)
+
+
+def test_heat_source_status_held_by_min_off() -> None:
+    sc = _hp_off_at_0800()
+    sc.advance_to("08:10")
+    sc.temp(2, 21.8)
+    sc.step()
+    sc.advance_to("08:40")
+    assert (sc.source_status, sc.source_until) == (
+        HeatSourceStatus.HELD_BY_MIN_OFF,
+        at("09:00"),
+    )
+    sc.advance_to("09:00")
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.HEATING, None)
+
+
+def test_heat_source_status_unavailable_comes_first() -> None:
+    sc = _started_by_zone_1(2)
+    sc.set_season(False)
+    sc.step()
+    assert sc.source_status == HeatSourceStatus.SEASON_OFF
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.step()
+    assert (sc.source_status, sc.source_until) == (HeatSourceStatus.UNAVAILABLE, None)
 
 
 def test_a09_stoptemp_reached_while_held() -> None:

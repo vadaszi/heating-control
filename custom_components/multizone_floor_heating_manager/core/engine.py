@@ -31,7 +31,16 @@ from datetime import datetime, timedelta, tzinfo
 
 from .alerts import fault_events, track_outputs
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
-from .io import Event, Inputs, Outputs, OutputState, Reason, ZoneInput, ZoneReport
+from .io import (
+    Event,
+    HeatSourceStatus,
+    Inputs,
+    Outputs,
+    OutputState,
+    Reason,
+    ZoneInput,
+    ZoneReport,
+)
 from .schedule import ended_schedules, holiday_active, zone_target
 from .state import CoreState, ZoneMode, ZoneState
 
@@ -168,12 +177,17 @@ def step(
         reports[zone_id] = ZoneReport(
             reason=reason, room_temp=zone.room, setpoint=zone.setpoint, until=until
         )
+    source_status, source_until = _source_status(
+        request, season, source.available, min_on_end, min_off_end
+    )
     outputs = Outputs(
         heat_source_on=request.on,
         valves={z.id: valves[z.id] for z in config.zones if z.has_valve},  # rule 8
         zones=reports,
         holiday_active=holiday,
         ended_schedules=ended_schedules(inputs.schedules, now, inputs.time_zone),
+        heat_source_status=source_status,
+        heat_source_until=source_until,
     )
     events, reminder_on = fault_events(
         config,
@@ -433,6 +447,28 @@ def _request(
         return _Request(on=spreading, spreading=spreading, held=False)
     held = demand and min_off_left > _ZERO  # D-64, D-39
     return _Request(on=demand and not held, spreading=False, held=held)
+
+
+def _source_status(
+    request: _Request,
+    season: bool,
+    available: bool,
+    min_on_end: datetime | None,
+    min_off_end: datetime | None,
+) -> tuple[HeatSourceStatus, datetime | None]:
+    """The heat source sensor (D-141); the first that applies wins."""
+    status, until = HeatSourceStatus.IDLE, None
+    if not available:
+        status = HeatSourceStatus.UNAVAILABLE
+    elif not season:
+        status = HeatSourceStatus.SEASON_OFF
+    elif request.held:
+        status, until = HeatSourceStatus.HELD_BY_MIN_OFF, min_off_end
+    elif request.spreading:
+        status, until = HeatSourceStatus.SPREADING_HEAT, min_on_end
+    elif request.on:
+        status = HeatSourceStatus.HEATING
+    return status, until
 
 
 def _choose_calling_zone(

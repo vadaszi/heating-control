@@ -211,6 +211,22 @@
             "name": "Schedules"
           }
         }
+      },
+      "heat_source": {
+        "name": "Heat source",
+        "state": {
+          "unavailable": "Switch unavailable",
+          "season_off": "Heating season off",
+          "held_by_minimum_off_time": "Waiting for minimum off time",
+          "spreading_heat": "Running for minimum on time (spreading heat)",
+          "heating": "Heating",
+          "idle": "Off, no heat demand"
+        },
+        "state_attributes": {
+          "until": {
+            "name": "Until"
+          }
+        }
       }
     },
     "switch": {

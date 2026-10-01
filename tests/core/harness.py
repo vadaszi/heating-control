@@ -287,6 +287,15 @@ class Scenario:
         """Commanded heat pump request."""
         return self._out().heat_source_on
 
+    @property
+    def source_status(self) -> str:
+        """What the heat source does and why (D-141)."""
+        return self._out().heat_source_status
+
+    @property
+    def source_until(self) -> datetime | None:
+        return self._out().heat_source_until
+
     def valve(self, zone: ZoneRef) -> bool | None:
         """Commanded valve state; None for a zone without a valve (no output)."""
         return self._out().valves.get(zone_id(zone))

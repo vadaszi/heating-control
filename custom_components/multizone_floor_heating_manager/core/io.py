@@ -91,6 +91,18 @@ class Reason(StrEnum):
     FORCED_TOO_WARM = "forced_too_warm"  # manual schedule paused by ManualMaxTemp (D-38)
 
 
+class HeatSourceStatus(StrEnum):
+    """What the heat source does and why (D-141): fixed keys like `Reason`; the end of a
+    running min ON/OFF timer is reported separately. The first that applies wins."""
+
+    UNAVAILABLE = "unavailable"  # the switch does not report
+    SEASON_OFF = "season_off"
+    HELD_BY_MIN_OFF = "held_by_minimum_off_time"  # demand waits for HpMinOffTime (D-64)
+    SPREADING_HEAT = "spreading_heat"  # no demand, running until HpMinOnTime (D-20)
+    HEATING = "heating"
+    IDLE = "idle"  # no demand
+
+
 @dataclass(frozen=True)
 class ZoneReport:
     """What the adapter shows for one zone (D-89, D-123)."""
@@ -108,6 +120,7 @@ class Outputs:
 
     `holiday_active` and `ended_schedules` (one-shot schedules whose window is over) tell
     the adapter to switch holiday off and delete those schedules (D-136).
+    `heat_source_status` / `heat_source_until`: the heat source sensor (D-141).
     """
 
     heat_source_on: bool
@@ -115,6 +128,8 @@ class Outputs:
     zones: Mapping[str, ZoneReport] = field(default_factory=dict)
     holiday_active: bool = False
     ended_schedules: tuple[str, ...] = ()
+    heat_source_status: HeatSourceStatus = HeatSourceStatus.IDLE
+    heat_source_until: datetime | None = None  # end of the min OFF/ON timer it names
 
 
 class EventKind(StrEnum):

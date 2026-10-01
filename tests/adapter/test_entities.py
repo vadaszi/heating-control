@@ -44,6 +44,7 @@ GLOBAL_ENTITIES = {
     "sensor.floor_heating_mode": ("mode", None),
     "sensor.floor_heating_alerts": ("alerts", None),
     "sensor.floor_heating_schedules": ("schedules", None),
+    "sensor.floor_heating_heat_source": ("heat_source", None),
     "switch.floor_heating_heating_season": ("heating_season", None),
     "switch.floor_heating_control_active": ("control_active", None),
     "time.floor_heating_sensor_fault_reminder_time": (
@@ -179,6 +180,23 @@ async def test_mode_sensor_shows_shadow(world: World, hass: HomeAssistant) -> No
     assert mode.attributes["shadow"] is True
     await _call(hass, "switch", "turn_on", "switch.floor_heating_control_active")
     assert _state(hass, "sensor.floor_heating_mode").attributes["shadow"] is False
+
+
+async def test_heat_source_sensor(world: World, hass: HomeAssistant) -> None:
+    """D-141: what the heat source does and why; `until` only while a timer runs."""
+    world.setup_entities()
+    world.temp(2, 22.2)  # at StopTemp: does not join by the sync rule
+    assert await world.setup()
+    source = _state(hass, "sensor.floor_heating_heat_source")
+    assert (source.state, source.attributes.get("until")) == ("idle", None)
+    world.temp(1, 21.8)
+    await world.advance(31)  # the wait ends at 06:30
+    assert _state(hass, "sensor.floor_heating_heat_source").state == "heating"
+    world.temp(1, 22.2)
+    await world.advance()
+    source = _state(hass, "sensor.floor_heating_heat_source")
+    assert source.state == "spreading_heat"
+    assert source.attributes["until"] == "2026-01-12T07:30:00+00:00"  # min ON from 06:30
 
 
 # ---------------------------------------------------------------- climate
