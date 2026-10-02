@@ -209,10 +209,6 @@ Owner decisions at the P8 start (2026-10-02): D-156 to D-159. 1.0.0 will be rele
 - *(Carried over from P10, done here: climate entity of a zone without a valve explained; upgrade handling = D-156 + "Updating" in `configuration.md`; the doubled Bedroom id explained.)*
 - **Done when:** 0.11.0 is committed, pushed, CI green, and the owner has checked it (to-do list below).
 
-### Changes agreed in chat, to do before 1.0.0 (owner, 2026-10-02; no code change yet)
-- **Rename the YAML key `shellys` → `shelly_watchdogs`** (only Shelly devices running the watchdog script; every other relay stays in `no_watchdog`). Breaking for the owner's YAML only; update code, tests, manual, examples, alert texts that name the key, and the spec (D-120 wording, new D-number).
-- Manual: say explicitly that `no_watchdog` lists switch entities one by one, also for a multi-channel relay (e.g. a Sonoff 4CH Pro = four entries), and that its address plays no role (the integration talks to it only through its HA switch entities).
-
 ### Later, not in P8: release 1.0.0 (only when the owner says go; each outward step confirmed)
 1. Screenshots in `images/` and in `docs/dashboard.md` / README (privacy check); the icon.
 2. Set 1.0.0 in `manifest.json` and `pyproject.toml`, the date in `CHANGELOG.md`; switch the `manifest.json` `documentation` / `issue_tracker` URLs to the new repository.
