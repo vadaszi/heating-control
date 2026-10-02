@@ -217,9 +217,9 @@ The owner's open checks in one list (2026-10-02). Results go into design.md §8.
 - [ ] **Valve exercise** (optional): heating season OFF, *Off-season valve exercise day* = today, *time* = a few minutes ahead, *duration* = 5 min. The valve relays switch ON one after another for 5 min each (YAML order, the bathroom has no valve), the heat source stays OFF; the reasons show "Valve exercise"; no notification. Restore Monday 08:00 / 15 min and the heating season.
 
 **P12 (0.10.0):**
-- [ ] **Update the heat source script:** paste `shelly_scripts/heat_source_watchdog.js` 1.1.0 into the Shelly 1 (re-apply CONFIG changes, if any), save, restart; `curl -s` the status: `"script_version": "1.1.0"`, `"time"` shows the device's local time (check the device's time zone), `params` show the failsafe defaults.
+- [x] **Update the heat source script:** *(done 2026-10-02: 1.1.0 runs, state normal, season kept, the device time is right, default params.)*
 - [ ] **Bench S2, S5, S3** with shortened values, steps in [`shelly-scripts.md`](shelly-scripts.md#bench-tests-shortened-timeouts) ("Heat source Shelly: failsafe operation"). Take the Shelly out of `shellys` for the test as described there. S3 needs a start without a valid time (unreachable time server, or the router offline): note whether `"time"` really is `null` after the power cut.
-- [ ] **External watchdog:** healthchecks.io check (period 5 min, grace 30 min), `watchdog_ping_url` in the YAML, restart; the check shows pings. Stop HA for longer than the grace time → "down" email; start it → "up" email.
+- [ ] **External watchdog:** healthchecks.io check (period 5 min, grace 30 min), `watchdog_ping_url` in the YAML, restart; the check shows pings *(done 2026-10-02)*. Still open: stop HA for longer than the grace time → "down" email; start it → "up" email.
 
 **Shelly and hardware (open since P4/P7):**
 - [ ] **S7 on the real devices:** stop the watchdog script on one Shelly → after 3 failed heartbeats (about 15 min) "Floor heating: Shelly watchdog not answering"; start it again → "answering again".
