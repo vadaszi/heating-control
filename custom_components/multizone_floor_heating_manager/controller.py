@@ -41,7 +41,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, HEARTBEAT_LIVENESS_TICKS
 from .core.alerts import active_alerts
 from .core.config import ConfigError, GlobalParams
 from .core.engine import step
@@ -135,6 +135,16 @@ class FloorheatController:
     def last_run_ok_at(self) -> datetime | None:
         """When a reconcile run last completed; None before the first (D-122)."""
         return self._last_run_ok_at
+
+    def loop_alive(self) -> bool:
+        """The reconcile loop completed a run within the last 3 ReconcileIntervals (D-122).
+
+        Heartbeats and the watchdog ping go out only then, so a broken integration lets the
+        Shelly watchdogs and the external watchdog act (§5.11).
+        """
+        last = self._last_run_ok_at
+        limit = HEARTBEAT_LIVENESS_TICKS * self.config.reconcile_interval
+        return last is not None and dt_util.utcnow() - last <= limit
 
     @property
     def heartbeat(self) -> Mapping[str, HeartbeatTracking]:

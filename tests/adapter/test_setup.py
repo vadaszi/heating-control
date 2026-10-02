@@ -89,7 +89,8 @@ async def test_optional_keys(world: World) -> None:
         (_conf(zones=[]), "length of value must be at least 1"),
         (_conf(reconcile_interval=5), "value must be at least 10"),
         (_conf(output_mismatch_alert=0), "value must be at least 1"),
-        (_conf(watchdog_ping_url="x"), "'watchdog_ping_url' is an invalid option"),
+        (_conf(watchdog_ping_url="x"), "expected an http:// or https:// URL"),
+        (_conf(unknown_key=1), "'unknown_key' is an invalid option"),
         (_zones({**zone_conf(1), "power_sensor": "sensor.p"}), "'power_sensor'"),  # removed
         (_zones({**zone_conf(1), "sensor_offset": 6}), "sensor_offset: 6 °C is out of range"),
         (_conf(plausible_min=40, plausible_max=0), "plausible range"),

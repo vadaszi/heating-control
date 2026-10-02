@@ -47,17 +47,22 @@ from .const import (
     CONF_SHELLYS,
     CONF_SWITCHES,
     CONF_VALVE,
+    CONF_WATCHDOG_PING_INTERVAL,
+    CONF_WATCHDOG_PING_URL,
     CONF_ZONES,
     DEFAULT_HEARTBEAT_FAIL_ALERT,
     DEFAULT_HEARTBEAT_INTERVAL,
     DEFAULT_HEARTBEAT_TIMEOUT,
     DEFAULT_RECONCILE_INTERVAL,
+    DEFAULT_WATCHDOG_PING_INTERVAL,
     DOMAIN,
     MAX_HEARTBEAT_INTERVAL,
     MAX_RECONCILE_INTERVAL,
     MAX_SCRIPT_SECONDS,
+    MAX_WATCHDOG_PING_INTERVAL,
     MIN_HEARTBEAT_INTERVAL,
     MIN_RECONCILE_INTERVAL,
+    MIN_WATCHDOG_PING_INTERVAL,
     NO_VALVE,
 )
 from .core.config import ConfigError, CoreConfig, ZoneConfig
@@ -84,6 +89,14 @@ def _notify_target(value: Any) -> str:
     if not NOTIFY_TARGET.fullmatch(target):
         raise vol.Invalid(f"expected a notify target like 'notify.mobile_app_phone', got {value!r}")
     return target
+
+
+def _ping_url(value: Any) -> str:
+    """An http(s) URL; the error never repeats it, because it is a secret (D-155)."""
+    try:
+        return str(cv.url(value))
+    except vol.Invalid:
+        raise vol.Invalid("expected an http:// or https:// URL") from None
 
 
 def _host(value: Any) -> str:
@@ -229,6 +242,13 @@ FLOORHEAT_SCHEMA = vol.All(
             ),
             vol.Optional(CONF_HEARTBEAT_TIMEOUT, default=DEFAULT_HEARTBEAT_TIMEOUT): _SECONDS,
             vol.Optional(CONF_HEARTBEAT_CHECK_INTERVAL): _SECONDS,
+            vol.Optional(CONF_WATCHDOG_PING_URL): _ping_url,
+            vol.Optional(
+                CONF_WATCHDOG_PING_INTERVAL, default=DEFAULT_WATCHDOG_PING_INTERVAL
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_WATCHDOG_PING_INTERVAL, max=MAX_WATCHDOG_PING_INTERVAL),
+            ),
         }
     ),
     _check_wiring,
@@ -280,6 +300,8 @@ class FloorheatConfig:
     heartbeat_interval: timedelta = timedelta(seconds=DEFAULT_HEARTBEAT_INTERVAL)
     heartbeat_fail_alert: int = DEFAULT_HEARTBEAT_FAIL_ALERT
     expected_params: ExpectedParams = field(default_factory=ExpectedParams)
+    watchdog_ping_url: str | None = field(default=None, repr=False)  # a secret (D-155)
+    watchdog_ping_interval: timedelta = timedelta(seconds=DEFAULT_WATCHDOG_PING_INTERVAL)
 
     @property
     def valves(self) -> dict[str, str]:
@@ -368,4 +390,6 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig
             heartbeat_timeout_s=conf[CONF_HEARTBEAT_TIMEOUT],
             check_interval_s=conf.get(CONF_HEARTBEAT_CHECK_INTERVAL),
         ),
+        watchdog_ping_url=conf.get(CONF_WATCHDOG_PING_URL),
+        watchdog_ping_interval=timedelta(seconds=conf[CONF_WATCHDOG_PING_INTERVAL]),
     )

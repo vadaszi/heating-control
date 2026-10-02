@@ -29,6 +29,7 @@ from .runtime import FloorheatConfigEntry, FloorheatRuntime
 from .schema import CONFIG_SCHEMA, FloorheatConfig, build_config
 from .services import async_register as async_register_services
 from .storage import FloorheatStore
+from .watchdog import WatchdogPing
 
 __all__ = ["CONFIG_SCHEMA", "DOMAIN", "async_setup", "async_setup_entry", "async_unload_entry"]
 
@@ -91,7 +92,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
     notifier = Notifier(hass, config.notify)
     entry.async_on_unload(controller.async_add_event_handler(notifier.async_handle))
     heartbeat = HeartbeatClient(hass, controller)
-    entry.runtime_data = FloorheatRuntime(controller, heartbeat)
+    watchdog = WatchdogPing(hass, controller)
+    entry.runtime_data = FloorheatRuntime(controller, heartbeat, watchdog)
     _async_remove_stale_devices(hass, entry, config)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -99,6 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
         notifier.async_check_targets()
         await controller.async_start()
         heartbeat.async_start()
+        watchdog.async_start()
 
     async def _async_stop(_event: Event) -> None:
         await _async_shutdown(entry.runtime_data)
@@ -116,6 +119,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) -
 
 async def _async_shutdown(runtime: FloorheatRuntime) -> None:
     await runtime.heartbeat.async_stop()
+    await runtime.watchdog.async_stop()
     await runtime.controller.async_stop()  # writes the stored data
 
 

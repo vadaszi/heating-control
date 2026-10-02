@@ -33,14 +33,8 @@ from aiohttp import ClientError, DigestAuthMiddleware
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.util import dt as dt_util
 
-from .const import (
-    DOMAIN,
-    HEARTBEAT_CALL_TIMEOUT,
-    HEARTBEAT_LIVENESS_TICKS,
-    SHELLY_USERNAME,
-)
+from .const import DOMAIN, HEARTBEAT_CALL_TIMEOUT, SHELLY_USERNAME
 from .controller import FloorheatController
 from .core.heartbeat import (
     PROTOCOL_VERSION,
@@ -134,9 +128,8 @@ class HeartbeatClient:
 
     def _alive(self) -> bool:
         """The reconcile loop has completed a run recently (D-122)."""
+        alive = self._controller.loop_alive()
         last = self._controller.last_run_ok_at
-        limit = HEARTBEAT_LIVENESS_TICKS * self._config.reconcile_interval
-        alive = last is not None and dt_util.utcnow() - last <= limit
         if not alive and not self._stalled:
             _LOGGER.warning(
                 "No heartbeat sent to the Shellys: the reconcile loop has not completed a "

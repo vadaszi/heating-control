@@ -97,3 +97,23 @@ When the Shelly relays are installed:
 4. Delete the stand-in helpers.
 
 Going live means switching Control active ON ([Shadow mode](configuration.md#shadow-mode)). Note: from that moment the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF, which counts as a stop, so the minimum OFF time (default 60 min) runs before the first real heat request.
+
+## 8. External watchdog (healthchecks.io)
+
+The Shelly watchdogs keep the house safe when Home Assistant stops, but they cannot tell you. An external watchdog does: the integration pings it every 5 minutes, and it emails you when the pings stop ([details](configuration.md#external-watchdog)).
+
+1. Create a free account on [healthchecks.io](https://healthchecks.io) and add a check, e.g. "Floor heating".
+2. Set its schedule: **Period 5 minutes**, **Grace time 30 minutes**. HA updates and restarts (typically 5–20 min) then cause no false alarm; a real outage is reported after about 35 minutes.
+3. Set up how you want to be notified (email is on by default).
+4. Copy the check's **ping URL** into HA's `secrets.yaml` (never into this repository or a shared file):
+   ```yaml
+   floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
+   ```
+5. Add the key to the integration's YAML and restart HA:
+   ```yaml
+   multizone_floor_heating_manager:
+     watchdog_ping_url: !secret floor_heating_watchdog_url
+   ```
+   (Writing the URL directly instead of `!secret` works the same.)
+6. Within a minute the check on healthchecks.io shows its first ping and turns green. A check that never received a ping does not alert, so check this once.
+7. Test it when convenient: stop HA (or disable the integration) for longer than the grace time: you get the "down" email; after the restart, an "up" email.

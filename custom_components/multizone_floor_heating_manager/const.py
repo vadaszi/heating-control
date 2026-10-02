@@ -42,6 +42,8 @@ CONF_HEARTBEAT_INTERVAL: Final = "heartbeat_interval"
 CONF_HEARTBEAT_FAIL_ALERT: Final = "heartbeat_fail_alert"
 CONF_HEARTBEAT_TIMEOUT: Final = "heartbeat_timeout"
 CONF_HEARTBEAT_CHECK_INTERVAL: Final = "heartbeat_check_interval"
+CONF_WATCHDOG_PING_URL: Final = "watchdog_ping_url"
+CONF_WATCHDOG_PING_INTERVAL: Final = "watchdog_ping_interval"
 
 NO_VALVE: Final = "none"
 
@@ -59,6 +61,12 @@ MAX_SCRIPT_SECONDS: Final = 604800  # the scripts accept 1 s to 7 days
 HEARTBEAT_CALL_TIMEOUT: Final = 10  # s; per heartbeat call
 HEARTBEAT_LIVENESS_TICKS: Final = 3  # heartbeat only after a run within 3 intervals (D-122)
 SHELLY_USERNAME: Final = "admin"  # Shelly digest auth always uses "admin"
+
+# External watchdog ping, e.g. healthchecks.io (§4, §5.3, D-62, D-155)
+DEFAULT_WATCHDOG_PING_INTERVAL: Final = 300  # s, WatchdogPingInterval
+MIN_WATCHDOG_PING_INTERVAL: Final = 60
+MAX_WATCHDOG_PING_INTERVAL: Final = 3600
+WATCHDOG_PING_TIMEOUT: Final = 10  # s; per ping
 
 # Command retries while an output does not follow (D-108): the delay after the n-th
 # command, then REPEAT for every further retry.

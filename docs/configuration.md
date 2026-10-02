@@ -9,6 +9,7 @@ For a first installation, see [Getting started](getting-started.md).
 ```yaml
 multizone_floor_heating_manager:
   heat_source_switch: switch.heat_pump_request
+  watchdog_ping_url: !secret floor_heating_watchdog_url
   notify:
     - notify.mobile_app_phone
     - notify.email
@@ -73,6 +74,8 @@ Without a `multizone_floor_heating_manager:` section the entry fails to load wit
 | `heartbeat_fail_alert` | integer ≥ 1 | 3 | Alert after this many failed heartbeats in a row (3 × 5 min ≈ 15 min). |
 | `heartbeat_timeout` | integer, seconds | 18000 (5 h) | The `heartbeat_timeout_s` you expect in the scripts' CONFIG block. The integration alerts if a script reports another value. |
 | `heartbeat_check_interval` | integer, seconds | not checked | If set, the `check_interval_s` you expect in the scripts; otherwise it is not compared. |
+| `watchdog_ping_url` | URL (`http://` or `https://`) | none | The external watchdog's ping URL, e.g. a healthchecks.io check; see [External watchdog](#external-watchdog). Without it, no ping is sent. |
+| `watchdog_ping_interval` | integer, seconds (60–3600) | 300 | How often the URL is pinged. Set the check's period on the external service to the same value. |
 
 ### Per zone
 
@@ -106,7 +109,27 @@ Rules:
 - The Shelly with the heat source switch runs the **heat source script** and must hold no valve; every other listed Shelly runs the **valve script**. The integration checks this with each answer.
 - The integration does not detect device types: it trusts this list.
 
-> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the external watchdog (v1.2) would tell you that HA is down. Use `no_watchdog` only for stand-ins during a trial or for relays that cannot run the script.
+> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the [external watchdog](#external-watchdog) would tell you that HA is down. Use `no_watchdog` only for stand-ins during a trial or for relays that cannot run the script.
+
+### External watchdog
+
+The Shelly watchdogs protect the house when Home Assistant stops, but nothing tells **you**. For that, the integration pings an external monitoring service, e.g. [healthchecks.io](https://healthchecks.io) (free for a few checks), every `watchdog_ping_interval` (5 min). When the pings stop, the service alerts you (email, app, …); it also tells you when they resume.
+
+```yaml
+multizone_floor_heating_manager:
+  watchdog_ping_url: !secret floor_heating_watchdog_url
+  watchdog_ping_interval: 300   # optional; default 300 s (5 min), 60–3600
+```
+```yaml
+# secrets.yaml
+floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
+```
+
+- **The URL is a secret.** Anyone who has it can keep the check "up" while your HA is dead, or send false alarms. `!secret` keeps it out of `configuration.yaml`, which people often share (forum posts, backups on GitHub). Writing the URL directly in `configuration.yaml` works the same; the integration never writes it to the log.
+- Any `http://` or `https://` URL is called with `GET`, so other services with a push/heartbeat URL work too (e.g. Uptime Kuma's push monitor).
+- **Settings on healthchecks.io:** period = `watchdog_ping_interval` (5 min), grace about 30 min. The alert then comes about 35 minutes after the last ping, so an HA update or restart (typically 5–20 min) does not raise a false alarm. Setup steps: [Getting started](getting-started.md#8-external-watchdog-healthchecksio).
+- The ping goes out also in shadow mode, but only while the integration works (as the heartbeat, see [How it runs](#how-it-runs)): a broken integration triggers the alert too.
+- A failed ping (e.g. your internet is down, or a wrong URL that answers HTTP 404) is only logged: a warning at the first failure and an info line when it works again. There is no notification: the external service alerts you when its pings stop. A check that has never received a ping does not alert on healthchecks.io, so after the setup make sure the check shows the first ping.
 
 ## Checks at startup
 
@@ -128,7 +151,8 @@ Rules:
   - after `heartbeat_fail_alert` failed heartbeats in a row, "Shelly … not answering" is notified once, naming the cause: unreachable, script not running (HTTP 404: stopped, or wrong `script_id`), authentication failed, or an unexpected answer (wrong script, unsupported protocol version). When it answers again, the recovery is notified. A single failed call (a Wi-Fi hiccup) never alerts;
   - if the script's `heartbeat_timeout_s` (or `check_interval_s`, if you set `heartbeat_check_interval`) differs from the expected value, that is notified once; it clears silently when the values match again;
   - only logged, never notified: a watchdog that had timed out (seen in the status read on the first call after HA starts and after a failed call) and a Shelly that restarted.
-- **Heartbeat only while the integration works.** Heartbeats go out only if the reconcile loop has completed a run within the last 3 reconcile intervals. If the integration is broken (e.g. after an HA update), the Shellys stop getting heartbeats and act after their timeout, as if HA had stopped.
+  - only logged, never notified: a heat source watchdog that was running its failsafe operation (no heartbeat for 24 h, [Shelly scripts](shelly-scripts.md#failsafe-operation-heat-source)).
+- **Heartbeat and watchdog ping only while the integration works.** Heartbeats and the [watchdog ping](#external-watchdog) go out only if the reconcile loop has completed a run within the last 3 reconcile intervals. If the integration is broken (e.g. after an HA update), the Shellys stop getting heartbeats and act after their timeout, as if HA had stopped, and the external watchdog alerts you.
 
 ## Shadow mode
 
