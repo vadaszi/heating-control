@@ -9,16 +9,17 @@ or `{"v": 1, "season": <heating season>}` for the heat source script. Also in sh
   the cause, and the next good answer is a recovery (D-61);
 - the script parameters are compared with the expected values (D-73).
 
-Only logged, never notified (owner, 2026-09-29): a watchdog that had timed out, and a
-Shelly that restarted. The POST answer always shows the state after the heartbeat, so on
-the first call after HA starts and after a failed call the status is read with `GET`
-first (it does not count as a heartbeat).
+Only logged, never notified (owner, 2026-09-29): a watchdog that had timed out or was
+running the failsafe operation, and a Shelly that restarted. The POST answer always shows
+the state after the heartbeat, so on the first call after HA starts and after a failed
+call the status is read with `GET` first (it does not count as a heartbeat).
 
 Heartbeats go out only while the reconcile loop works: the last completed run is at most
 3 ReconcileIntervals old (D-122). A broken loop therefore leads to the Shelly failsafe.
 
 The heat source Shelly gets a heartbeat at once when the heating season changes, so the
-season flag on the device follows without waiting for the next interval.
+season flag on the device follows without waiting for the next interval. A change while a
+call to it is still running is sent as soon as that call has finished.
 """
 
 from __future__ import annotations
@@ -191,6 +192,12 @@ class HeartbeatClient:
             self._controller.async_update_heartbeat(shelly.key, tracking, events)
         finally:
             self._busy.discard(shelly.key)
+            # A season change while this call ran was skipped by `_send`: send it now.
+            if (
+                shelly.role is ShellyRole.HEAT_SOURCE
+                and self._controller.settings.heating_season != season
+            ):
+                self._send([shelly])
 
     async def _async_log_prior_state(self, shelly: ShellyWiring) -> None:
         """Read the status before the heartbeat resets it; log a timed-out watchdog."""
@@ -202,6 +209,13 @@ class HeartbeatClient:
             _LOGGER.warning(
                 "Shelly %s: its watchdog had timed out (no heartbeat for %s) and put its "
                 "outputs into the safe state; the heartbeat resumes now",
+                shelly.name,
+                _duration(status.heartbeat_age_s),
+            )
+        elif status.state == "failsafe":
+            _LOGGER.warning(
+                "Shelly %s: its watchdog was running the failsafe operation (no heartbeat "
+                "for %s); the heartbeat resumes now and the integration takes over",
                 shelly.name,
                 _duration(status.heartbeat_age_s),
             )

@@ -17,7 +17,10 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
     async_mock_service,
 )
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMocker,
+    AiohttpClientMockResponse,
+)
 
 from custom_components.multizone_floor_heating_manager.const import DOMAIN
 
@@ -124,6 +127,49 @@ async def test_season_change_reaches_the_heat_source_at_once(
     assert len(calls(aioclient_mock, VALVE_URL)) == 2  # valves only on the timer
     await world.advance(1)
     assert len(calls(aioclient_mock, HEAT_URL)) == 3  # sent once per change
+
+
+async def test_season_change_during_a_slow_heartbeat_follows_right_after_it(
+    world: World, hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Gemini P7 review, finding 1: the change is not left for the next interval."""
+    serve(aioclient_mock)
+    world.setup_entities()
+    assert await world.setup(conf())
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow(method: str, url: Any, _data: Any) -> AiohttpClientMockResponse:
+        started.set()
+        await release.wait()
+        return AiohttpClientMockResponse(method, url, json=status("heat_source"))
+
+    serve(aioclient_mock, heat={"side_effect": slow})
+    await world.advance(4)
+    world.freezer.tick(timedelta(minutes=1))
+    async_fire_time_changed(hass)  # the timer heartbeat to the heat source hangs
+    await started.wait()
+    sent = len(calls(aioclient_mock, HEAT_URL))
+    await world.controller.async_set_heating_season(False)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert len(calls(aioclient_mock, HEAT_URL)) == sent  # skipped: a call is running
+
+    serve(aioclient_mock)
+    release.set()
+    await hass.async_block_till_done()
+    assert calls(aioclient_mock, HEAT_URL)[-1] == ("POST", {"v": 1, "season": False})
+    assert len(calls(aioclient_mock, HEAT_URL)) == sent + 1
+
+
+async def test_no_extra_heartbeat_when_the_season_did_not_change(
+    world: World, hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    serve(aioclient_mock)
+    world.setup_entities()
+    assert await world.setup(conf())
+    await world.advance(5)
+    assert len(calls(aioclient_mock, HEAT_URL)) == 3  # GET + POST at start, POST at 5 min
 
 
 async def test_s07_alert_after_three_failures_and_recovery(
@@ -298,6 +344,26 @@ async def test_timed_out_watchdog_and_restart_are_only_logged(
     await world.advance(5)
     assert "Shelly Valves has restarted (uptime 0 min)" in caplog.text
     assert phone == []  # owner decision: logged only
+
+
+async def test_failsafe_operation_is_only_logged(
+    world: World,
+    aioclient_mock: AiohttpClientMocker,
+    phone: list[ServiceCall],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    failsafe = status("heat_source", state="failsafe", heartbeat_age_s=90000)
+    aioclient_mock.get(VALVE_URL, json=status())
+    aioclient_mock.post(VALVE_URL, json=status())
+    aioclient_mock.get(HEAT_URL, json=failsafe)
+    aioclient_mock.post(HEAT_URL, json=status("heat_source"))
+    world.setup_entities()
+    assert await world.setup(conf())
+    assert (
+        "Shelly 192.0.2.12: its watchdog was running the failsafe operation "
+        "(no heartbeat for 25 h 0 min)" in caplog.text
+    )
+    assert phone == []
 
 
 async def test_no_heartbeat_while_the_reconcile_loop_is_broken(
