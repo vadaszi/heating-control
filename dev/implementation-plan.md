@@ -218,7 +218,7 @@ Owner decisions at the P8 start (2026-10-02): D-156 to D-159. 1.0.0 will be rele
 6. Decide how development continues (private repo inside an excluded folder of the public one; branches and pull requests).
 
 ### After 1.0.0 (owner, 2026-10-02)
-- HACS default list after the test period (needs the brand icon).
+- HACS default list after the test period. The HACS list itself shows icons from the home-assistant/brands repository (seen 2026-10-02: the icon shows under Settings → Integrations from the `brand/` folder, but not in HACS), so add the same icon to home-assistant/brands (`custom_integrations/multizone_floor_heating_manager/`) at that step; HACS's own `brands` check needs it too.
 - Diagnostics download.
 - Maybe branches + pull requests instead of direct commits to `main`.
 
