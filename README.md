@@ -11,7 +11,7 @@ A Home Assistant custom integration for room-by-room control of underfloor heati
 - Shadow mode to run next to an existing controller before going live.
 - Shelly watchdog scripts that put the valves and heat source into a safe state if Home Assistant stops.
 
-v1.1 adds auto and manual schedules, holiday mode and an example dashboard; v1.2 will add a 24 h failsafe, valve exercise and an external watchdog.
+v1.1 adds auto and manual schedules, holiday mode and an example dashboard. v1.2 adds a failsafe for the case that every sensor stops reporting (heating in a daily window), a weekly off-season valve exercise and a long run alarm; the heat source script's own failsafe window and an external watchdog follow.
 
 ## Documentation
 - Design and functional specification: [`docs/design.md`](docs/design.md)

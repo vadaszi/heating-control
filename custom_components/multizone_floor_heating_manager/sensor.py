@@ -15,14 +15,12 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
 from .core.config import ZoneConfig
-from .core.io import HeatSourceStatus, Reason
+from .core.io import HeatSourceStatus, Mode, Reason
 from .core.state import ZoneMode
 from .core.units import TemperatureUnit
 from .entity import FloorheatEntity
 from .runtime import FloorheatConfigEntry
 from .schedules import schedule_view
-
-MODES = ["normal", "holiday", "failsafe"]  # failsafe from v1.2
 
 
 async def async_setup_entry(
@@ -110,18 +108,18 @@ class ZoneSetpointSensor(_ZoneSensor):
 
 
 class ModeSensor(FloorheatEntity, SensorEntity):
-    """normal / holiday / failsafe; shadow mode is the `shadow` attribute (D-79)."""
+    """normal / holiday / failsafe (D-148); shadow mode is the `shadow` attribute (D-79)."""
 
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = MODES
+    _attr_options = [mode.value for mode in Mode]  # noqa: RUF012 - HA's attribute convention
 
     def __init__(self, controller: FloorheatController) -> None:
         super().__init__(controller, "mode")
 
     @property
     def native_value(self) -> str:
-        outputs = self.controller.outputs  # failsafe: v1.2 (P11)
-        return "holiday" if outputs is not None and outputs.holiday_active else "normal"
+        outputs = self.controller.outputs
+        return (Mode.NORMAL if outputs is None else outputs.mode).value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

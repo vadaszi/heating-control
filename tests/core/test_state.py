@@ -72,6 +72,8 @@ def core_states(dts: st.SearchStrategy[datetime]) -> st.SearchStrategy[CoreState
         heat_source_output=trackings,
         last_fault_reminder_on=st.none() | st.dates(),
         reconcile_tick_at=opt_dt,
+        failsafe_active=st.booleans(),
+        long_run_alerted=st.booleans(),
     )
 
 

@@ -30,6 +30,7 @@ from homeassistant.helpers.storage import Store
 from .const import SAVE_DELAY, STORAGE_KEY, STORAGE_VERSION
 from .core.config import (
     GLOBAL_PARAM_SPECS,
+    TIME_OF_DAY_PARAMS,
     ZONE_PARAM_SPECS,
     ConfigError,
     CoreConfig,
@@ -72,7 +73,8 @@ class Settings:
             },
             "global": {
                 **_params_to_dict(self.global_params, GLOBAL_PARAM_SPECS),
-                "sensor_fault_reminder": self.global_params.sensor_fault_reminder.isoformat(),
+                **{key: getattr(self.global_params, key).isoformat() for key in TIME_OF_DAY_PARAMS},
+                "valve_exercise_weekday": self.global_params.valve_exercise_weekday,
             },
             "heating_season": self.heating_season,
             "control_active": self.control_active,
@@ -108,7 +110,7 @@ class Settings:
         global_data = data.get("global")
         zone_params = _migrate_holiday_temp(zone_params, global_data)
         global_params = _params_from(
-            GlobalParams, global_data, GLOBAL_PARAM_SPECS, warnings, _reminder(global_data)
+            GlobalParams, global_data, GLOBAL_PARAM_SPECS, warnings, _other_globals(global_data)
         )
         season = data.get("heating_season", defaults.heating_season)
         control = data.get("control_active", defaults.control_active)
@@ -214,13 +216,21 @@ def _migrate_holiday_temp(
     }
 
 
-def _reminder(data: object) -> dict[str, time]:
-    """The stored SensorFaultReminder, if readable."""
-    value = data.get("sensor_fault_reminder") if isinstance(data, Mapping) else None
-    if isinstance(value, str):
-        with contextlib.suppress(ValueError):
-            return {"sensor_fault_reminder": time.fromisoformat(value)}
-    return {}
+def _other_globals(data: object) -> dict[str, time | int]:
+    """The stored global parameters that are no number spec: the times of day and the
+    valve exercise weekday, as far as readable (missing ones keep their defaults)."""
+    if not isinstance(data, Mapping):
+        return {}
+    values: dict[str, time | int] = {}
+    for key in TIME_OF_DAY_PARAMS:
+        value = data.get(key)
+        if isinstance(value, str):
+            with contextlib.suppress(ValueError):
+                values[key] = time.fromisoformat(value)
+    weekday = data.get("valve_exercise_weekday")
+    if isinstance(weekday, int) and not isinstance(weekday, bool):
+        values["valve_exercise_weekday"] = weekday
+    return values
 
 
 @dataclass(frozen=True)

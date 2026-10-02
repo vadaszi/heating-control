@@ -8,6 +8,10 @@
 - Output mismatch: counted on reconcile ticks only, at most once per `now`; alert once
   after `output_mismatch_alert` ticks, then a recovery event; inactive in shadow mode
   (D-67, D-99).
+- Failsafe started / ended: on the change of `failsafe_active`, so a failsafe already in
+  the stored state is not notified again after a restart; also in shadow mode (D-148).
+- Long run alarm: once when the heat source has been ON for longer than LongRunAlarm,
+  then once when it is OFF again; an unavailable switch ends nothing (D-95, D-150).
 - Active alerts (the alerts sensor): derived from the state, not stored (`active_alerts`).
 """
 
@@ -88,9 +92,88 @@ def fault_events(
     return events, today
 
 
+def failsafe_events(
+    was_active: bool,
+    active: bool,
+    season: bool,
+    params: GlobalParams,
+) -> list[Event]:
+    """Failsafe started / ended (D-148)."""
+    if active == was_active:
+        return []
+    if active:
+        hours = math.ceil(params.failsafe_trigger / timedelta(hours=1))
+        start, end = params.failsafe_window_start, params.failsafe_window_end
+        window = f"{start:%H:%M}\u2013{end:%H:%M}"  # en dash
+        return [
+            Event(
+                kind=EventKind.FAILSAFE_STARTED,
+                message=(
+                    f"Failsafe started: no sensor has sent a valid reading for more than "
+                    f"{hours} h. Every valve opens and the heat source runs daily {window} "
+                    "until a sensor reports again."
+                ),
+            )
+        ]
+    if not season:
+        message = "Failsafe ended: the heating season was switched off."
+    else:
+        message = "Failsafe ended: a sensor reports again; normal control resumes."
+    return [Event(kind=EventKind.FAILSAFE_ENDED, message=message)]
+
+
+def long_run_events(
+    alerted: bool,
+    running: bool,
+    available: bool,
+    last_on: datetime | None,
+    params: GlobalParams,
+    now: datetime,
+    time_zone: tzinfo,
+) -> tuple[bool, list[Event]]:
+    """The long run alarm (D-150); returns whether it is alerted and the events."""
+    if running and last_on is not None and not alerted and now - last_on > params.long_run_alarm:
+        hours = math.ceil(params.long_run_alarm / timedelta(hours=1))
+        since = last_on.astimezone(time_zone)
+        return True, [
+            Event(
+                kind=EventKind.LONG_RUN,
+                message=(
+                    f"The heat source has been running for more than {hours} h "
+                    f"(since {since:%a %H:%M})."
+                ),
+                data={"on_since": last_on.isoformat()},
+            )
+        ]
+    if alerted and available and not running:
+        return False, [
+            Event(
+                kind=EventKind.LONG_RUN_ENDED,
+                message="The heat source is OFF again after its long run.",
+            )
+        ]
+    return alerted, []
+
+
 def active_alerts(config: CoreConfig, state: CoreState) -> list[Event]:
-    """Alerts active in `state`: the heat source first, then per zone in YAML order."""
+    """Alerts active in `state`: the failsafe, the heat source, then per zone in YAML
+    order."""
     alerts: list[Event] = []
+    if state.failsafe_active:
+        alerts.append(
+            Event(
+                kind=EventKind.FAILSAFE_STARTED,
+                message="Failsafe: no sensor sends a valid reading.",
+            )
+        )
+    if state.long_run_alerted:
+        alerts.append(
+            Event(
+                kind=EventKind.LONG_RUN,
+                message="The heat source runs longer than the long run alarm.",
+                data={"on_since": _iso(state.hp_last_on_at)},
+            )
+        )
     if state.heat_source_output.alerted:
         alerts.append(
             Event(

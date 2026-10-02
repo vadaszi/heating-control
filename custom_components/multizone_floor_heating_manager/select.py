@@ -1,19 +1,21 @@
-"""Schedule form selects (docs/design.md §5.3, D-74, D-138): type, zone and days of the
-next schedule, and the existing schedule that "Delete schedule" deletes."""
+"""Selects (docs/design.md §5.3): the valve exercise day (§4, D-149); the schedule form
+(D-74, D-138): type, zone and days of the next schedule, and the existing schedule that
+"Delete schedule" deletes."""
 
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
 from .core.schedule import ScheduleKind
 from .core.units import TemperatureUnit
-from .entity import FormEntity
+from .entity import FormEntity, async_apply
 from .form import ALL_ZONES, selected_schedule
 from .runtime import FloorheatConfigEntry
-from .schedules import DAY_OPTIONS, schedule_label
+from .schedules import DAY_OPTIONS, WEEKDAY_OPTIONS, schedule_label
 
 
 async def async_setup_entry(
@@ -29,8 +31,28 @@ async def async_setup_entry(
             ZoneSelect(controller),
             DaysSelect(controller),
             ExistingScheduleSelect(controller, unit),
+            ValveExerciseDaySelect(controller),
         ]
     )
+
+
+class ValveExerciseDaySelect(FormEntity, SelectEntity):
+    """The weekday of the off-season valve exercise (D-149); a setting."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_options = list(WEEKDAY_OPTIONS)  # noqa: RUF012 - HA's attribute convention
+
+    def __init__(self, controller: FloorheatController) -> None:
+        super().__init__(controller, "valve_exercise_day")
+
+    @property
+    def current_option(self) -> str:
+        return WEEKDAY_OPTIONS[self.controller.settings.global_params.valve_exercise_weekday]
+
+    async def async_select_option(self, option: str) -> None:
+        weekday = WEEKDAY_OPTIONS.index(option)
+        await async_apply(self.controller.async_set_global_params(valve_exercise_weekday=weekday))
+        self.async_write_ha_state()
 
 
 class KindSelect(FormEntity, SelectEntity):

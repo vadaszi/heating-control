@@ -160,31 +160,54 @@ class ZoneParams:
             raise ConfigError(errors)
 
 
+# Global parameters that are a local time of day (§4), not a number.
+TIME_OF_DAY_PARAMS = (
+    "sensor_fault_reminder",
+    "failsafe_window_start",
+    "failsafe_window_end",
+    "valve_exercise_time",
+)
+
+
 @dataclass(frozen=True)
 class GlobalParams:
-    """Global values changed from the UI (§4).
+    """Global values changed from the UI (§4). HolidayTemp is per zone since D-133
+    (`ZoneParams`).
 
-    FailsafeWindow and the valve exercise weekday/time are added with their features in
-    P11. HolidayTemp is per zone since D-133 (`ZoneParams`).
+    Times of day are local wall-clock times (`TIME_OF_DAY_PARAMS`). The failsafe window
+    may cross midnight; start = end is rejected (D-147). `valve_exercise_weekday` is
+    Monday = 0, as `date.weekday()` (D-149).
     """
 
     hp_min_on_time: timedelta = timedelta(minutes=60)
     hp_min_off_time: timedelta = timedelta(minutes=60)
     sensor_fault_timeout: timedelta = timedelta(minutes=60)
-    sensor_fault_reminder: time = time(8, 0)  # local wall-clock time
+    sensor_fault_reminder: time = time(8, 0)
     manual_max_temp: float = 25.0
     manual_resume_delta: float = 1.0
     failsafe_trigger: timedelta = timedelta(hours=24)
+    failsafe_window_start: time = time(10, 0)
+    failsafe_window_end: time = time(15, 0)
+    valve_exercise_weekday: int = 0
+    valve_exercise_time: time = time(8, 0)
     valve_exercise_duration: timedelta = timedelta(minutes=15)
     long_run_alarm: timedelta = timedelta(hours=12)
 
     def __post_init__(self) -> None:
         errors = _param_errors(self, GLOBAL_PARAM_SPECS)
-        reminder: object = self.sensor_fault_reminder
-        if not isinstance(reminder, time):
-            errors.append(f"sensor_fault_reminder: expected a time of day, got {reminder!r}")
-        elif reminder.tzinfo is not None:
-            errors.append("sensor_fault_reminder: must not carry a time zone (local time)")
+        for key in TIME_OF_DAY_PARAMS:
+            value: object = getattr(self, key)
+            if not isinstance(value, time):
+                errors.append(f"{key}: expected a time of day, got {value!r}")
+            elif value.tzinfo is not None:
+                errors.append(f"{key}: must not carry a time zone (local time)")
+        if self.failsafe_window_start == self.failsafe_window_end:
+            errors.append("failsafe window: start and end must differ")
+        weekday: object = self.valve_exercise_weekday
+        if isinstance(weekday, bool) or not isinstance(weekday, int) or not 0 <= weekday <= 6:
+            errors.append(
+                f"valve_exercise_weekday: expected 0 (Monday) to 6 (Sunday), got {weekday!r}"
+            )
         if errors:
             raise ConfigError(errors)
 

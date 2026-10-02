@@ -1,6 +1,6 @@
-"""Time entities: SensorFaultReminder, the local time of the daily sensor fault reminder
-(§3.6, §4); the schedule form's start and end (§5.3, D-74); the holiday end time (§3.4,
-D-142)."""
+"""Time entities (local times): the time-of-day parameters of §4 — SensorFaultReminder
+(§3.6), the failsafe window start and end (D-147) and the valve exercise time (D-149);
+the schedule form's start and end (§5.3, D-74); the holiday end time (§3.4, D-142)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .controller import FloorheatController
+from .core.config import TIME_OF_DAY_PARAMS
 from .entity import FloorheatEntity, FormEntity, async_apply
 from .runtime import FloorheatConfigEntry
 
@@ -24,7 +25,7 @@ async def async_setup_entry(
     controller = entry.runtime_data.controller
     async_add_entities(
         [
-            ReminderTime(controller),
+            *(ParamTime(controller, key) for key in TIME_OF_DAY_PARAMS),
             ScheduleTime(controller, "schedule_start"),
             ScheduleTime(controller, "schedule_end"),
             HolidayEndTime(controller),
@@ -32,11 +33,14 @@ async def async_setup_entry(
     )
 
 
-class ReminderTime(FloorheatEntity, TimeEntity):
+class ParamTime(FloorheatEntity, TimeEntity):
+    """A global time-of-day parameter; a setting (config category)."""
+
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(self, controller: FloorheatController) -> None:
-        super().__init__(controller, "sensor_fault_reminder")
+    def __init__(self, controller: FloorheatController, key: str) -> None:
+        super().__init__(controller, key)
+        self._key = key
 
     @property
     def available(self) -> bool:
@@ -44,11 +48,12 @@ class ReminderTime(FloorheatEntity, TimeEntity):
 
     @property
     def native_value(self) -> time:
-        return self.controller.settings.global_params.sensor_fault_reminder
+        value: time = getattr(self.controller.settings.global_params, self._key)
+        return value
 
     async def async_set_value(self, value: time) -> None:
-        reminder = value.replace(second=0, microsecond=0, tzinfo=None)
-        await async_apply(self.controller.async_set_global_params(sensor_fault_reminder=reminder))
+        local = value.replace(second=0, microsecond=0, tzinfo=None)
+        await async_apply(self.controller.async_set_global_params(**{self._key: local}))
         self.async_write_ha_state()
 
 

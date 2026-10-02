@@ -67,6 +67,8 @@ _ALERT_KINDS = frozenset(
         EventKind.OUTPUT_MISMATCH,
         EventKind.WATCHDOG_FAILED,
         EventKind.WATCHDOG_PARAMS_MISMATCH,
+        EventKind.FAILSAFE_STARTED,
+        EventKind.LONG_RUN,
     }
 )
 MISSING_ENTITIES_NOTIFICATION = f"{DOMAIN}_missing_entities"
@@ -405,6 +407,7 @@ class FloorheatController:
     def _step(self, feedback: dict[str, OutputState], now: datetime, *, tick: bool) -> Outputs:
         inputs = self._inputs(feedback, tick=tick)
         outputs, self._state, events = step(self.config.core, self._state, inputs, now)
+        self._log_exercise(outputs)
         self._outputs = outputs
         self._publish(events)
         self._schedule_save()
@@ -479,6 +482,19 @@ class FloorheatController:
         self._commander.apply(dict.fromkeys(self._pending_off, False), actual, now)
 
     # ------------------------------------------------------------ events and storage
+
+    def _log_exercise(self, outputs: Outputs) -> None:
+        """The valve exercise is only logged, never notified (D-149)."""
+        previous = None if self._outputs is None else self._outputs.valve_exercise
+        zone_id = outputs.valve_exercise
+        if zone_id == previous:
+            return
+        if zone_id is None:
+            _LOGGER.info("Valve exercise finished")
+            return
+        name = next(zone.name for zone in self.config.core.zones if zone.id == zone_id)
+        until = outputs.zones[zone_id].until
+        _LOGGER.info("Valve exercise: the valve of %s is open until %s", name, until)
 
     def _log_event(self, event: CoreEvent) -> None:
         level = logging.WARNING if event.kind in _ALERT_KINDS else logging.INFO

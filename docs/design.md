@@ -286,6 +286,15 @@ Unvalved zones compute state normally; only their output is a no-op.
   As long as at least one sensor is valid, normal control continues.
 - **Action:** all valves open and heat pump request ON daily 10:00–15:00. Only in heating season.
 - **Case 1 — HA alive, all sensors dead:** HA runs the failsafe through its normal control of the outputs. The notification is sent by HA.
+  - **Details (D-147, D-148):**
+    - FailsafeTrigger counts from the newest valid reading of any sensor (a zone that never had one counts from when it started waiting for one, D-93). Example: every sensor stops at 06:00; the zones are `SENSOR_FAULT` from 07:00, the failsafe starts at 06:00 the next day;
+    - a zone still has a valid RoomTemp until SensorFaultTimeout (the last reading counts), so the failsafe also needs every zone in `SENSOR_FAULT` or without any reading yet. A FailsafeTrigger shorter than SensorFaultTimeout therefore waits for the sensor faults;
+    - FailsafeWindow is a local time of day like the schedules: it may cross midnight, start = end is rejected, DST as D-134. Reached inside the window, the failsafe heats for the rest of it;
+    - inside the window every zone has demand, so HpMinOffTime and HpMinOnTime apply as usual (§3.5): a start right after the heat source stopped waits for min OFF, and a start shortly before the window end runs on until min ON has elapsed (D-20 spread). Every valve follows the heat source (open while it runs);
+    - heating season only: off season there is no failsafe and no notification; switching the season ON with every sensor dead for longer than FailsafeTrigger starts it at once; switching it OFF ends it;
+    - shown: the mode sensor is `failsafe` from the start until the first valid reading, also outside the window (failsafe beats holiday, D-16); reason and heat source keys `failsafe_heating` ("Failsafe heating", `until` = the window end) and `failsafe_waiting` ("Failsafe, waiting for the window", `until` = the next window start); held by min OFF, spreading and heat source unavailable keep their own keys; an active alert while it lasts;
+    - notified when it starts and when it ends (on the change, so not again after a restart, like D-98), also in shadow mode;
+    - the first valid reading ends it at once: that zone returns to normal control, the others stay `SENSOR_FAULT`.
 - **Case 2 — HA dead:** each Shelly runs a local script that watches for the HA heartbeat. There is no device-to-device communication.
   - **Valve Shellys (2PM):** after `HeartbeatTimeout` (5 h) without a heartbeat, switch **all valves ON (open)** and keep them open. No clock or schedule is needed; an open valve with the heat pump off has no effect apart from the actuators' holding power.
     - "All valves" = every switch component of the device, unless the script's configuration lists the channels (D-104).
@@ -309,7 +318,7 @@ Unvalved zones compute state normally; only their output is a no-op.
 |---|---|
 | Sensor fault started / daily 08:00 reminder / sensor recovered | push + email |
 | Failsafe entered / left (case 1) | push + email |
-| Heat pump request ON > `LongRunAlarm` | push + email |
+| Heat pump request ON > `LongRunAlarm` / OFF again (D-150) | push + email |
 | Shelly unreachable / watchdog script not running (§5.4) + recovery | push + email |
 | Output not following command (§3.9) + recovery | push + email |
 | Shelly script parameters differ from HA's expected values (§5.4) | push + email |
@@ -334,6 +343,13 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
 - **Valve exercise (D-10, D-25, D-37):** only outside the heating season.
   - Weekly, Monday 08:00; each valve opens for 15 min, one after another; heat pump off.
   - No flow is needed; the goal is mechanical movement of the actuators.
+  - **Details (D-149):**
+    - the day (Monday–Sunday) and the time are settings next to the duration; the time is local (DST as D-134);
+    - the valves open in YAML order; zones without a valve are skipped. Example: four valves from Monday 08:00 to 09:00;
+    - the slots follow from the due time alone: a run missed while HA was down is skipped (no catch-up), and after a restart mid-run the remaining valves continue; a run may go on past midnight;
+    - switching the heating season ON ends it at once (normal control); switching it OFF again within the run resumes the remaining slots;
+    - the open valve's zone shows the reason `valve_exercise` ("Valve exercise", `until` = when that valve closes); the others show "Heating season off". A faulty zone's valve is exercised too;
+    - only logged, never notified. The output mismatch alert (D-67) works as usual.
 
 ### 3.8 Restart behaviour (D-40)
 - After an HA restart, the control state is restored.
@@ -363,7 +379,7 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - The alert is sent once when the count reaches OutputMismatchAlert. The heat source counts while unavailable although D-95 keeps the cycle.
   - In shadow mode the counters are reset without notifications.
 - **Long run alarm (D-42):** notify if the heat pump request is ON > 12 h.
-- **Overshoot logging (D-13):** per zone, track the peak RoomTemp from switch-off until the zone next has demand (at most 6 h). Emit it as an HA event and expose the last value as a zone attribute. This is data for v2.
+  - **Details (D-150):** measured on the actual switch (in shadow mode the commanded one, D-66) from its ON time; an unavailable spell ends nothing (D-95: back ON, it never stopped). One notification when LongRunAlarm is exceeded, an active alert in the alerts sensor until the switch reports OFF, then a "back to normal" notification. Also in shadow mode; not repeated after a restart.
 
 ### 3.10 Hot water production (D-45)
 - No logic change. The heat pump request may stay ON during a hot water run; the heat pump resumes space heating afterwards.
@@ -372,7 +388,7 @@ Push goes to the HA companion app; email via HA's SMTP notify. The notify target
   - HpMinOnTime also counts time spent on hot water.
 
 ### 3.11 Deferred to v2
-- Overshoot learning: switching off early based on the logged overshoot.
+- Overshoot logging and learning: switching off early based on the measured overshoot. Not in 1.0.0 (D-151): it starts with a data design (e.g. the moment the flow really stops, the outdoor temperature, sun), so that the stored data is useful.
 
 ---
 
@@ -395,7 +411,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | ManualResumeDelta | global | 1.0 °C | 0.2–3.0 °C / 0.1 | |
 | HolidayTemp | per zone | 18 °C | 10–25 °C / 0.5 | Same 10 °C floor as BaseSetPoint; per zone since D-133 (was global) |
 | FailsafeTrigger | global | 24 h | 1–72 h / 1 | HA case 1 only; the Shelly value is *script config* (D-73) |
-| FailsafeWindow | global | 10:00–15:00 | time of day | HA case 1 only; the Shelly value is *script config* (D-73) |
+| FailsafeWindow | global | 10:00–15:00 | time of day (start, end) | HA case 1 only; may cross midnight, start ≠ end (D-147); the Shelly value is *script config* (D-73) |
 | HeartbeatTimeout | Shelly | 5 h | | *script config* (D-60, D-73, D-101); HA's expected value is *config* `heartbeat_timeout` (D-121) |
 | Watchdog check interval (Shelly) | Shelly | 60 s | | *script config*; the timeout is acted on within one check (D-102); compared only if *config* `heartbeat_check_interval` is set (D-121) |
 | FailsafeTrigger / FailsafeWindow / uptime cycle (Shelly) | Shelly | 24 h / 10:00–15:00 / 5 h ON, 19 h OFF | | *script config* (D-72, D-73) |
@@ -404,7 +420,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 | ReconcileInterval | global | 60 s | | *config* |
 | OutputMismatchAlert | global | 3 consecutive reconcile intervals | | *config* (D-67) |
 | WatchdogPingInterval | global | 5 min | | *config*; ping URL is a secret |
-| ValveExercise | global | Mon 08:00, 15 min/valve | weekday, time, 5–30 min / 5 | |
+| ValveExercise | global | Mon 08:00, 15 min/valve | weekday, time, 5–30 min / 5 | local time; a missed run is skipped (D-149) |
 | LongRunAlarm | global | 12 h | 2–48 h / 1 | |
 | Heating season | global | ON | | switch |
 | Control active (shadow mode) | global | OFF on first install | | switch, §5.5 |
@@ -469,7 +485,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - in shadow mode, no output commands.
 - **Persistence:** logic state in HA storage (`helpers.storage.Store`), restored at startup (§3.8).
 - **Notifications:** through the notify services listed in the YAML config.
-  - **Targets (D-117):** YAML `notify` lists `notify.<name>` targets. A legacy notify service of that name is called with title and message; otherwise the notify entity with that id gets `notify.send_message`. Calls run as tasks with a timeout; failures are logged and never stop the control. Titles (D-127): "Floor heating: sensor fault" / "sensor fault reminder" / "sensor recovered" / "switch not following command" / "switch following again" / "Shelly watchdog not answering" / "Shelly watchdog answering again" / "Shelly script parameters differ"; the message is the core event text. Targets that don't exist are reported after HA has started (warning + persistent notification). Without targets, events are only logged.
+  - **Targets (D-117):** YAML `notify` lists `notify.<name>` targets. A legacy notify service of that name is called with title and message; otherwise the notify entity with that id gets `notify.send_message`. Calls run as tasks with a timeout; failures are logged and never stop the control. Titles (D-127): "Floor heating: sensor fault" / "sensor fault reminder" / "sensor recovered" / "switch not following command" / "switch following again" / "Shelly watchdog not answering" / "Shelly watchdog answering again" / "Shelly script parameters differ" / "failsafe started" / "failsafe ended" / "heat source long run" / "heat source back to normal" (D-148, D-150); the message is the core event text. Targets that don't exist are reported after HA has started (warning + persistent notification). Without targets, events are only logged.
 - **Heartbeat and watchdog:**
   - sends the heartbeat to the Shellys (§5.4);
   - pings healthchecks.io every `WatchdogPingInterval` (5 min).
@@ -485,14 +501,14 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - Hysteresis and WaitTime number entities.
 - **Global:**
   - heat pump request binary sensor with ON-duration attribute;
-  - heat source sensor (D-141): what the heat source does and why, as fixed keys like the reason sensor: `unavailable`, `season_off`, `held_by_minimum_off_time`, `spreading_heat`, `heating`, `idle` (the first that applies, in this order), with an `until` attribute while the min OFF or min ON timer runs;
-  - mode sensor (normal / holiday / failsafe). Shadow mode is orthogonal: it is shown by the control-active switch and a `shadow` attribute on the mode sensor (D-79);
+  - heat source sensor (D-141): what the heat source does and why, as fixed keys like the reason sensor: `unavailable`, `season_off`, `held_by_minimum_off_time`, `spreading_heat`, `failsafe_heating`, `failsafe_waiting` (D-148), `heating`, `idle` (the first that applies, in this order), with an `until` attribute while the min OFF or min ON timer runs, or the failsafe window end / next start;
+  - mode sensor (normal / holiday / failsafe; failsafe first, D-148). Shadow mode is orthogonal: it is shown by the control-active switch and a `shadow` attribute on the mode sensor (D-79);
   - switches: heating season, control active;
   - number entities for the global parameters;
   - alerts sensor (count + list).
 - **Details (D-114 to D-116):**
   - **devices and names (D-125, replaces the fixed ids of D-115):** one device per zone, "<zone name> floor heating", and one "Floor heating" device for the global entities (device type *service*). Entities follow HA's naming conventions: `has_entity_name`, the entity name names only the value ("Reason", "Hysteresis"), the climate entity has no name of its own (it is the zone device), names and state texts come from translations, settings carry the *config* entity category. HA generates the entity ids from device name + entity name when an entity is first registered (e.g. `climate.living_room_floor_heating`, `sensor.living_room_floor_heating_reason`, `switch.floor_heating_heating_season`); later renames don't change them. Unique ids are built from the zone id and the key (e.g. `living_room_reason`, `heat_request`). Zone devices are assigned to areas in the UI (no YAML key). Full list: [`configuration.md`](configuration.md#entities);
-  - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). SensorFaultReminder is a time entity;
+  - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). The times of day are time entities (SensorFaultReminder; FailsafeWindow start and end, the valve exercise time, D-147, D-149) and the valve exercise day is a select (Monday–Sunday);
   - the entities are views of the adapter's settings and state (D-106): unavailable until the first reconcile run, except the settings (switches, numbers, time), which can be changed at once;
   - climate `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*; attributes `zone_state`, `reason`, `valve` (desired), `calling_zone` (D-116);
   - the heat request binary sensor is ON with the desired request (in shadow mode the simulated one); attributes `on_since` (last actual, or in shadow mode commanded, ON) and `on_duration` in minutes, excluded from the recorder (D-116), both present only while the heat source runs (D-123);
@@ -636,7 +652,7 @@ Docs are updated in the same commit(s) as the code they describe.
 ### 5.10 Phasing
 The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phases** in `docs/implementation-plan.md` (D-82): P0–P7b = v1, P9–P10 = v1.1, P11–P12 = v1.2, and P8 (documentation and release preparation) runs last (D-129). Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
 
-**Releases (D-128, D-129, D-140):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are 0.x.x and set in `manifest.json` only (P7b: 0.7.5, P10: 0.8.0, 0.8.1) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
+**Releases (D-128, D-129, D-140):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are 0.x.x and set in `manifest.json` only (P7b: 0.7.5, P10: 0.8.0, 0.8.1, P11: 0.9.0) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
@@ -656,8 +672,8 @@ The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phas
 - 24 h failsafe (HA case and Shelly 1 window with uptime fallback);
 - valve exercise;
 - long run alarm;
-- healthchecks.io watchdog;
-- overshoot logging.
+- healthchecks.io watchdog.
+- *(Overshoot logging was removed from 1.0.0, D-151.)*
 
 ### 5.11 Development & deployment
 - **Repository and deployment:**
@@ -742,7 +758,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-10 | Valve exercise: yes |
 | D-11 | *(withdrawn — merged into D-27)* |
 | D-12 | Failsafe duty cycle after 24 h; Computherm fallback rejected |
-| D-13 | Overshoot learning deferred to v2; v1 logs data |
+| D-13 | Overshoot learning deferred to v2; v1 logs data *(logging removed from 1.0.0 too, D-151)* |
 | D-14 | No WaitTime when heat pump is already running |
 | D-15 | Sync rule fires on the first calling zone, once per cycle |
 | D-16 | Precedence: failsafe > holiday > manual > auto > base |
@@ -876,9 +892,14 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-144 | Example dashboard layout: a *sections* view with the zone cards in the first two columns, side by side; the parameters move from the separate settings view to a "Setup" card on the daily view, grouped by function (amends §5.7 "parameters on a separate page"); the Mode, Heating season and Control active badges are removed again (they are on the House card; amends D-143) (owner, 2026-10-02) |
 | D-145 | Example dashboard layout, replacing the layout part of D-144: the daily view has one section per zone (max three columns, zones fill the rows) and the house section last; a "Setup" view holds the parameters (one card per group), holiday, schedules and the help card, as rarely used features. The badges stay as in D-144 (owner, 2026-10-02) |
 | D-146 | Example dashboard (owner's own edits): the alerts card is always shown, with "No active alerts." when there are none (amends §5.7 "alerts visible only when active"); the help card is on the daily view after the house section, not on the Setup view (amends D-145) (owner, 2026-10-02) |
+| D-147 | Failsafe case 1: FailsafeTrigger counts from the newest valid reading of any sensor and needs every zone without RoomTemp (sensor fault or no reading yet); reached inside the window, it heats for the rest of it; inside the window every zone has demand, so HpMinOffTime / HpMinOnTime apply; every valve follows the heat source; FailsafeWindow start/end are time entities, may cross midnight, start = end rejected, DST as D-134 (owner, 2026-10-02) |
+| D-148 | Failsafe display: mode `failsafe` from its start until the first valid reading, also outside the window (before holiday); reason / heat source keys `failsafe_heating` ("Failsafe heating") and `failsafe_waiting` ("Failsafe, waiting for the window") with `until`; notified when it starts and ends (not again after a restart), also in shadow mode; active alert; heating season only (season ON with dead sensors starts it at once, season OFF ends it) (owner, 2026-10-02) |
+| D-149 | Valve exercise: day (select) and local time are settings next to the duration; valves in YAML order, unvalved zones skipped, heat source OFF; slots from the due time alone, so a missed run is skipped and a restart mid-run continues; the season ON ends it; reason `valve_exercise` with `until`; logged only, no notification (owner, 2026-10-02) |
+| D-150 | Long run alarm on the actual (shadow: commanded) heat source ON time, kept through an unavailable spell (D-95); one notification, an active alert until the switch reports OFF, then a "back to normal" notification; also in shadow mode (owner, 2026-10-02) |
+| D-151 | Overshoot logging is not part of 1.0.0: data without a design (when the flow really stops, outdoor temperature, sun) is useless; if it is ever done, it starts with that design (§3.11). Amends D-13 (owner, 2026-10-02) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 to D-140 on 2026-09-30 during P10 (owner answers on the P10 plan), D-141 to D-143 on 2026-10-01 for 0.8.1 (owner feedback on 0.8.0), D-144 to D-146 on 2026-10-02 (dashboard layout).
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 to D-140 on 2026-09-30 during P10 (owner answers on the P10 plan), D-141 to D-143 on 2026-10-01 for 0.8.1 (owner feedback on 0.8.0), D-144 to D-146 on 2026-10-02 (dashboard layout), D-147 to D-151 on 2026-10-02 during P11 (owner answers on the P11 plan).
 
 ---
 

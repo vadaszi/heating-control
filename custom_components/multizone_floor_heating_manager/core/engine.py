@@ -12,10 +12,14 @@ Order within a step:
 3. zone transitions (§3.3 rules 1 to 4 and 6, FORCED with its ManualMaxTemp cap, D-38,
    D-70, D-130); outside the heating season every zone without a fault is IDLE (D-24,
    D-97);
-4. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
+4. failsafe case 1 (`failsafe`, D-147): inside its window every zone has demand;
+5. sync rule (rule 5), request with min ON/OFF (§3.5), calling zone (D-65, D-92);
    outside the season the request is OFF at once, overriding min ON (D-68);
-5. valves and reason texts (D-20, D-27, D-64, D-71, D-89, D-135);
-6. notification events and output mismatch tracking (`alerts`: D-67, D-75, D-98, D-99).
+6. valves and reason texts (D-20, D-27, D-64, D-71, D-89, D-135); in the failsafe every
+   valve follows the heat source (D-147); outside the season the valve exercise opens
+   one valve at a time (`exercise`, D-149);
+7. notification events and output mismatch tracking (`alerts`: D-67, D-75, D-98, D-99,
+   D-148, D-150).
 
 A forced zone creates demand but is never the calling zone (D-44, D-131). The adapter
 deletes ended one-shot schedules and switches holiday off (`Outputs`, D-136).
@@ -29,12 +33,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 
-from .alerts import fault_events, track_outputs
+from .alerts import failsafe_events, fault_events, long_run_events, track_outputs
 from .config import CoreConfig, GlobalParams, ZoneConfig, ZoneParams
+from .exercise import ExerciseSlot, exercise_slot
+from .failsafe import Failsafe, failsafe
 from .io import (
     Event,
     HeatSourceStatus,
     Inputs,
+    Mode,
     Outputs,
     OutputState,
     Reason,
@@ -149,15 +156,33 @@ def step(
             zone_state = _set_mode(zone_state, _IDLE)  # no demand at all (D-24, D-97)
         zone_states[zone_config.id] = zone_state
 
+    safe = failsafe(
+        zone_states.values(),
+        any(zone.room is not None for zone in zones.values()),
+        season,
+        params,
+        now,
+        inputs.time_zone,
+    )
+    exercise: ExerciseSlot | None = None
     if season:
         zone_states, request, calling, sync_fired = _cycle(
-            state, source, zones, zone_states, min_on_left, min_off_left
+            state,
+            source,
+            zones,
+            zone_states,
+            min_on_left,
+            min_off_left,
+            failsafe_demand=safe is not None and safe.in_window,
         )
     else:  # the request goes OFF at once, even within min ON (D-68)
         request, calling, sync_fired = _Request(on=False, spreading=False, held=False), None, False
+        exercise = exercise_slot(config, params, now, inputs.time_zone)
 
     valves = {
-        zone_id: season and _valve(zone_states[zone_id], zone, running, request, params)
+        zone_id: _valve(zone_states[zone_id], zone, running, request, params, safe)
+        if season
+        else exercise is not None and exercise.zone_id == zone_id
         for zone_id, zone in zones.items()
     }
     reports: dict[str, ZoneReport] = {}
@@ -173,12 +198,14 @@ def step(
             source.available,
             min_on_end,
             min_off_end,
+            safe,
+            exercise,
         )
         reports[zone_id] = ZoneReport(
             reason=reason, room_temp=zone.room, setpoint=zone.setpoint, until=until
         )
     source_status, source_until = _source_status(
-        request, season, source.available, min_on_end, min_off_end
+        request, season, source.available, min_on_end, min_off_end, safe
     )
     outputs = Outputs(
         heat_source_on=request.on,
@@ -188,6 +215,8 @@ def step(
         ended_schedules=ended_schedules(inputs.schedules, now, inputs.time_zone),
         heat_source_status=source_status,
         heat_source_until=source_until,
+        mode=Mode.FAILSAFE if safe is not None else Mode.HOLIDAY if holiday else Mode.NORMAL,
+        valve_exercise=None if exercise is None else exercise.zone_id,
     )
     events, reminder_on = fault_events(
         config,
@@ -196,6 +225,16 @@ def step(
         params,
         season,
         state.last_fault_reminder_on,
+        now,
+        inputs.time_zone,
+    )
+    events += failsafe_events(state.failsafe_active, safe is not None, season, params)
+    long_run_alerted, long_run = long_run_events(
+        state.long_run_alerted,
+        running,
+        source.available,
+        last_on,
+        params,
         now,
         inputs.time_zone,
     )
@@ -220,8 +259,10 @@ def step(
         heat_source_output=heat_source_output,
         last_fault_reminder_on=reminder_on,
         reconcile_tick_at=tick_at,
+        failsafe_active=safe is not None,
+        long_run_alerted=long_run_alerted,
     )
-    return outputs, new_state, events + output_events
+    return outputs, new_state, events + long_run + output_events
 
 
 def _cycle(
@@ -231,8 +272,11 @@ def _cycle(
     zone_states: dict[str, ZoneState],
     min_on_left: timedelta,
     min_off_left: timedelta,
+    *,
+    failsafe_demand: bool,
 ) -> tuple[dict[str, ZoneState], _Request, str | None, bool]:
-    """Sync rule, request and calling zone in the heating season (§3.3, §3.5)."""
+    """Sync rule, request and calling zone in the heating season (§3.3, §3.5);
+    `failsafe_demand`: inside the failsafe window (D-147)."""
     running = source.running
     # A calling zone only exists while the request is ON, so it continues the cycle.
     calling = state.calling_zone if state.calling_zone in zones else None
@@ -243,7 +287,7 @@ def _cycle(
         calling, sync_fired = None, False  # the heat pump stopped: the cycle is over
     if source.available:
         zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
-    request = _request(zone_states, running, min_on_left, min_off_left)
+    request = _request(zone_states, running, min_on_left, min_off_left, failsafe_demand)
     # While the switch is unavailable it is unknown whether the heat pump still runs:
     # the cycle stays as it is until the switch reports again (D-95).
     if source.available and not request.on:
@@ -251,7 +295,7 @@ def _cycle(
     elif source.available and calling is None:
         calling = _choose_calling_zone(zones, zone_states)
         zone_states, sync_fired = _sync(calling, sync_fired, zones, zone_states)
-        request = _request(zone_states, running, min_on_left, min_off_left)
+        request = _request(zone_states, running, min_on_left, min_off_left, failsafe_demand)
     return zone_states, request, calling, sync_fired
 
 
@@ -433,10 +477,11 @@ def _request(
     running: bool,
     min_on_left: timedelta,
     min_off_left: timedelta,
+    failsafe_demand: bool,
 ) -> _Request:
     """Rule 7 with the heat pump protection of §3.5; a forced zone below its cap is
-    demand too (§3.4)."""
-    demand = any(
+    demand too (§3.4), and so is the failsafe window (D-147)."""
+    demand = failsafe_demand or any(
         zone_state.mode is _HEATING or _forced_demand(zone_state)
         for zone_state in zone_states.values()
     )
@@ -455,8 +500,9 @@ def _source_status(
     available: bool,
     min_on_end: datetime | None,
     min_off_end: datetime | None,
+    safe: Failsafe | None,
 ) -> tuple[HeatSourceStatus, datetime | None]:
-    """The heat source sensor (D-141); the first that applies wins."""
+    """The heat source sensor (D-141, D-148); the first that applies wins."""
     status, until = HeatSourceStatus.IDLE, None
     if not available:
         status = HeatSourceStatus.UNAVAILABLE
@@ -466,6 +512,13 @@ def _source_status(
         status, until = HeatSourceStatus.HELD_BY_MIN_OFF, min_off_end
     elif request.spreading:
         status, until = HeatSourceStatus.SPREADING_HEAT, min_on_end
+    elif safe is not None:
+        status = (
+            HeatSourceStatus.FAILSAFE_HEATING
+            if safe.in_window
+            else HeatSourceStatus.FAILSAFE_WAITING
+        )
+        until = safe.until
     elif request.on:
         status = HeatSourceStatus.HEATING
     return status, until
@@ -490,8 +543,15 @@ def _choose_calling_zone(
 
 
 def _valve(
-    zone_state: ZoneState, zone: _Zone, running: bool, request: _Request, params: GlobalParams
+    zone_state: ZoneState,
+    zone: _Zone,
+    running: bool,
+    request: _Request,
+    params: GlobalParams,
+    safe: Failsafe | None,
 ) -> bool:
+    if safe is not None:
+        return running  # every valve follows the heat source (D-147)
     if zone_state.mode is _HEATING:
         return True  # also while held by min OFF (D-64)
     if zone_state.mode is _FORCED:
@@ -516,9 +576,23 @@ def _reason(
     source_available: bool,
     min_on_end: datetime | None,
     min_off_end: datetime | None,
+    safe: Failsafe | None,
+    exercise: ExerciseSlot | None,
 ) -> tuple[Reason, datetime | None]:
     """Reason for the zone's reason sensor (D-89, D-126) and the end of the timer it
     names, if any (D-123). The key is fixed: it never counts down."""
+    if exercise is not None and exercise.zone_id == zone_id:
+        return Reason.VALVE_EXERCISE, exercise.until  # D-149
+    if safe is not None:  # D-148; min OFF / min ON still apply
+        if not source_available:
+            return Reason.HEAT_SOURCE_UNAVAILABLE, None
+        if request.held:
+            return Reason.HELD_BY_MIN_OFF, min_off_end
+        if request.spreading:
+            return Reason.SPREADING_HEAT, min_on_end
+        if safe.in_window:
+            return Reason.FAILSAFE_HEATING, safe.until
+        return Reason.FAILSAFE_WAITING, safe.until
     if zone_state.mode is _FAULT:
         if not season:
             return Reason.SENSOR_FAULT_SEASON_OFF, None

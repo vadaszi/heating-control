@@ -36,6 +36,9 @@
       },
       "existing_schedule": {
         "default": "mdi:calendar-clock"
+      },
+      "valve_exercise_day": {
+        "default": "mdi:calendar-week"
       }
     },
     "sensor": {
@@ -81,6 +84,15 @@
       },
       "holiday_end_time": {
         "default": "mdi:clock-end"
+      },
+      "failsafe_window_start": {
+        "default": "mdi:clock-start"
+      },
+      "failsafe_window_end": {
+        "default": "mdi:clock-end"
+      },
+      "valve_exercise_time": {
+        "default": "mdi:valve"
       }
     }
   }

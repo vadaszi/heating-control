@@ -1,4 +1,4 @@
-"""§6 acceptance scenarios covered by the core in P2, P3 and P9 (docs/design.md §6).
+"""§6 acceptance scenarios covered by the core in P2, P3, P9 and P11 (docs/design.md §6).
 
 Defaults from §4: SetPoint 22.0, Hysteresis 0.2 (StartTemp 21.8, StopTemp 22.2),
 WaitTime 30 min, HpMinOnTime/HpMinOffTime 60 min, SensorFaultTimeout 60 min,
@@ -15,6 +15,7 @@ from custom_components.multizone_floor_heating_manager.core.config import CoreCo
 from custom_components.multizone_floor_heating_manager.core.io import (
     EventKind,
     HeatSourceStatus,
+    Mode,
     OutputState,
     Reason,
 )
@@ -867,3 +868,63 @@ def test_a28_manual_schedule_does_not_force_a_faulty_zone() -> None:
     assert sc.reason(2) == Reason.SENSOR_FAULT
     assert not sc.hp  # no demand from it
     assert sc.valve(2) is False  # follows the house
+
+
+# ---------------------------------------------------------------- P11: failsafe, exercise
+
+
+def test_a19_every_sensor_silent_for_24_h_starts_the_failsafe() -> None:
+    """A19 (D-147, D-148): HA alive, heating season ON, every sensor silent since 06:00.
+    From 06:00 the next day: failsafe, notified; every valve open and the heat source ON
+    10:00-15:00 daily; the first valid reading ends it at once."""
+    sc = Scenario(3, unvalved=(3,), start="05:00")
+    sc.step()
+    sc.advance_to("06:00")
+    for zone in (1, 2, 3):
+        sc.silence(zone)
+    sc.advance_to("06:01", NEXT_DAY)
+    assert sc.system_mode() is Mode.FAILSAFE
+    assert len(sc.events_of(EventKind.FAILSAFE_STARTED)) == 1
+    assert not sc.hp
+    sc.advance_to("10:00", NEXT_DAY)
+    assert sc.hp
+    assert sc.open_valves() == {"zone_1", "zone_2"}
+    sc.advance_to("15:00", NEXT_DAY)
+    assert not sc.hp
+    assert sc.open_valves() == set()
+    sc.advance_to("10:00", NEXT_DAY + timedelta(days=1))
+    assert sc.hp
+    sc.temp(2, 22.0)
+    sc.step()
+    assert sc.system_mode() is Mode.NORMAL
+    assert len(sc.events_of(EventKind.FAILSAFE_ENDED)) == 1
+
+
+def test_a20_no_failsafe_heating_outside_the_season() -> None:
+    """A20: with the season OFF, dead sensors start no failsafe."""
+    sc = Scenario(2, start="05:00")
+    sc.set_season(False)
+    sc.step()
+    sc.silence(1)
+    sc.silence(2)
+    sc.advance_to("12:00", NEXT_DAY)
+    assert sc.system_mode() is Mode.NORMAL
+    assert sc.events_of(EventKind.FAILSAFE_STARTED) == []
+    assert not sc.hp
+
+
+def test_a20_valve_exercise_on_monday_0800() -> None:
+    """A20 (exercise part, D-149): outside the season, Monday 08:00, each valve opens
+    for 15 min, one after another; the heat source stays OFF."""
+    sc = Scenario(3, start="07:30")
+    sc.set_season(False)
+    sc.step()
+    opened = []  # 07:31 to 08:45
+    for _ in range(75):
+        sc.advance(1)
+        assert not sc.hp
+        assert len(sc.open_valves()) <= 1
+        opened.append(sc.valve_exercise)
+    assert opened[28:30] == [None, "zone_1"]  # 07:59, 08:00
+    assert opened.count("zone_1") == opened.count("zone_2") == opened.count("zone_3") == 15
+    assert opened[-2:] == ["zone_3", None]  # over at 08:45

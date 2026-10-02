@@ -54,7 +54,10 @@
               "season_off": "Heating season off",
               "sensor_fault_season_off": "Sensor fault (heating season off)",
               "forced": "Manual schedule",
-              "forced_too_warm": "Manual schedule, paused: too warm"
+              "forced_too_warm": "Manual schedule, paused: too warm",
+              "failsafe_heating": "Failsafe heating",
+              "failsafe_waiting": "Failsafe, waiting for the window",
+              "valve_exercise": "Valve exercise"
             }
           },
           "valve": {
@@ -141,6 +144,18 @@
       },
       "existing_schedule": {
         "name": "Existing schedule"
+      },
+      "valve_exercise_day": {
+        "name": "Off-season valve exercise day",
+        "state": {
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "saturday": "Saturday",
+          "sunday": "Sunday"
+        }
       }
     },
     "sensor": {
@@ -170,7 +185,10 @@
           "season_off": "Heating season off",
           "sensor_fault_season_off": "Sensor fault (heating season off)",
           "forced": "Manual schedule",
-          "forced_too_warm": "Manual schedule, paused: too warm"
+          "forced_too_warm": "Manual schedule, paused: too warm",
+          "failsafe_heating": "Failsafe heating",
+          "failsafe_waiting": "Failsafe, waiting for the window",
+          "valve_exercise": "Valve exercise"
         },
         "state_attributes": {
           "until": {
@@ -217,6 +235,8 @@
           "season_off": "Heating season off",
           "held_by_minimum_off_time": "Waiting for minimum off time",
           "spreading_heat": "Running for minimum on time (spreading heat)",
+          "failsafe_heating": "Failsafe heating",
+          "failsafe_waiting": "Failsafe, waiting for the window",
           "heating": "Heating",
           "idle": "Off, no heat demand"
         },
@@ -241,6 +261,15 @@
     "time": {
       "sensor_fault_reminder": {
         "name": "Sensor fault reminder time"
+      },
+      "failsafe_window_start": {
+        "name": "Failsafe window start"
+      },
+      "failsafe_window_end": {
+        "name": "Failsafe window end"
+      },
+      "valve_exercise_time": {
+        "name": "Off-season valve exercise time"
       },
       "schedule_start": {
         "name": "Schedule start"

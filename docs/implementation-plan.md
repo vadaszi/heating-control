@@ -17,7 +17,7 @@
 | P7b | HA naming conventions, config entry, rename (0.7.5) | v1 | local + owner check | config entry/device/naming tests, live check |
 | P9 | Core schedules & holiday | v1.1 | cloud | A10–A16, A24, A28 + DST/overlap tests |
 | P10 | HA schedules, holiday, dashboard | v1.1 | cloud | service/form-entity tests, dashboard check |
-| P11 | Core failsafe & maintenance features | v1.2 | cloud | A19, A20 (exercise), long run, overshoot |
+| P11 | Core failsafe & maintenance features | v1.2 | cloud | A19, A20 (exercise), long run |
 | P12 | Heat source failsafe script, watchdog ping | v1.2 | local + cloud | JS S2, S3, S5; bench; ping tests |
 | P8 | Documentation and release preparation (runs last, D-129) | **1.0.0 release** (v1 + v1.1 + v1.2) | local | docs complete, install test |
 
@@ -175,9 +175,10 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
 - **Carried over (from P6):** the number entities for FailsafeTrigger, ValveExercise duration and LongRunAlarm already exist (D-114); wire them into the features. The mode sensor shows `failsafe`. New alert kinds go into `active_alerts` and `notifications.TITLES`.
 - Failsafe case 1: no valid sensor for > FailsafeTrigger → all valves open + HP ON during FailsafeWindow, heating season only; exits on the first valid reading; notifications.
 - Valve exercise: outside the season, Monday 08:00, valves one after another for 15 min each, HP off; aborted if the season turns ON.
-- Long run alarm at 12 h, overshoot logging (event + attribute, max 6 h).
+- Long run alarm at 12 h. ~~Overshoot logging~~ dropped from 1.0.0 (owner, 2026-10-02, D-151).
 - Add the parameters deferred from P1 to `GlobalParams`: FailsafeWindow, ValveExercise weekday/time.
-- **Tests:** A19, A20 (exercise part); the long run alarm fires once; overshoot peak tracking; simulation: all sensors die for 30 h and the failsafe schedule is correct.
+- **Tests:** A19, A20 (exercise part); the long run alarm fires once; simulation: all sensors die for 30 h and the failsafe schedule is correct.
+- *(Done: 2026-10-02 as **0.9.0**; decisions D-147…D-151 from the owner's answers to the P11 plan. Core: `core/failsafe.py` (trigger from the newest reading, window across midnight, DST), `core/exercise.py` (stateless slots from the due time), long run and failsafe events in `core/alerts.py`, `Outputs.mode` / `valve_exercise`, reason and heat source keys `failsafe_heating` / `failsafe_waiting`, reason `valve_exercise`, `GlobalParams` failsafe window and valve exercise day/time. Adapter: time entities for the window and the exercise time, the exercise day select, mode `failsafe`, notification titles, exercise log lines. Tests: `tests/core/test_failsafe.py`, `test_exercise.py`, long run in `test_alerts.py`, A19/A20 in `test_scenarios.py`, a 34 h dead-sensor simulation, `tests/adapter/test_maintenance.py`. Overshoot logging is not in 1.0.0, D-151.)*
 
 ## P12 — Heat source failsafe script, watchdog ping (v1.2)
 - `heat_source_watchdog.js`: after FailsafeTrigger, the daily window by NTP time; with no valid time, the uptime cycle (D-72); only with the season flag ON.
@@ -186,7 +187,7 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
   - Season flag: heat only with `true`; never set (`null`) counts as OFF (D-105).
   - The time comes from `Shelly.getComponentStatus("sys")` (`unixtime`/`time` are `null` without NTP); decide how a clock that becomes valid during the uptime cycle is handled (spec question for P12).
   - Extend the mock with a settable clock (`sys.unixtime`, `sys.time`) for S2, S3, S5.
-- HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); failsafe/exercise/long-run entities and notifications wired up; docs for healthchecks setup (period 5 min, grace 30 min, D-62).
+- HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); docs for healthchecks setup (period 5 min, grace 30 min, D-62). (The failsafe/exercise/long-run entities and notifications were done in P11.)
 - **Tests:** JS with simulated time: S2, S3 (reboot, no clock), S5 (season OFF never heats); adapter: the ping is sent on schedule and a failure never blocks. Bench (owner): S2, S3, S5 with shortened timeouts; stop HA for real and check that the healthchecks alert arrives.
 - **Carried over (Gemini P7/P7b review, finding 1; owner 2026-09-29):** a season change while a heartbeat to the heat source Shelly is in flight is skipped by `_send()` (`_busy`) and only sent after the next reconcile run (≤ 1 ReconcileInterval later, not 5 min as the review says). Send it once the running call finishes (e.g. a pending-season flag checked in the task's `finally`). Test: season flipped during a slow heartbeat reaches the Shelly right after it. The review's finding 3 (a 3 min floor for the D-122 liveness limit) was rejected by the owner; D-122 stays.
 

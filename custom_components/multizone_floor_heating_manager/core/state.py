@@ -78,6 +78,8 @@ class CoreState:
     heat_source_output: OutputTracking = OutputTracking()
     last_fault_reminder_on: date | None = None  # local date of the last daily reminder
     reconcile_tick_at: datetime | None = None  # `now` of the last counted tick (D-99)
+    failsafe_active: bool = False  # failsafe case 1 (D-147, D-148)
+    long_run_alerted: bool = False  # the long run alarm was sent (D-150)
 
     @classmethod
     def initial(cls, config: CoreConfig) -> CoreState:
@@ -102,6 +104,8 @@ class CoreState:
                 else self.last_fault_reminder_on.isoformat()
             ),
             "reconcile_tick_at": _dt_to_str(self.reconcile_tick_at),
+            "failsafe_active": self.failsafe_active,
+            "long_run_alerted": self.long_run_alerted,
         }
 
     @classmethod
@@ -130,6 +134,8 @@ class CoreState:
             heat_source_output=_tracking_from(reader.child("heat_source_output")),
             last_fault_reminder_on=reader.opt_date("last_fault_reminder_on"),
             reconcile_tick_at=reader.opt_datetime("reconcile_tick_at"),
+            failsafe_active=reader.boolean("failsafe_active", default=False),
+            long_run_alerted=reader.boolean("long_run_alerted", default=False),
         )
 
 

@@ -26,7 +26,11 @@ from itertools import pairwise
 import pytest
 
 from custom_components.multizone_floor_heating_manager.core.config import GlobalParams, ZoneParams
-from custom_components.multizone_floor_heating_manager.core.io import EventKind, HeatSourceStatus
+from custom_components.multizone_floor_heating_manager.core.io import (
+    EventKind,
+    HeatSourceStatus,
+    Mode,
+)
 from custom_components.multizone_floor_heating_manager.core.schedule import check_new_schedule
 from custom_components.multizone_floor_heating_manager.core.state import ZoneMode
 
@@ -106,7 +110,11 @@ def check_invariants(
             assert not sample.hp_running, f"heat pump running at {sample.now}"
 
     # The heat source sensor agrees with the request (D-141; the switch is always there).
-    requesting = {HeatSourceStatus.HEATING, HeatSourceStatus.SPREADING_HEAT}
+    requesting = {
+        HeatSourceStatus.HEATING,
+        HeatSourceStatus.SPREADING_HEAT,
+        HeatSourceStatus.FAILSAFE_HEATING,
+    }
     for sample in samples:
         if not sample.season:
             assert sample.source_status == HeatSourceStatus.SEASON_OFF, sample.now
@@ -347,3 +355,34 @@ def test_week_with_schedules_and_holiday() -> None:
     assert [s.id for s in sc.schedules] == ["s1", "s2", "s5", "s6"]  # one-shots deleted
     assert _cycles(trace) >= 10
     check_invariants(sc, trace, house)
+
+
+def test_every_sensor_dead_for_34_hours() -> None:
+    """Failsafe case 1 (A19, D-147): every sensor reports for the last time at 05:59 on
+    day 1 and again at 16:00 on day 2. The failsafe starts 24 h after the last reading
+    (06:00 on day 2), heats only in its 10:00-15:00 window and ends with the first
+    reading."""
+    start, minutes = 6 * 60, 34 * 60
+    sc = Scenario(5, unvalved=[5], start="00:00")
+    house = _reference_house()
+    dropouts = [Dropout(zone, start=start, minutes=minutes) for zone in house]
+    trace = simulate(sc, house, 3 * 24 * 60, dropouts=dropouts)
+    samples = trace.samples
+
+    failsafe = [m for m, s in enumerate(samples) if s.mode == Mode.FAILSAFE]
+    assert failsafe == list(range(start + 24 * 60, start + minutes))  # 06:00 to 15:59
+    window = range(34 * 60, 39 * 60)  # day 2, 10:00 to 15:00
+    for minute in range(start + 2 * 60, start + minutes):  # the faults are settled
+        sample = samples[minute]
+        assert sample.hp_running == (minute in window), sample.now
+    events = [(s.now, e.kind) for s in samples for e in s.events]
+    failsafe_events = [
+        (now.day, now.hour, now.minute, kind)
+        for now, kind in events
+        if kind in (EventKind.FAILSAFE_STARTED, EventKind.FAILSAFE_ENDED)
+    ]
+    assert failsafe_events == [
+        (13, 6, 0, EventKind.FAILSAFE_STARTED),
+        (13, 16, 0, EventKind.FAILSAFE_ENDED),
+    ]
+    check_invariants(sc, trace, house, skip_all=[range(start, start + minutes + RECOVERY)])

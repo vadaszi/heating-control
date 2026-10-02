@@ -51,6 +51,16 @@ GLOBAL_ENTITIES = {
         "sensor_fault_reminder",
         EntityCategory.CONFIG,
     ),
+    "time.floor_heating_failsafe_window_start": ("failsafe_window_start", EntityCategory.CONFIG),
+    "time.floor_heating_failsafe_window_end": ("failsafe_window_end", EntityCategory.CONFIG),
+    "time.floor_heating_off_season_valve_exercise_time": (
+        "valve_exercise_time",
+        EntityCategory.CONFIG,
+    ),
+    "select.floor_heating_off_season_valve_exercise_day": (
+        "valve_exercise_day",
+        EntityCategory.CONFIG,
+    ),
     **{
         f"number.floor_heating_{name}": (key, EntityCategory.CONFIG)
         for key, name in GLOBAL_NUMBERS.items()
@@ -397,7 +407,10 @@ async def test_shadow_trial_with_stand_in_switches(world: World, hass: HomeAssis
     assert {s.state for s in hass.states.async_all("switch") if "valve" in s.entity_id} == {"off"}
     history = world.controller.state
     assert history.hp_last_on_at is not None  # the simulated heat pump ran
-    assert _state(hass, "sensor.floor_heating_alerts").state == "0"
+    # Zone 1 never warms up, so the simulated heat source runs all day: the long run
+    # alarm also works in shadow mode (D-150).
+    alerts = _state(hass, "sensor.floor_heating_alerts")
+    assert [a["kind"] for a in alerts.attributes["alerts"]] == ["long_run"]
 
     await _call(hass, "switch", "turn_on", "switch.floor_heating_control_active")
     world.temp(1, 21.5)

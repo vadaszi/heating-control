@@ -35,6 +35,10 @@ TITLES = {
     EventKind.WATCHDOG_FAILED: "Floor heating: Shelly watchdog not answering",
     EventKind.WATCHDOG_RECOVERED: "Floor heating: Shelly watchdog answering again",
     EventKind.WATCHDOG_PARAMS_MISMATCH: "Floor heating: Shelly script parameters differ",
+    EventKind.FAILSAFE_STARTED: "Floor heating: failsafe started",
+    EventKind.FAILSAFE_ENDED: "Floor heating: failsafe ended",
+    EventKind.LONG_RUN: "Floor heating: heat source long run",
+    EventKind.LONG_RUN_ENDED: "Floor heating: heat source back to normal",
 }
 
 

@@ -31,6 +31,7 @@ from custom_components.multizone_floor_heating_manager.core.io import (
     Event,
     EventKind,
     Inputs,
+    Mode,
     Outputs,
     OutputState,
     ZoneInput,
@@ -313,6 +314,15 @@ class Scenario:
     def setpoint(self, zone: ZoneRef) -> float:
         """Effective SetPoint (§3.4)."""
         return self._out().zones[zone_id(zone)].setpoint
+
+    def system_mode(self) -> Mode:
+        """The mode sensor: normal / holiday / failsafe (D-148)."""
+        return self._out().mode
+
+    @property
+    def valve_exercise(self) -> str | None:
+        """The zone whose valve is being exercised (D-149)."""
+        return self._out().valve_exercise
 
     @property
     def holiday_active(self) -> bool:

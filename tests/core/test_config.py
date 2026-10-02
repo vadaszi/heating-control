@@ -13,6 +13,7 @@ from custom_components.multizone_floor_heating_manager.core.config import (
     GLOBAL_PARAM_SPECS,
     PARAM_SPECS,
     SENSOR_OFFSET_SPEC,
+    TIME_OF_DAY_PARAMS,
     ZONE_PARAM_SPECS,
     ConfigError,
     CoreConfig,
@@ -59,6 +60,9 @@ def test_defaults_match_spec_section_4() -> None:
     assert not hasattr(glob, "holiday_temp")  # per zone since D-133
     assert zone.holiday_temp == 18.0
     assert glob.failsafe_trigger == timedelta(hours=24)
+    assert (glob.failsafe_window_start, glob.failsafe_window_end) == (time(10), time(15))
+    assert glob.valve_exercise_weekday == 0  # Monday
+    assert glob.valve_exercise_time == time(8, 0)
     assert glob.valve_exercise_duration == timedelta(minutes=15)
     assert glob.long_run_alarm == timedelta(hours=12)
 
@@ -114,7 +118,10 @@ def test_param_specs_cover_every_ranged_field() -> None:
     zone_fields = {f.name for f in dataclasses.fields(ZoneParams)}
     global_fields = {f.name for f in dataclasses.fields(GlobalParams)}
     assert set(ZONE_PARAM_SPECS) == zone_fields
-    assert set(GLOBAL_PARAM_SPECS) == global_fields - {"sensor_fault_reminder"}
+    assert set(GLOBAL_PARAM_SPECS) == global_fields - {
+        *TIME_OF_DAY_PARAMS,
+        "valve_exercise_weekday",
+    }
     assert set(PARAM_SPECS) == set(ZONE_PARAM_SPECS) | set(GLOBAL_PARAM_SPECS) | {"sensor_offset"}
 
 
@@ -182,6 +189,36 @@ def test_sensor_fault_reminder_must_be_local_wall_clock() -> None:
 
     with pytest.raises(ConfigError, match="sensor_fault_reminder: must not carry a time zone"):
         GlobalParams(sensor_fault_reminder=time(8, 0, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    "key", ["failsafe_window_start", "failsafe_window_end", "valve_exercise_time"]
+)
+def test_times_of_day_are_local_times(key: str) -> None:
+    from datetime import UTC
+
+    with pytest.raises(ConfigError, match=f"{key}: expected a time of day"):
+        GlobalParams(**{key: "10:00"})  # type: ignore[arg-type]
+    with pytest.raises(ConfigError, match=f"{key}: must not carry a time zone"):
+        GlobalParams(**{key: time(10, 0, tzinfo=UTC)})  # type: ignore[arg-type]
+
+
+def test_failsafe_window_may_cross_midnight_but_not_be_empty() -> None:
+    """D-147: start = end is rejected; an end before the start crosses midnight."""
+    GlobalParams(failsafe_window_start=time(22), failsafe_window_end=time(3))
+    with pytest.raises(ConfigError, match="failsafe window: start and end must differ"):
+        GlobalParams(failsafe_window_start=time(10), failsafe_window_end=time(10))
+
+
+@pytest.mark.parametrize("weekday", [-1, 7, True, 1.0, "mon"])
+def test_valve_exercise_weekday_range(weekday: object) -> None:
+    with pytest.raises(ConfigError, match="valve_exercise_weekday: expected 0"):
+        GlobalParams(valve_exercise_weekday=weekday)  # type: ignore[arg-type]
+
+
+def test_valve_exercise_weekday_accepts_every_day() -> None:
+    for weekday in range(7):
+        assert GlobalParams(valve_exercise_weekday=weekday).valve_exercise_weekday == weekday
 
 
 def test_all_param_errors_reported_together() -> None:

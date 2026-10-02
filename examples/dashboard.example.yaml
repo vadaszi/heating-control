@@ -193,6 +193,10 @@ views:
               - **Running for minimum on time (spreading heat)**: no zone needs heat any more, but the heat source must run until its minimum on time (the "Until" time); the valves open to spread the heat.
               - **Heating season off**: the heating season switch is off.
               - **Switch unavailable**: the heat source switch does not report (e.g. a Wi-Fi problem). It counts as off, but it is not switched off because of that.
+              - **Failsafe heating**: no sensor has sent a valid reading for longer than the failsafe delay, so the heat source runs in the daily failsafe window (until the "Until" time) with every valve open.
+              - **Failsafe, waiting for the window**: failsafe, outside the daily window; the next window starts at the "Until" time.
+
+              **Mode**: **Normal**; **Holiday** while holiday is on; **Failsafe** from when no sensor has sent a valid reading for longer than the failsafe delay until the first sensor reports again (heating season only).
 
               **Reason** of a zone (the "Until" row shows when a running timer ends):
               - **Idle**: warm enough; nothing to do.
@@ -209,6 +213,9 @@ views:
               - **Sensor fault (heating season off)**: both of the above.
               - **Manual schedule**: a manual schedule forces the zone to heat until the window ends.
               - **Manual schedule, paused: too warm**: a manual schedule runs, but the zone reached the manual max temperature. It stays closed until it is below that temperature minus the manual resume difference.
+              - **Failsafe heating**: no sensor has sent a valid reading for longer than the failsafe delay. In the daily failsafe window every valve is open and the heat source runs, until the "Until" time.
+              - **Failsafe, waiting for the window**: failsafe, but outside the daily window. The next window starts at the "Until" time.
+              - **Valve exercise**: outside the heating season, the valves are opened one after another once a week so the actuators keep moving. This valve is open until the "Until" time; the heat source stays off.
 
   - title: Setup
     path: floor-heating-setup
@@ -266,6 +273,10 @@ views:
                 name: Sensor fault reminder time
               - entity: number.floor_heating_failsafe_delay
                 name: Failsafe delay
+              - entity: time.floor_heating_failsafe_window_start
+                name: Failsafe window start
+              - entity: time.floor_heating_failsafe_window_end
+                name: Failsafe window end
       - type: grid
         cards:
           - type: entities
@@ -282,8 +293,12 @@ views:
             title: Off season
             show_header_toggle: false
             entities:
+              - entity: select.floor_heating_off_season_valve_exercise_day
+                name: Valve exercise day
+              - entity: time.floor_heating_off_season_valve_exercise_time
+                name: Valve exercise time
               - entity: number.floor_heating_off_season_valve_exercise_duration
-                name: Valve exercise duration
+                name: Valve exercise duration per valve
       - type: grid
         cards:
           # Holiday: start/stop, end, each zone's holiday temperature, and the stored end

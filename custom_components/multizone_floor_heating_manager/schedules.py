@@ -19,6 +19,7 @@ from .core.units import TemperatureUnit, from_celsius
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Monday = 0
 _WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+WEEKDAY_OPTIONS = tuple(name.lower() for name in _WEEKDAY_NAMES)  # select options, Monday = 0
 
 _DASH = "\u2013"  # en dash between the times and in "Monday-Friday"
 
@@ -32,7 +33,7 @@ DAY_OPTIONS: dict[str, frozenset[int]] = {
     "every_day": WEEKDAYS,
     "monday_to_friday": WORKDAYS,
     "saturday_and_sunday": WEEKEND,
-    **{name.lower(): frozenset({day}) for day, name in enumerate(_WEEKDAY_NAMES)},
+    **{name: frozenset({day}) for day, name in enumerate(WEEKDAY_OPTIONS)},
 }
 
 

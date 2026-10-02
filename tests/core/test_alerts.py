@@ -414,3 +414,82 @@ def test_active_alerts_list_faults_and_mismatches() -> None:
 def test_active_alerts_ignore_state_of_unknown_zones() -> None:
     config = make_config(1)
     assert active_alerts(config, CoreState()) == []
+
+
+# ---------------------------------------------------------------- long run alarm (D-150)
+
+
+def _long_run(**kwargs: object) -> Scenario:
+    """Zone 1 stays cold, so the heat source runs from 06:30 on."""
+    sc = Scenario(2, temps={1: 20.0}, **kwargs)  # type: ignore[arg-type]
+    sc.step()
+    sc.advance_to("06:30")
+    assert sc.hp
+    return sc
+
+
+def test_long_run_alarm_once_then_back_to_normal() -> None:
+    sc = _long_run()
+    sc.advance_to("18:30")
+    assert sc.events_of(EventKind.LONG_RUN) == []  # exactly 12 h: not more yet
+    sc.advance(1)
+    [alarm] = sc.events_of(EventKind.LONG_RUN)
+    assert alarm.message == "The heat source has been running for more than 12 h (since Mon 06:30)."
+    assert alarm.data == {"on_since": at("06:30").isoformat()}
+    assert [a.kind for a in active_alerts(sc.config, sc.state)] == [EventKind.LONG_RUN]
+    sc.advance_to("20:00")
+    assert len(sc.events_of(EventKind.LONG_RUN)) == 1
+    sc.temp(1, 22.5)
+    sc.temp(2, 22.5)  # warm: no sync join
+    sc.step()
+    assert not sc.hp
+    [ended] = sc.events_of(EventKind.LONG_RUN_ENDED)
+    assert ended.message == "The heat source is OFF again after its long run."
+    assert active_alerts(sc.config, sc.state) == []
+
+
+def test_long_run_alarm_uses_its_setting_and_local_time() -> None:
+    params = GlobalParams(long_run_alarm=timedelta(hours=2))
+    sc = _long_run(params=params, tz=ZoneInfo("Europe/Budapest"))
+    sc.advance_to("08:31")
+    [alarm] = sc.events_of(EventKind.LONG_RUN)
+    assert "more than 2 h (since Mon 06:30)" in alarm.message
+
+
+def test_long_run_alarm_survives_an_unavailable_spell() -> None:
+    """D-95: unavailable while ON ends nothing; back ON, it never stopped; back OFF, the
+    run is over."""
+    sc = _long_run()
+    sc.advance_to("18:31")
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(5)
+    assert sc.events_of(EventKind.LONG_RUN_ENDED) == []
+    assert sc.state.long_run_alerted
+    sc.set_hp_actual(OutputState.ON, follows=True)
+    sc.advance(5)
+    assert sc.events_of(EventKind.LONG_RUN_ENDED) == []
+    assert len(sc.events_of(EventKind.LONG_RUN)) == 1
+    sc.set_hp_actual(OutputState.UNAVAILABLE)
+    sc.advance(1)
+    sc.set_hp_actual(OutputState.OFF)
+    sc.step()
+    assert len(sc.events_of(EventKind.LONG_RUN_ENDED)) == 1
+
+
+def test_long_run_alarm_in_shadow_mode_and_not_repeated_after_restart() -> None:
+    sc = _long_run()
+    sc.control_active = False
+    sc.advance_to("18:31")
+    assert len(sc.events_of(EventKind.LONG_RUN)) == 1
+    sc.restart(downtime=5)
+    sc.step()
+    assert len(sc.events_of(EventKind.LONG_RUN)) == 1
+    assert sc.state.long_run_alerted
+
+
+def test_long_run_ends_when_the_season_stops_it() -> None:
+    sc = _long_run()
+    sc.advance_to("18:31")
+    sc.set_season(False)
+    sc.step()
+    assert len(sc.events_of(EventKind.LONG_RUN_ENDED)) == 1
