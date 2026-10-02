@@ -56,7 +56,7 @@
               "forced": "Manual schedule",
               "forced_too_warm": "Manual schedule, paused: too warm",
               "failsafe_heating": "Failsafe heating",
-              "failsafe_waiting": "Failsafe, waiting for the window",
+              "failsafe_waiting": "Failsafe, waiting for operation start",
               "valve_exercise": "Valve exercise"
             }
           },
@@ -103,7 +103,7 @@
         "name": "Holiday temperature"
       },
       "failsafe_trigger": {
-        "name": "Failsafe delay"
+        "name": "Failsafe operation delay"
       },
       "valve_exercise_duration": {
         "name": "Off-season valve exercise duration"
@@ -187,7 +187,7 @@
           "forced": "Manual schedule",
           "forced_too_warm": "Manual schedule, paused: too warm",
           "failsafe_heating": "Failsafe heating",
-          "failsafe_waiting": "Failsafe, waiting for the window",
+          "failsafe_waiting": "Failsafe, waiting for operation start",
           "valve_exercise": "Valve exercise"
         },
         "state_attributes": {
@@ -236,7 +236,7 @@
           "held_by_minimum_off_time": "Waiting for minimum off time",
           "spreading_heat": "Running for minimum on time (spreading heat)",
           "failsafe_heating": "Failsafe heating",
-          "failsafe_waiting": "Failsafe, waiting for the window",
+          "failsafe_waiting": "Failsafe, waiting for operation start",
           "heating": "Heating",
           "idle": "Off, no heat demand"
         },
@@ -263,10 +263,10 @@
         "name": "Sensor fault reminder time"
       },
       "failsafe_window_start": {
-        "name": "Failsafe window start"
+        "name": "Failsafe operation start"
       },
       "failsafe_window_end": {
-        "name": "Failsafe window end"
+        "name": "Failsafe operation stop"
       },
       "valve_exercise_time": {
         "name": "Off-season valve exercise time"

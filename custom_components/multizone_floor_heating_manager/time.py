@@ -1,6 +1,7 @@
 """Time entities (local times): the time-of-day parameters of §4 — SensorFaultReminder
-(§3.6), the failsafe window start and end (D-147) and the valve exercise time (D-149);
-the schedule form's start and end (§5.3, D-74); the holiday end time (§3.4, D-142)."""
+(§3.6), the failsafe operation start and stop (FailsafeWindow, D-147, D-152) and the
+valve exercise time (D-149); the schedule form's start and end (§5.3, D-74); the holiday
+end time (§3.4, D-142)."""
 
 from __future__ import annotations
 

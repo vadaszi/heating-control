@@ -209,7 +209,7 @@ Every notification goes to every `notify` target, with a title and a message:
 | Floor heating: Shelly watchdog not answering | `heartbeat_fail_alert` heartbeats in a row to a Shelly failed; the message names the cause. Also in shadow mode. |
 | Floor heating: Shelly watchdog answering again | That Shelly answers again. |
 | Floor heating: Shelly script parameters differ | A script reports a `heartbeat_timeout_s` (or `check_interval_s`) other than expected. Once, until the values match again. |
-| Floor heating: failsafe started | No sensor has sent a valid reading for longer than the failsafe delay (heating season only): every valve opens and the heat source runs in the daily failsafe window. Also in shadow mode. |
+| Floor heating: failsafe started | No sensor has sent a valid reading for longer than the failsafe operation delay (heating season only): every valve opens and the heat source runs daily from failsafe operation start to stop. Also in shadow mode. |
 | Floor heating: failsafe ended | A sensor reports again (normal control resumes), or the heating season was switched off. |
 | Floor heating: heat source long run | The heat source has been running for longer than the long run alarm. Also in shadow mode. |
 | Floor heating: heat source back to normal | After a long run alarm, the heat source switch reports OFF. |
@@ -220,7 +220,7 @@ A target that is a notify service (the companion app, SMTP) is called as `notify
 
 ## Entities
 
-The entities follow Home Assistant's naming conventions. Each belongs to a zone device ("<zone name> floor heating") or to the "Floor heating" device, and its name names only the value (e.g. "Reason"). Home Assistant generates each entity id from the device name and the entity name when the entity is first created, e.g. `sensor.living_room_floor_heating_reason`. After that the id is kept, also when you rename the zone; you can change it yourself in the entity settings. The ids below are the generated ones, for a zone named "Living room" (`<zone>` = `living_room`). Values changed through these entities are stored by the integration and survive restarts.
+The entities follow Home Assistant's naming conventions. Each belongs to a zone device ("<zone name> floor heating") or to the "Floor heating" device, and its name names only the value (e.g. "Reason"). Home Assistant generates each entity id from the device name and the entity name when the entity is first created, e.g. `sensor.living_room_floor_heating_reason`. After that the id is kept, also when you rename the zone; you can change it yourself in the entity settings. The ids below are the generated ones, for a zone named "Living room" (`<zone>` = `living_room`). An entity renamed in a later version keeps the id it got when it was first created (e.g. "Failsafe delay", renamed "Failsafe operation delay" in 0.9.1, stays `number.floor_heating_failsafe_delay` on an installation that had it). Values changed through these entities are stored by the integration and survive restarts.
 
 Settings (the parameter numbers, the times of day and the valve exercise day) have the *configuration* category: HA shows them under "Configuration" on the device page and leaves them out of automatically generated dashboards.
 
@@ -254,8 +254,8 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 | `sensor_fault_season_off` | Sensor fault (heating season off) | Both. |
 | `forced` | Manual schedule | A manual schedule runs: valve open and heat demand regardless of the temperature (`until`: when the manual windows end). |
 | `forced_too_warm` | Manual schedule, paused: too warm | A manual schedule runs, but the zone reached the manual max temperature: closed, no demand, until it is below the manual max temperature minus the manual resume difference. |
-| `failsafe_heating` | Failsafe heating | No sensor has sent a valid reading for longer than the failsafe delay; inside the daily failsafe window every valve is open and the heat source runs (`until`: the window end). |
-| `failsafe_waiting` | Failsafe, waiting for the window | Failsafe, outside the window (`until`: the next window start). |
+| `failsafe_heating` | Failsafe heating | No sensor has sent a valid reading for longer than the failsafe operation delay; between failsafe operation start and stop every valve is open and the heat source runs (`until`: the operation stop). |
+| `failsafe_waiting` | Failsafe, waiting for operation start | Failsafe, outside the daily operation time (`until`: the next operation start). |
 | `valve_exercise` | Valve exercise | Outside the heating season, the weekly valve exercise has this zone's valve open (`until`: when it closes). |
 
 ### Global (device "Floor heating")
@@ -263,8 +263,8 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 | Entity (name) | Shows / changes |
 |---|---|
 | `binary_sensor.floor_heating_heat_request` (Heat request) | The heat source request the integration wants (in shadow mode: the simulated one). While the heat source runs: attributes `on_since` and `on_duration` (minutes; not kept in the history). Both are left out while it is not running. |
-| `sensor.floor_heating_heat_source` (Heat source) | What the heat source does and why: `heating` (Heating), `idle` (Off, no heat demand), `held_by_minimum_off_time` (Waiting for minimum off time: a zone wants heat, but the heat source stopped less than its minimum off time ago), `spreading_heat` (Running for minimum on time (spreading heat): no zone needs heat, but the minimum on time has not passed), `season_off` (Heating season off), `unavailable` (Switch unavailable), `failsafe_heating` (Failsafe heating), `failsafe_waiting` (Failsafe, waiting for the window). If several apply, the first in this order wins: unavailable, season off, waiting, spreading, failsafe heating, failsafe waiting, heating, off. While waiting or spreading, the attribute `until` holds the end of that timer, in the failsafe the window end or the next window start; otherwise there is no `until`. In shadow mode it shows the simulated heat source. |
-| `sensor.floor_heating_mode` (Mode) | `normal`; `holiday` while holiday is on; `failsafe` from when no sensor has sent a valid reading for longer than the failsafe delay until the first one reports again (heating season only; failsafe wins over holiday). Attribute `shadow`: true while Control active is OFF. |
+| `sensor.floor_heating_heat_source` (Heat source) | What the heat source does and why: `heating` (Heating), `idle` (Off, no heat demand), `held_by_minimum_off_time` (Waiting for minimum off time: a zone wants heat, but the heat source stopped less than its minimum off time ago), `spreading_heat` (Running for minimum on time (spreading heat): no zone needs heat, but the minimum on time has not passed), `season_off` (Heating season off), `unavailable` (Switch unavailable), `failsafe_heating` (Failsafe heating), `failsafe_waiting` (Failsafe, waiting for operation start). If several apply, the first in this order wins: unavailable, season off, waiting, spreading, failsafe heating, failsafe waiting, heating, off. While waiting or spreading, the attribute `until` holds the end of that timer, in the failsafe the operation stop or the next operation start; otherwise there is no `until`. In shadow mode it shows the simulated heat source. |
+| `sensor.floor_heating_mode` (Mode) | `normal`; `holiday` while holiday is on; `failsafe` from when no sensor has sent a valid reading for longer than the failsafe operation delay until the first one reports again (heating season only; failsafe wins over holiday). Attribute `shadow`: true while Control active is OFF. |
 | `sensor.floor_heating_schedules` (Schedules) | Number of schedules; attribute `schedules` lists them, each with `id`, `label` (e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`), `kind`, `zones` (zone ids or `all`), `date` (one-shot) or `weekdays` (`mon` … `sun`), `start`, `end`, `temperature` (auto, in your unit system). See [Schedules and holiday](#schedules-and-holiday). |
 | `sensor.floor_heating_alerts` (Alerts) | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults, switches not following, Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`), the failsafe (`failsafe_started`) and a long run (`long_run`). |
 | `switch.floor_heating_heating_season` (Heating season) | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
@@ -299,8 +299,8 @@ These entities are a form for adding and deleting schedules from the dashboard, 
 | `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) | v1 |
 | `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit), v1.1 (manual schedules cap) |
 | `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) | v1.1 (manual schedules) |
-| `number.floor_heating_failsafe_delay` (Failsafe delay) | 1–72 h (24) | v1.2 (failsafe) |
-| `time.floor_heating_failsafe_window_start` (Failsafe window start), `time.floor_heating_failsafe_window_end` (Failsafe window end) | local time (10:00–15:00) | v1.2 (failsafe) |
+| `number.floor_heating_failsafe_operation_delay` (Failsafe operation delay) | 1–72 h (24) | v1.2 (failsafe) |
+| `time.floor_heating_failsafe_operation_start` (Failsafe operation start), `time.floor_heating_failsafe_operation_stop` (Failsafe operation stop) | local time (10:00–15:00) | v1.2 (failsafe) |
 | `select.floor_heating_off_season_valve_exercise_day` (Off-season valve exercise day) | Monday–Sunday (Monday) | v1.2 (valve exercise) |
 | `time.floor_heating_off_season_valve_exercise_time` (Off-season valve exercise time) | local time (08:00) | v1.2 (valve exercise) |
 | `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) | v1.2 (valve exercise) |
@@ -308,7 +308,7 @@ These entities are a form for adding and deleting schedules from the dashboard, 
 
 The minimum on/off times can never be set below 30 minutes: they protect the heat pump from short cycles. Temperatures are shown in your HA unit system.
 
-**Failsafe** (no valid reading from any sensor): it starts when the newest reading of any sensor is older than the failsafe delay and every zone is in sensor fault (or has had no reading yet), in the heating season only. Inside the daily window every valve opens and the heat source runs; the minimum on and off times still apply. The window may cross midnight (e.g. 22:00–03:00); start and end must differ. The first valid reading ends the failsafe at once. This is the case where HA still runs; if HA itself stops, the Shelly watchdog scripts act instead ([Shelly scripts](shelly-scripts.md)).
+**Failsafe** (no valid reading from any sensor): it starts when the newest reading of any sensor is older than the failsafe operation delay and every zone is in sensor fault (or has had no reading yet), in the heating season only. Daily from failsafe operation start to stop every valve opens and the heat source runs; the minimum on and off times still apply. The operation time may cross midnight (e.g. 22:00–03:00); start and stop must differ. The first valid reading ends the failsafe at once. This is the case where HA still runs; if HA itself stops, the Shelly watchdog scripts act instead ([Shelly scripts](shelly-scripts.md)).
 
 **Valve exercise** (heating season off): once a week on the set day and time, the valves open one after another in the order of the zones in the YAML, each for the exercise duration, with the heat source off (zones without a valve are skipped). If HA is not running at that time, the run is skipped until the next week; after a restart during a run, the remaining valves continue. Switching the heating season on ends it.
 

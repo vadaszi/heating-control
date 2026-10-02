@@ -16,7 +16,7 @@ Two views, both of the "sections" type (each section is a column; Home Assistant
 - **What the states and reasons mean**, after the house: a card that explains every heat source status, the mode, every zone state and reason in plain words. It is meant for learning; delete it when you no longer need it.
 
 **"Setup" (rarely used):**
-- **One card per group of parameters**: Hysteresis (every zone), Wait time (every zone), Heat source (minimum on and off time, long run alarm), Sensors and failsafe (sensor fault timeout and reminder time, failsafe delay, failsafe window start and end), Manual schedules (max temperature, resume difference), Off season (valve exercise day, time and duration per valve).
+- **One card per group of parameters**: Hysteresis (every zone), Wait time (every zone), Heat source (minimum on and off time, long run alarm), Sensors and failsafe (sensor fault timeout and reminder time, failsafe operation delay, start and stop), Manual schedules (max temperature, resume difference), Off season (valve exercise day, time and duration per valve).
 - **Holiday**: the Holiday switch, the end date and end time, each zone's holiday temperature, and a line that shows the stored end, e.g. "Ends: Fri 2026-10-02 15:00" or "No end date: holiday runs until you switch it off" ([how holiday works](configuration.md#holiday)).
 - **Schedules**: the list of schedules by label, and the form to add and delete them ([how schedules work](configuration.md#schedules-and-holiday), [the form](configuration.md#schedule-form-device-floor-heating)).
 No card has a "toggle all" switch in its header, so one tap can never switch several settings at once.

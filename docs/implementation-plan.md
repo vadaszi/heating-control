@@ -178,7 +178,7 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
 - Long run alarm at 12 h. ~~Overshoot logging~~ dropped from 1.0.0 (owner, 2026-10-02, D-151).
 - Add the parameters deferred from P1 to `GlobalParams`: FailsafeWindow, ValveExercise weekday/time.
 - **Tests:** A19, A20 (exercise part); the long run alarm fires once; simulation: all sensors die for 30 h and the failsafe schedule is correct.
-- *(Done: 2026-10-02 as **0.9.0**; decisions D-147…D-151 from the owner's answers to the P11 plan. Core: `core/failsafe.py` (trigger from the newest reading, window across midnight, DST), `core/exercise.py` (stateless slots from the due time), long run and failsafe events in `core/alerts.py`, `Outputs.mode` / `valve_exercise`, reason and heat source keys `failsafe_heating` / `failsafe_waiting`, reason `valve_exercise`, `GlobalParams` failsafe window and valve exercise day/time. Adapter: time entities for the window and the exercise time, the exercise day select, mode `failsafe`, notification titles, exercise log lines. Tests: `tests/core/test_failsafe.py`, `test_exercise.py`, long run in `test_alerts.py`, A19/A20 in `test_scenarios.py`, a 34 h dead-sensor simulation, `tests/adapter/test_maintenance.py`. Overshoot logging is not in 1.0.0, D-151.)*
+- *(Done: 2026-10-02 as **0.9.0**; 0.9.1 renames the failsafe settings to "failsafe operation delay / start / stop" (D-152); decisions D-147…D-151 from the owner's answers to the P11 plan. Core: `core/failsafe.py` (trigger from the newest reading, window across midnight, DST), `core/exercise.py` (stateless slots from the due time), long run and failsafe events in `core/alerts.py`, `Outputs.mode` / `valve_exercise`, reason and heat source keys `failsafe_heating` / `failsafe_waiting`, reason `valve_exercise`, `GlobalParams` failsafe window and valve exercise day/time. Adapter: time entities for the window and the exercise time, the exercise day select, mode `failsafe`, notification titles, exercise log lines. Tests: `tests/core/test_failsafe.py`, `test_exercise.py`, long run in `test_alerts.py`, A19/A20 in `test_scenarios.py`, a 34 h dead-sensor simulation, `tests/adapter/test_maintenance.py`. Overshoot logging is not in 1.0.0, D-151.)*
 
 ## P12 — Heat source failsafe script, watchdog ping (v1.2)
 - `heat_source_watchdog.js`: after FailsafeTrigger, the daily window by NTP time; with no valid time, the uptime cycle (D-72); only with the season flag ON.
@@ -189,6 +189,7 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
   - Extend the mock with a settable clock (`sys.unixtime`, `sys.time`) for S2, S3, S5.
 - HA side: healthchecks.io ping every WatchdogPingInterval (the URL is a secret); docs for healthchecks setup (period 5 min, grace 30 min, D-62). (The failsafe/exercise/long-run entities and notifications were done in P11.)
 - **Tests:** JS with simulated time: S2, S3 (reboot, no clock), S5 (season OFF never heats); adapter: the ping is sent on schedule and a failure never blocks. Bench (owner): S2, S3, S5 with shortened timeouts; stop HA for real and check that the healthchecks alert arrives.
+- **Carried over (P11, D-152):** the owner calls it "failsafe operation" instead of "failsafe window"; use the same wording for the heat source script's failsafe in `docs/shelly-scripts.md`, `docs/heartbeat-protocol.md` and the script's CONFIG comments (keys may stay).
 - **Carried over (Gemini P7/P7b review, finding 1; owner 2026-09-29):** a season change while a heartbeat to the heat source Shelly is in flight is skipped by `_send()` (`_busy`) and only sent after the next reconcile run (≤ 1 ReconcileInterval later, not 5 min as the review says). Send it once the running call finishes (e.g. a pending-season flag checked in the task's `finally`). Test: season flipped during a slow heartbeat reaches the Shelly right after it. The review's finding 3 (a 3 min floor for the D-122 liveness limit) was rejected by the owner; D-122 stays.
 
 ## P8 — Documentation and release preparation (runs last, D-129)
@@ -205,10 +206,24 @@ Runs after P12; then the owner releases **1.0.0** (v1 + v1.1 + v1.2). No go-live
 - Version 1.0.0, tag `v1.0.0` and a GitHub release when the owner says so; verify the installation through HACS.
 - **Done when:** the docs describe the finished integration and 1.0.0 is released.
 
-## Owner checkpoints (hardware)
+## Owner to-do: checks and tests
+The owner's open checks in one list (2026-10-02). Results go into design.md §8. Tick an item when done; the P12 bench tests are added with P12.
+
+**Live tests of 0.9.x (P11)** — safe while the heat source relay is not wired to the heat pump and the valve relays drive no actuators:
+- [ ] **Long run alarm:** set *Long run alarm* to 2 h and raise one zone's target so the heat source runs. After 2 h: notification "Floor heating: heat source long run" and an entry in the alerts. Lower the target; when the heat source switches off: "Floor heating: heat source back to normal". Set it back to 12 h.
+- [ ] **Failsafe:** set *Failsafe operation delay* to 1 h, *Sensor fault timeout* to 15 min, and *Failsafe operation start/stop* to a time about 1.5 h ahead and 30 min after that. Disable every zone's temperature sensor entity (Settings → Entities → disable; template sensors too). Expect: sensor fault notifications after 15 min; 1 h after the last reading the mode is "Failsafe", reason "Failsafe, waiting for operation start" and the notification "failsafe started"; at the start time the heat source relay and every valve relay switch ON, at the stop time OFF (after the minimum on time). Enable one sensor again: "failsafe ended", mode Normal. Enable the rest and restore 24 h, 60 min and 10:00–15:00.
+- [ ] **Valve exercise** (optional): heating season OFF, *Off-season valve exercise day* = today, *time* = a few minutes ahead, *duration* = 5 min. The valve relays switch ON one after another for 5 min each (YAML order, the bathroom has no valve), the heat source stays OFF; the reasons show "Valve exercise"; no notification. Restore Monday 08:00 / 15 min and the heating season.
+
+**Shelly and hardware (open since P4/P7):**
+- [ ] **S7 on the real devices:** stop the watchdog script on one Shelly → after 3 failed heartbeats (about 15 min) "Floor heating: Shelly watchdog not answering"; start it again → "answering again".
+- [ ] **Shelly 1 power-loss reboot:** unplug the heat source Shelly; after power returns the relay is OFF (power-on default), the script runs and answers, and the stored season flag is kept.
+- [ ] **401 check (rest of V2):** switch on Shelly authentication with the password in `secrets.yaml`: heartbeats still work; a wrong password gives the "authentication failed" alert.
+- [ ] **V5:** the heat pump reacts correctly to the Shelly 1 contact on the former Computherm terminals (before using the integration as the main controller).
+- [ ] **V4:** whether the secondary pump runs during hot water production (documentation only; when convenient).
+
 | Item | Phase |
 |---|---|
-| V2 heartbeat endpoint on both device types | P4 |
+| V2 heartbeat endpoint on both device types | P4 (passed; 401 check open, above) |
 | ~~V3 address from the device registry~~ (dropped, D-120) | – |
 | V4 (secondary pump during hot water), V5 (Shelly 1 wiring) | owner, when convenient; not blocking |
 | V6 | accepted (2026-09-29) |

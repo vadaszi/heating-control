@@ -35,7 +35,7 @@ GLOBAL_NUMBERS = {
     "sensor_fault_timeout": "sensor_fault_timeout",
     "manual_max_temp": "manual_max_temperature",
     "manual_resume_delta": "manual_resume_difference",
-    "failsafe_trigger": "failsafe_delay",
+    "failsafe_trigger": "failsafe_operation_delay",
     "valve_exercise_duration": "off_season_valve_exercise_duration",
     "long_run_alarm": "long_run_alarm",
 }
@@ -51,8 +51,8 @@ GLOBAL_ENTITIES = {
         "sensor_fault_reminder",
         EntityCategory.CONFIG,
     ),
-    "time.floor_heating_failsafe_window_start": ("failsafe_window_start", EntityCategory.CONFIG),
-    "time.floor_heating_failsafe_window_end": ("failsafe_window_end", EntityCategory.CONFIG),
+    "time.floor_heating_failsafe_operation_start": ("failsafe_window_start", EntityCategory.CONFIG),
+    "time.floor_heating_failsafe_operation_stop": ("failsafe_window_end", EntityCategory.CONFIG),
     "time.floor_heating_off_season_valve_exercise_time": (
         "valve_exercise_time",
         EntityCategory.CONFIG,

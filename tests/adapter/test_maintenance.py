@@ -22,8 +22,8 @@ from custom_components.multizone_floor_heating_manager.notifications import TITL
 from .conftest import HEAT_SOURCE, START, World, make_conf, sensor, valve
 from .test_restart import restarted
 
-WINDOW_START = "time.floor_heating_failsafe_window_start"
-WINDOW_END = "time.floor_heating_failsafe_window_end"
+WINDOW_START = "time.floor_heating_failsafe_operation_start"  # FailsafeWindow (D-152)
+WINDOW_END = "time.floor_heating_failsafe_operation_stop"
 EXERCISE_DAY = "select.floor_heating_off_season_valve_exercise_day"
 EXERCISE_TIME = "time.floor_heating_off_season_valve_exercise_time"
 
