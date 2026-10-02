@@ -37,6 +37,7 @@ from typing import Any
 from homeassistant.components import persistent_notification
 from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
@@ -95,6 +96,7 @@ class FloorHeatingController:
         }
         self._last_run_ok_at: datetime | None = None
         self.form = ScheduleForm()  # the dashboard's schedule draft; not stored
+        self.entities: list[Entity] = []  # every entity the platforms created for this run
         self._outputs: Outputs | None = None
         self._commander = OutputCommander(hass)
         self._sensors = SensorReader()

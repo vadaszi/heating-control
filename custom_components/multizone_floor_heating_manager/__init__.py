@@ -14,6 +14,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
@@ -22,6 +23,7 @@ from .const import DATA_YAML, DOMAIN, GLOBAL_DEVICE
 from .controller import FloorHeatingController
 from .core.config import ConfigError, config_warnings
 from .core.units import TemperatureUnit
+from .entity import entity_key
 from .heartbeat import HeartbeatClient
 from .notifications import Notifier
 from .runtime import FloorHeatingConfigEntry, FloorHeatingRuntime
@@ -94,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorHeatingConfigEntry)
     entry.runtime_data = FloorHeatingRuntime(controller, heartbeat, watchdog)
     _async_remove_stale_devices(hass, entry, config)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_remove_orphaned_entities(hass, entry, {entity_key(e) for e in controller.entities})
 
     async def _async_started(_hass: HomeAssistant) -> None:
         notifier.async_check_targets()
@@ -130,3 +133,22 @@ def _async_remove_stale_devices(
     for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
         if not device.identifiers & wanted:
             registry.async_remove_device(device.id)
+
+
+def _async_remove_orphaned_entities(
+    hass: HomeAssistant, entry: FloorHeatingConfigEntry, created: set[tuple[str, str | None]]
+) -> None:
+    """Remove this entry's entities that no platform creates any more, e.g. a setting that
+    an update removed or replaced.
+
+    Only when every platform has created its entities: a platform that failed to set up
+    must not lose its entities. HA keeps a removed entity's id and settings for a while and
+    gives them back if the same entity returns (e.g. after a downgrade)."""
+    if {domain for domain, _ in created} != {str(platform) for platform in PLATFORMS}:
+        _LOGGER.warning("Not every platform was set up; old entities are not removed")
+        return
+    registry = er.async_get(hass)
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (item.domain, item.unique_id) not in created:
+            _LOGGER.info("Removing %s: this version no longer provides it", item.entity_id)
+            registry.async_remove(item.entity_id)

@@ -35,6 +35,11 @@ def device_info(zone: ZoneConfig | None) -> DeviceInfo:
     )
 
 
+def entity_key(entity: Entity) -> tuple[str, str | None]:
+    """(domain, unique id); the platform module's name is the domain (sensor.py: sensor)."""
+    return type(entity).__module__.rsplit(".", 1)[-1], entity.unique_id
+
+
 class FloorHeatingEntity(Entity):
     """Updated by the controller after every reconcile run; never polled."""
 
@@ -47,6 +52,7 @@ class FloorHeatingEntity(Entity):
         """`key` names the value (also the translation key); `zone` None: a global one."""
         self.controller = controller
         self._attr_unique_id = key if zone is None else f"{zone.id}_{key}"
+        controller.entities.append(self)
         self._attr_device_info = device_info(zone)
         if not hasattr(self, "_attr_translation_key"):
             self._attr_translation_key = key
