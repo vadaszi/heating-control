@@ -49,7 +49,7 @@ class ShellyStatus:
     """The fields of a status HA uses."""
 
     role: ShellyRole
-    state: str  # "normal", "timed_out" ("failsafe" from v1.2)
+    state: str  # "normal", "timed_out", "failsafe" (heat source script 1.1.0, D-153)
     heartbeat_age_s: int
     uptime_s: int
     params: Mapping[str, Any]

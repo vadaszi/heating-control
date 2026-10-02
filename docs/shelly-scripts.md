@@ -7,10 +7,9 @@ The Shellys that switch your valves and your heat source run a small **watchdog 
   - **valve Shellys:** all valve channels ON (open), so the floor can take heat whenever the heat source runs;
   - **heat source Shelly:** heat request OFF.
 - The 5 hours give you time to fix HA before anything happens (D-60).
+- If the heartbeats stay away for 24 hours (`failsafe_trigger_s`) and the last heartbeat said "heating season ON", the heat source Shelly starts the **failsafe operation**: it requests heat every day from 10:00 to 15:00 by its own clock, so the house does not cool down while HA is broken. Without a valid clock it uses an uptime cycle instead (5 h ON, 19 h OFF). See [Failsafe operation](#failsafe-operation-heat-source).
 - When heartbeats come back, the scripts stop acting at once and switch nothing; HA's reconcile loop sets every output again.
 - The scripts talk only to HA, never to each other. Protocol details: [`heartbeat-protocol.md`](heartbeat-protocol.md).
-
-> v1 scripts: the heat source script only switches OFF. The 24 h failsafe (heating in a daily window, or by an uptime cycle without a clock) comes with v1.2.
 
 ## Which script goes where
 | Device | Script | Example |
@@ -27,7 +26,8 @@ Set these in the device's web UI (names may differ slightly between firmware ver
    After a power cut the device must start with its output OFF. The integration relies on this: when the heat source switch comes back ON after being unavailable, HA concludes it never stopped; when it comes back OFF, HA concludes it stopped when it went away (D-95). "Restore last state" or "ON" would break that reasoning.
 2. **Valve Shellys: switch profile** (not cover/roller), so each channel is a separate switch.
 3. **Script "Run on startup" enabled**, so the watchdog runs again after every reboot.
-4. **Authentication:** recommended if other people can reach your network. HA then needs the device password (in HA's `secrets.yaml`, never in this repository). The user name is always `admin`.
+4. **Heat source Shelly: time zone and time server (SNTP).** The failsafe operation runs by the device's local time. Set the device's time zone (location) correctly and keep the default time server, so the clock is set from the internet after every start. Without a valid time the script falls back to the uptime cycle.
+5. **Authentication:** recommended if other people can reach your network. HA then needs the device password (in HA's `secrets.yaml`, never in this repository). The user name is always `admin`.
 
 ## Upload
 In the device web UI:
@@ -62,13 +62,32 @@ Only edit the CONFIG block at the top of the script. The defaults fit most insta
 | `switch_id` | `0` | The switch that requests heat. |
 | `endpoint` | `"heartbeat"` | Endpoint name in the URL. |
 | `kvs_season_key` | `"multizone_floor_heating_manager_season"` | Key in the device's key-value store that keeps the heating season flag. |
+| `failsafe_trigger_s` | `86400` (24 h) | Seconds without a heartbeat before the failsafe operation starts. Longer than `heartbeat_timeout_s`. |
+| `failsafe_start` | `"10:00"` | Failsafe operation start, the device's local time (`"HH:MM"`). |
+| `failsafe_stop` | `"15:00"` | Failsafe operation stop. The window may cross midnight (`"22:00"` to `"03:00"`); start and stop must differ. |
+| `uptime_on_s` | `18000` (5 h) | Without a valid clock: ON time of the uptime cycle. |
+| `uptime_off_s` | `68400` (19 h) | Without a valid clock: OFF time of the uptime cycle. |
+| `min_on_s` | `3600` (1 h) | Failsafe operation only: once the script switches the heat source ON, it stays ON at least this long. `0` = no minimum. |
+| `min_off_s` | `3600` (1 h) | Failsafe operation only: once the script switches it OFF, it stays OFF at least this long. `0` = no minimum. |
 
 HA never changes these values. It reads them from every heartbeat answer and alerts you if they differ from the values it expects (D-73): `heartbeat_timeout_s` against the integration's `heartbeat_timeout` (default 18000), and `check_interval_s` only if you set `heartbeat_check_interval`. If you change a timeout on the device, change HA's expected value too.
+
+The failsafe values are **not** compared (D-153). They are separate from the integration's own "Failsafe operation delay / start / stop" settings: those apply only while HA runs and every temperature sensor is dead (failsafe case 1), the script's values only while HA is down (case 2). If you want both to heat at the same time of day, set the same values in both places.
 
 ### Behaviour worth knowing
 - **After a reboot or a script restart** the script treats the start as the last heartbeat: outputs stay at the power-on default (OFF) and the timeout counts from the start (D-72, D-102).
 - **While timed out** the script keeps its safe state: if something else (the Shelly app, or HA while its heartbeat is broken) switches an output back, the script corrects it at the next check (D-103). HA then shows an "output not following command" alert.
-- **Season flag:** every heartbeat to the heat source carries HA's heating season switch. The script stores it (only when it changes) and reports it; `null` means it was never set, which counts as OFF (D-105). It is used by the v1.2 failsafe.
+- **Season flag:** every heartbeat to the heat source carries HA's heating season switch. The script stores it (only when it changes) and reports it; `null` means it was never set, which counts as OFF (D-105). The failsafe operation runs only with the flag ON.
+
+### Failsafe operation (heat source)
+Spec: [`design.md`](design.md) §3.6 case 2, D-72, D-153.
+- **When:** no heartbeat for `failsafe_trigger_s` (24 h) **and** the last heartbeat said heating season ON. With the season OFF (or never set) the output simply stays OFF; the console says "no failsafe operation" once. The status shows `"state": "failsafe"` while it runs.
+- **With a valid clock** (the status shows `"time": "HH:MM"`): the heat source is ON from `failsafe_start` to `failsafe_stop` every day, OFF the rest of the day. Reached inside the window, it heats for the rest of it.
+- **Without a valid clock** (`"time": null`, e.g. after a power cut while the internet is down; Shellys have no backup clock): the uptime cycle, 5 h ON then 19 h OFF, starting with ON when the failsafe operation starts. As soon as the clock becomes valid, the window takes over.
+- **Minimum ON and OFF time:** every switch the script makes holds for `min_on_s` / `min_off_s` (1 h each), so it never short-cycles the heat source. Example: the failsafe operation starts at 14:45 → ON until 15:45, not 15:00. These minimums apply only to the script's own switching in the failsafe operation; while HA sends heartbeats the script never touches the relay.
+- **It keeps its output:** like a timed-out script, it switches the relay back at the next check if someone else switches it (D-103). **To switch the heat source by hand while HA is down, stop the script** in the device web UI (Scripts → Stop); start it again afterwards.
+- **When HA comes back**, the first heartbeat ends the failsafe operation at once; the script switches nothing and HA takes over. A rare case: if HA comes back during the first hour of a failsafe run, no zone needs heat, and the last thing HA saw before it went away was the heat source ON, HA concludes the heat source never stopped (D-95) and may switch it OFF after a short run. Accepted (D-154).
+- **Power cut during a long HA outage:** after a reboot the start counts as the last heartbeat (D-72), so the output stays OFF for another `failsafe_trigger_s` (24 h) before the failsafe operation starts again. This keeps a Shelly that restarts together with HA (one power cut for the whole house) from switching the heat pump ON just before HA takes over again. Accepted (D-154).
 
 ## Check that it works
 With `curl` from a computer on the same network (add `--digest -u admin:<password>` to every command if authentication is on):
@@ -124,6 +143,42 @@ while true; do curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 2. Stop the loop. Within about 2 minutes the output **switches OFF**; `"state": "timed_out"`. Switching it ON in the app → OFF again within about 5 seconds.
 3. Start the loop again → `"state": "normal"`; the output stays OFF. Switch it ON in the app → it **stays ON**.
 
+**Heat source Shelly: failsafe operation (S2 second half, S5, S3)**
+
+Shorten the failsafe values too (CONFIG block of the heat source script), save and restart the script:
+```
+  heartbeat_timeout_s: 120,
+  check_interval_s: 5,
+  failsafe_trigger_s: 240,
+  failsafe_start: "HH:MM",      // about 8 minutes from now (device time)
+  failsafe_stop: "HH:MM",       // 5 minutes after the start
+  uptime_on_s: 120,
+  uptime_off_s: 180,
+  min_on_s: 60,
+  min_off_s: 60,
+```
+Check with `curl -s $URL` that `"time"` shows the device's local time and `params` show your values.
+
+*S2: failsafe operation by the clock*
+1. Run the heartbeat loop with `'{"v": 1, "season": true}'` for a minute; switch the output ON in the app.
+2. Stop the loop. After about 2 minutes: output **OFF**, `"state": "timed_out"`.
+3. After about 4 minutes: `"state": "failsafe"`; the output stays **OFF** until `failsafe_start`.
+4. At `failsafe_start` the output switches **ON** (console: "failsafe operation: heat source ON (HH:MM)"). Switch it OFF in the app → ON again within about 5 seconds.
+5. At `failsafe_stop` it switches **OFF**.
+6. Start the loop again → `"state": "normal"`; nothing switches.
+
+*S5: season OFF never heats*
+1. Run the loop with `'{"v": 1, "season": false}'` for a minute, then stop it.
+2. Wait past `failsafe_start`: `"state"` stays `"timed_out"`, the output stays **OFF**; the console says "no failsafe operation: the last heartbeat did not say heating season ON".
+3. Send one heartbeat with `"season": true` again before the next test.
+
+*S3: reboot, no valid time (uptime cycle)*
+1. Make the device start without a valid time: in its settings, set the time server (SNTP) to an address that does not answer, or disconnect your router from the internet. Send one heartbeat with `"season": true`, then **cut the power** for a few seconds.
+2. After the power returns: `curl -s $URL` shows `"time": null`, `"season": true`, `"state": "normal"`, output **OFF**. If `"time"` shows a time, the device got its clock anyway: note it and skip this test.
+3. About 2 minutes after the boot: `"timed_out"`, output OFF. About 4 minutes after the boot: `"failsafe"`, output **ON** (console: "uptime cycle, no valid time").
+4. 2 minutes later **OFF**, 3 minutes after that **ON** again.
+5. Restore the time server (or the internet). When `"time"` shows a time again, the window takes over: outside the window the output goes OFF (after `min_on_s` at the latest).
+
 **Reboot** (both devices)
 1. Send a heartbeat (heat source: season `true`), switch the outputs ON, then **cut the power** for a few seconds (unplug it). A software reboot from the web UI is not enough: it keeps the outputs as they were, and only a real power loss applies the power-on default.
 2. After the power returns all outputs are **OFF** (this checks the power-on default), `curl -s $URL` answers (script started on its own), `"heartbeat_seen": false`, small `uptime_s`; heat source: `"season": true` (kept in storage).
@@ -137,7 +192,7 @@ For the Shelly Plus 2PM (Gen2) and the Shelly 1 (Gen3 or Gen4), note the firmwar
 
 Report the results (device type, firmware version, pass/fail; no addresses or passwords) so they can be recorded in the spec (§8, V2).
 
-**Afterwards:** paste the unmodified script again (or set `heartbeat_timeout_s: 18000` and `check_interval_s: 60`), save and restart it, and check with `curl -s $URL` that `params` show the defaults.
+**Afterwards:** paste the unmodified script again (or set every value you changed back to the default in the tables above), save and restart it, and check with `curl -s $URL` that `params` show the defaults. Heat source: restore the time server if you changed it, and send a heartbeat with `"season": true` (or let HA send one) so the stored season flag is right.
 
 ## Troubleshooting
 | Symptom | Cause / fix |
@@ -146,4 +201,6 @@ Report the results (device type, firmware version, pass/fail; no addresses or pa
 | `401` | Authentication is on: use `--digest -u admin:<password>`. |
 | `400` | The request body is not a JSON object, or a heat source heartbeat has no `season` true/false. It does not count as a heartbeat. |
 | Script stops right after the start | Invalid CONFIG value: the script console shows which one. |
+| Heat source failsafe operation never starts | The stored season flag is `false` or `null` (`"season"` in the status): it heats only if the last heartbeat said heating season ON. |
+| Failsafe heats at the wrong time of day | The device's time zone is wrong: check `"time"` in the status against your clock. |
 | Valve channels do not switch | The device is in cover/roller profile, or `switch_ids` lists channels that do not exist (`"output": null` in the status). |

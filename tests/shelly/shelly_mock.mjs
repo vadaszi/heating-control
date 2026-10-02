@@ -8,6 +8,9 @@
 //
 // Time: `uptimeMs` is the device uptime. Nothing happens until a test calls
 // `advance(ms)`, which fires due timers and delivers RPC callbacks in time order.
+// The device clock (`sys.time`, `sys.unixtime`) is null until a test sets it with
+// `setClock("HH:MM")` (NTP synced); it then advances with the uptime. A power cycle
+// loses it (Shellys have no backup clock); a script restart keeps it.
 // RPC callbacks are always asynchronous (delivered on the next `advance`, also
 // `advance(0)`), as on the device.
 
@@ -28,6 +31,10 @@ const MAX_EVENTS_AT_ONE_TIME = 1000;
 
 // Error code the firmware returns for a missing key or component.
 export const ERR_NOT_FOUND = -105;
+
+const DAY_MS = 24 * 3600 * 1000;
+// Unix time of a local midnight for `sys.unixtime`; the scripts use only `sys.time`.
+const CLOCK_EPOCH_S = 1790000000 - (1790000000 % 86400);
 
 const CONFIG_BEGIN = "// ==== CONFIG BEGIN ====";
 const CONFIG_END = "// ==== CONFIG END ====";
@@ -76,6 +83,7 @@ export class Device {
 
   #powerOn() {
     this.uptimeMs = 0;
+    this.clockOffsetMs = null; // local time of day = uptime + offset; null = no valid time
     this.outputs = new Array(this.switchCount).fill(false); // power-on default OFF
     this.#resetRuntime();
   }
@@ -178,6 +186,23 @@ export class Device {
   }
 
   // ------------------------------------------------------------------ test controls
+
+  /** The clock becomes valid (NTP) and shows `hhmm` local time now. */
+  setClock(hhmm) {
+    const [hours, minutes] = hhmm.split(":").map(Number);
+    this.clockOffsetMs = (hours * 60 + minutes) * 60000 - this.uptimeMs;
+  }
+
+  /** Local time as the device shows it ("HH:MM"), or null without a valid time. */
+  localTime() {
+    if (this.clockOffsetMs === null) {
+      return null;
+    }
+    const ms = (((this.uptimeMs + this.clockOffsetMs) % DAY_MS) + DAY_MS) % DAY_MS;
+    const minutes = Math.floor(ms / 60000);
+    const two = (n) => String(n).padStart(2, "0");
+    return `${two(Math.floor(minutes / 60))}:${two(minutes % 60)}`;
+  }
 
   /** Switch an output from outside the script (HA's reconcile, the Shelly app). */
   setOutput(id, on) {
@@ -311,7 +336,14 @@ export class Device {
             return { id: index, source: "mock", output: device.outputs[index] };
           }
           if (type === "sys") {
-            return { uptime: Math.floor(device.uptimeMs / 1000), unixtime: null, time: null };
+            const valid = device.clockOffsetMs !== null;
+            return {
+              uptime: Math.floor(device.uptimeMs / 1000),
+              unixtime: valid
+                ? CLOCK_EPOCH_S + Math.floor((device.uptimeMs + device.clockOffsetMs) / 1000)
+                : null,
+              time: device.localTime(),
+            };
           }
           throw new Error(`getComponentStatus: component ${typeOrKey} not mocked`);
         },

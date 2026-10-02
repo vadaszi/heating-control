@@ -89,6 +89,27 @@ describe("shelly mock", () => {
     assert.throws(() => long.advance(0), /key longer/);
   });
 
+  test("the clock: null without NTP, advances with the uptime, lost on a power cycle", () => {
+    const d = new Device();
+    const sys = () => {
+      d.loadScript(script("console.log(JSON.stringify(Shelly.getComponentStatus('sys')));"));
+      return JSON.parse(d.logs[d.logs.length - 1]);
+    };
+    assert.deepEqual(sys(), { uptime: 0, unixtime: null, time: null });
+    d.advance(90 * 1000);
+    d.setClock("23:59");
+    assert.equal(sys().time, "23:59");
+    const unixtime = sys().unixtime;
+    assert.equal(typeof unixtime, "number");
+    d.advance(2 * 60 * 1000);
+    assert.equal(sys().time, "00:01"); // across midnight
+    assert.equal(sys().unixtime, unixtime + 120);
+    d.restartScripts();
+    assert.equal(d.localTime(), "00:01"); // a script restart keeps it
+    d.reboot();
+    assert.equal(d.localTime(), null); // no backup clock
+  });
+
   test("a request must be answered exactly once", () => {
     const d = new Device();
     d.loadScript(script("function f(q, r) {}\nHTTPServer.registerEndpoint('e', f);"));

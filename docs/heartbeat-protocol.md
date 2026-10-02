@@ -1,7 +1,7 @@
 # Heartbeat protocol (v1)
 
 How the Multizone Floor Heating Manager integration talks to the Shelly watchdog scripts (`shelly_scripts/`).
-Spec: [`design.md`](design.md) §3.6 (failsafe case 2), §5.4, decisions D-60, D-61, D-72, D-73, D-100 to D-105.
+Spec: [`design.md`](design.md) §3.6 (failsafe case 2), §5.4, decisions D-60, D-61, D-72, D-73, D-100 to D-105, D-153.
 Setup and bench tests: [`shelly-scripts.md`](shelly-scripts.md).
 
 ## Purpose
@@ -9,6 +9,7 @@ Setup and bench tests: [`shelly-scripts.md`](shelly-scripts.md).
 - A script that gets no heartbeat for `heartbeat_timeout_s` (default 5 h, D-60) puts its outputs into the safe state:
   - valve script: all valve channels ON (open);
   - heat source script: output OFF.
+- After `failsafe_trigger_s` (default 24 h) without a heartbeat, the heat source script runs the failsafe operation if the last heartbeat said heating season ON (§3.6, D-153).
 - Every call is answered with the script's **status**. One call therefore checks that the device is reachable **and** that the script runs (D-61), and reports the script's parameters so HA can compare them with what it expects (D-73).
 
 ## Endpoint
@@ -49,15 +50,20 @@ Other methods get `405` with `Allow: GET, POST`.
 {
   "v": 1,
   "role": "heat_source",
-  "script_version": "1.0.0",
+  "script_version": "1.1.0",
   "running": true,
   "state": "normal",
   "heartbeat_seen": true,
   "heartbeat_age_s": 0,
   "uptime_s": 86400,
   "season": true,
+  "time": "09:41",
   "switches": [{"id": 0, "output": true}],
-  "params": {"heartbeat_timeout_s": 18000, "check_interval_s": 60, "switch_id": 0}
+  "params": {
+    "heartbeat_timeout_s": 18000, "check_interval_s": 60, "switch_id": 0,
+    "failsafe_trigger_s": 86400, "failsafe_start": "10:00", "failsafe_stop": "15:00",
+    "uptime_on_s": 18000, "uptime_off_s": 68400, "min_on_s": 3600, "min_off_s": 3600
+  }
 }
 ```
 
@@ -72,6 +78,7 @@ Other methods get `405` with `Allow: GET, POST`.
 | `heartbeat_age_s` | integer | Seconds since the last heartbeat, or since the script started if none has arrived (D-102). `0` in a `POST` response. |
 | `uptime_s` | integer | Device uptime in seconds (a small value means the device rebooted). |
 | `season` | boolean or null | Heat source only: the stored heating season flag; `null` = never set (treated as OFF, D-105). The `POST` response already carries the new value. |
+| `time` | string or null | Heat source only (script 1.1.0 and later): the device's local time `"HH:MM"` used for the failsafe operation; `null` = no valid time (uptime cycle). |
 | `switches` | array | The switches the script manages, `{"id": <switch id>, "output": true/false/null}`; `null` = no such switch on the device. |
 | `params` | object | The script's configured parameters (D-73), see below. |
 
@@ -80,9 +87,9 @@ Other methods get `405` with `Allow: GET, POST`.
 |---|---|---|---|
 | `normal` | both | Heartbeats arrive (or the timeout has not passed since start). | Not touched; HA controls them. |
 | `timed_out` | both | No heartbeat for `heartbeat_timeout_s`. | Valve: all channels ON. Heat source: OFF. Re-asserted on every check if something else switches them (D-103). |
-| `failsafe` | heat source, **from v1.2 (P12)** | No heartbeat for FailsafeTrigger (24 h), season `true`. | Heat during the daily window (device clock) or by the uptime cycle (§3.6, D-72). |
+| `failsafe` | heat source | No heartbeat for `failsafe_trigger_s` (24 h) and season `true`. With the season `false` or `null` the state stays `timed_out`. | The failsafe operation: ON from `failsafe_start` to `failsafe_stop` by the device clock, or without a valid time by the uptime cycle (`uptime_on_s` ON, `uptime_off_s` OFF, starting with ON); every switch holds for `min_on_s` / `min_off_s`; re-asserted at every check (§3.6, D-72, D-153). |
 
-The state changes to `timed_out` at the first check (every `check_interval_s`) at or after the timeout. A valid heartbeat puts it back to `normal` at once; the script then switches nothing, and HA's reconcile loop sets the outputs (S4).
+The state changes to `timed_out` (and later `failsafe`) at the first check (every `check_interval_s`) at or after the timeout. A valid heartbeat puts it back to `normal` at once; the script then switches nothing, and HA's reconcile loop sets the outputs (S4).
 
 ### `params`
 | Key | Script | Default | Meaning |
@@ -91,12 +98,16 @@ The state changes to `timed_out` at the first check (every `check_interval_s`) a
 | `check_interval_s` | both | 60 | How often the script checks the timeout. |
 | `switch_ids` | valve | `null` | `null` = every switch component of the device (D-104), or a list of ids. |
 | `switch_id` | heat source | 0 | The switch that requests heat. |
+| `failsafe_trigger_s` | heat source | 86400 (24 h) | FailsafeTrigger of the script (§4). |
+| `failsafe_start`, `failsafe_stop` | heat source | `"10:00"`, `"15:00"` | The failsafe operation window, device local time; may cross midnight. |
+| `uptime_on_s`, `uptime_off_s` | heat source | 18000, 68400 | The uptime cycle without a valid time (5 h ON, 19 h OFF). |
+| `min_on_s`, `min_off_s` | heat source | 3600, 3600 | Shortest ON / OFF the script switches in the failsafe operation. |
 
-The values come only from the script's CONFIG block (D-101); HA never sends parameters. v1.2 adds the heat source failsafe keys (FailsafeTrigger, window, uptime cycle).
+The values come only from the script's CONFIG block (D-101); HA never sends parameters. The heat source failsafe keys (script 1.1.0) are reported but not compared by HA (D-153).
 
 ## What HA does with it (D-120 to D-122)
 - Every `HeartbeatInterval` (default 5 min) HA sends a `POST` to every listed Shelly, also in shadow mode. The heat source Shelly also gets one at once when the heating season switch changes.
-- On the first call after HA starts, and after a failed call, HA first reads the status with `GET`. The `POST` answer can no longer show a timeout, because the script applies the heartbeat before it answers. A `timed_out` state and its `heartbeat_age_s` are only logged, as is a restart (`uptime_s` lower than at the previous answer).
+- On the first call after HA starts, and after a failed call, HA first reads the status with `GET`. The `POST` answer can no longer show a timeout, because the script applies the heartbeat before it answers. A `timed_out` or `failsafe` state and its `heartbeat_age_s` are only logged, as is a restart (`uptime_s` lower than at the previous answer).
 - A call **fails** if there is no connection or no answer within 10 s, the HTTP status is not `200` (`404`: script not running or wrong id; `401`: authentication), the body is not a status object, `v` is not 1, or `role` is not the one HA expects from its YAML. After `heartbeat_fail_alert` (default 3) failures in a row HA notifies once, and again when the Shelly answers.
 - `params`: HA compares `heartbeat_timeout_s` (and `check_interval_s` if an expected value is configured) and notifies once while they differ.
 - HA sends heartbeats only while its reconcile loop works (a completed run within the last 3 reconcile intervals), so a broken integration lets the watchdogs act.

@@ -1,6 +1,5 @@
 // Heat source watchdog script (shelly_scripts/heat_source_watchdog.js), simulated time.
-// docs/design.md §3.6 case 2, §5.4, D-72, D-100…D-105; docs/heartbeat-protocol.md.
-// The failsafe window and uptime cycle (S2 second half, S3, S5) come in P12.
+// docs/design.md §3.6 case 2, §5.4, D-72, D-100…D-105, D-153; docs/heartbeat-protocol.md.
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -18,6 +17,20 @@ import {
 import { Device, ERR_NOT_FOUND } from "./shelly_mock.mjs";
 
 const KEY = "multizone_floor_heating_manager_season";
+// Failsafe defaults (§4): FailsafeTrigger 24 h, window 10:00–15:00, 5 h ON / 19 h OFF.
+const TRIGGER_S = 24 * HOUR;
+const DEFAULT_PARAMS = {
+  heartbeat_timeout_s: 5 * HOUR,
+  check_interval_s: 60,
+  switch_id: 0,
+  failsafe_trigger_s: TRIGGER_S,
+  failsafe_start: "10:00",
+  failsafe_stop: "15:00",
+  uptime_on_s: 5 * HOUR,
+  uptime_off_s: 19 * HOUR,
+  min_on_s: HOUR,
+  min_off_s: HOUR,
+};
 
 function heatSource(options = {}) {
   return newDevice(HEAT_SOURCE_SCRIPT, { switches: 1, ...options });
@@ -29,11 +42,7 @@ function beat(device, season = true) {
 
 describe("heat source watchdog: timeout", () => {
   test("the file carries the §4 defaults", () => {
-    assert.deepEqual(status(heatSource()).params, {
-      heartbeat_timeout_s: 5 * HOUR,
-      check_interval_s: 60,
-      switch_id: 0,
-    });
+    assert.deepEqual(status(heatSource()).params, DEFAULT_PARAMS);
   });
 
   test("OFF after HeartbeatTimeout without a heartbeat", () => {
@@ -280,16 +289,19 @@ describe("heat source watchdog: requests", () => {
     assert.deepEqual(response.json(), {
       v: 1,
       role: "heat_source",
-      script_version: "1.0.0",
+      script_version: "1.1.0",
       running: true,
       state: "normal",
       heartbeat_seen: true,
       heartbeat_age_s: 42,
       uptime_s: 342,
       season: true,
+      time: null,
       switches: [{ id: 0, output: true }],
-      params: { heartbeat_timeout_s: 18000, check_interval_s: 60, switch_id: 0 },
+      params: DEFAULT_PARAMS,
     });
+    d.setClock("07:30");
+    assert.equal(status(d).time, "07:30");
   });
 
   test("GET does not count as a heartbeat", () => {
@@ -389,6 +401,18 @@ describe("heat source watchdog: configuration", () => {
       { endpoint: 5 },
       { kvs_season_key: "" },
       { kvs_season_key: "k".repeat(43) },
+      { failsafe_trigger_s: 5 * HOUR }, // not longer than heartbeat_timeout_s
+      { failsafe_trigger_s: "86400" },
+      { failsafe_start: "10" },
+      { failsafe_start: "24:00" },
+      { failsafe_stop: "9:00" },
+      { failsafe_stop: "10:6x" },
+      { failsafe_start: 600 },
+      { failsafe_start: "12:00", failsafe_stop: "12:00" },
+      { uptime_on_s: 0 },
+      { uptime_off_s: 1.5 },
+      { min_on_s: -1 },
+      { min_off_s: null },
     ];
     for (const config of bad) {
       const d = new Device({ switches: 1 });
@@ -398,5 +422,258 @@ describe("heat source watchdog: configuration", () => {
         JSON.stringify(config),
       );
     }
+  });
+});
+
+// ------------------------------------------------------------------ failsafe (v1.2)
+
+// A device whose last heartbeat (season ON) was at `hhmm` local time; the relay is ON.
+function lastBeatAt(hhmm, { season = true, clock = true, config = {} } = {}) {
+  const d = heatSource({ config });
+  if (clock) {
+    d.setClock(hhmm);
+  }
+  beat(d, season);
+  d.setOutput(0, true);
+  return d;
+}
+
+// Advance to `hhmm` local time; the checks run on the full minute, so the one at
+// `hhmm` has run (the device clock must be set).
+function runUntil(d, hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const [nh, nm] = d.localTime().split(":").map(Number);
+  const minutes = (h * 60 + m - (nh * 60 + nm) + 24 * 60) % (24 * 60);
+  d.advanceSeconds(minutes * MINUTE);
+}
+
+function setCalls(d) {
+  return d.calls("Switch.Set").map((c) => c.params.on);
+}
+
+describe("heat source watchdog: failsafe operation by the clock (S2)", () => {
+  test("OFF after HeartbeatTimeout, then the daily window after FailsafeTrigger", () => {
+    const d = lastBeatAt("08:00");
+    d.advanceSeconds(TIMEOUT_S);
+    assert.equal(d.outputs[0], false); // 13:00
+    assert.equal(status(d).state, "timed_out");
+    runUntil(d, "08:00"); // next day, 24 h after the heartbeat: outside the window
+    assert.equal(status(d).state, "failsafe");
+    assert.equal(d.outputs[0], false);
+    assert.ok(d.logs.some((l) => l.includes("the failsafe operation starts")));
+    runUntil(d, "09:59");
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "10:00");
+    assert.equal(d.outputs[0], true);
+    assert.ok(d.logs.some((l) => l.includes("failsafe operation: heat source ON (10:00)")));
+    runUntil(d, "14:58");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:00");
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "10:00"); // and again every day
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:00");
+    assert.equal(d.outputs[0], false);
+    assert.deepEqual(setCalls(d), [false, true, false, true, false]);
+  });
+
+  test("reached inside the window: heats at once, at least min_on_s (14:45 → 15:45)", () => {
+    const d = lastBeatAt("14:45");
+    d.advanceSeconds(TRIGGER_S + CHECK_S);
+    assert.equal(status(d).state, "failsafe");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:00");
+    assert.equal(d.outputs[0], true); // held by the minimum ON time
+    runUntil(d, "15:44");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:45");
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("a window across midnight", () => {
+    const d = lastBeatAt("12:00", { config: { failsafe_start: "22:00", failsafe_stop: "03:00" } });
+    d.advanceSeconds(TRIGGER_S + CHECK_S);
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "22:00");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "02:58");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "03:00");
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("re-asserted at every check while it lasts (D-103)", () => {
+    const d = lastBeatAt("09:00");
+    d.advanceSeconds(TRIGGER_S + 2 * HOUR); // 11:00, heating
+    assert.equal(d.outputs[0], true);
+    d.setOutput(0, false); // switched OFF in the app
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "16:00");
+    d.setOutput(0, true);
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("a heartbeat ends it at once and the script switches nothing (S4)", () => {
+    const d = lastBeatAt("09:00");
+    d.advanceSeconds(TRIGGER_S + 2 * HOUR); // 11:00, heating for one hour
+    assert.equal(d.outputs[0], true);
+    const response = beat(d);
+    assert.equal(response.json().state, "normal");
+    const sent = d.calls("Switch.Set").length;
+    d.advanceSeconds(HOUR);
+    assert.equal(d.outputs[0], true); // HA's reconcile decides
+    d.setOutput(0, false); // HA switches OFF after 1 h: no minimum ON from the script
+    d.advanceSeconds(HOUR);
+    assert.equal(d.outputs[0], false);
+    assert.equal(d.calls("Switch.Set").length, sent);
+  });
+
+  test("heartbeats stop again: timeout and trigger count from the last one", () => {
+    const d = lastBeatAt("09:00");
+    d.advanceSeconds(TRIGGER_S + 2 * HOUR); // 11:00 next day, heating
+    beat(d); // HA is back for a moment
+    d.advanceSeconds(TIMEOUT_S); // 16:00
+    assert.equal(status(d).state, "timed_out");
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "10:30"); // not yet 24 h since 11:00
+    assert.equal(status(d).state, "timed_out");
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "11:00");
+    assert.equal(status(d).state, "failsafe");
+    assert.equal(d.outputs[0], true);
+  });
+});
+
+describe("heat source watchdog: season flag in the failsafe operation (S5)", () => {
+  for (const [name, season] of [
+    ["season OFF", false],
+    ["never set", null],
+  ]) {
+    test(`${name}: never heats`, () => {
+      const d = heatSource();
+      d.setClock("09:00");
+      if (season !== null) {
+        beat(d, season);
+      }
+      d.advanceSeconds(3 * TRIGGER_S);
+      assert.equal(status(d).state, "timed_out");
+      assert.equal(d.outputs[0], false);
+      assert.equal(d.calls("Switch.Set").length, 0);
+      assert.equal(
+        d.logs.filter((l) => l.includes("no failsafe operation")).length,
+        1, // logged once
+      );
+    });
+  }
+
+  test("a flag that the KVS read could not get counts as OFF", () => {
+    const d = new Device({ switches: 1 });
+    d.failNext("KVS.Get");
+    d.loadScript(HEAT_SOURCE_SCRIPT);
+    d.advance(0);
+    d.setClock("09:00");
+    d.advanceSeconds(TRIGGER_S + 3 * HOUR);
+    assert.equal(d.outputs[0], false);
+  });
+});
+
+describe("heat source watchdog: uptime cycle without a valid clock (S3)", () => {
+  test("after a reboot: OFF until FailsafeTrigger, then 5 h ON, 19 h OFF", () => {
+    const d = heatSource();
+    beat(d, true);
+    d.advance(0); // the flag is stored
+    d.reboot(); // power cut, no internet: no valid time
+    d.advance(0);
+    assert.equal(status(d).season, true);
+    d.advanceSeconds(TRIGGER_S - CHECK_S);
+    assert.equal(d.outputs[0], false);
+    assert.equal(status(d).time, null);
+    d.advanceSeconds(CHECK_S);
+    assert.equal(status(d).state, "failsafe");
+    assert.equal(d.outputs[0], true);
+    assert.ok(d.logs.some((l) => l.includes("heat source ON (uptime cycle, no valid time)")));
+    d.advanceSeconds(5 * HOUR - CHECK_S);
+    assert.equal(d.outputs[0], true);
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], false);
+    d.advanceSeconds(19 * HOUR - CHECK_S);
+    assert.equal(d.outputs[0], false);
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], true); // the next cycle
+  });
+
+  test("without a reboot the cycle starts when the failsafe operation starts", () => {
+    const d = lastBeatAt("09:00", { clock: false });
+    d.advanceSeconds(TRIGGER_S - CHECK_S);
+    assert.equal(d.outputs[0], false);
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], true);
+    d.advanceSeconds(5 * HOUR);
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("the clock becoming valid takes over at once (inside the window: stays ON)", () => {
+    const d = lastBeatAt("08:00", { clock: false });
+    d.advanceSeconds(TRIGGER_S + 3 * HOUR); // uptime ON since "08:00", 3 h
+    assert.equal(d.outputs[0], true);
+    d.setClock("11:00");
+    d.advanceSeconds(CHECK_S);
+    runUntil(d, "14:58");
+    assert.equal(d.outputs[0], true); // beyond the 5 h uptime ON phase
+    runUntil(d, "15:00");
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("clock valid shortly after an uptime ON start: min ON still holds", () => {
+    const d = lastBeatAt("14:55", { clock: false });
+    d.advanceSeconds(TRIGGER_S + CHECK_S); // ON at "14:56"
+    assert.equal(d.outputs[0], true);
+    d.advanceSeconds(9 * MINUTE);
+    d.setClock("15:05"); // outside the window
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:54");
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:55"); // 1 h after the ON at 14:55
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("clock valid shortly after an uptime OFF: min OFF holds, then the window", () => {
+    const d = lastBeatAt("08:00", { clock: false });
+    d.advanceSeconds(TRIGGER_S + 5 * HOUR + CHECK_S); // ON 08:00–13:00, OFF at "13:01"
+    assert.equal(d.outputs[0], false);
+    d.advanceSeconds(4 * MINUTE);
+    d.setClock("13:05"); // inside the window
+    d.advanceSeconds(CHECK_S);
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "13:59");
+    assert.equal(d.outputs[0], false);
+    runUntil(d, "14:00"); // 1 h after the OFF at 13:00
+    assert.equal(d.outputs[0], true);
+    runUntil(d, "15:00");
+    assert.equal(d.outputs[0], false);
+  });
+
+  test("bench values: everything in minutes", () => {
+    const config = {
+      heartbeat_timeout_s: 120,
+      check_interval_s: 5,
+      failsafe_trigger_s: 240,
+      uptime_on_s: 120,
+      uptime_off_s: 180,
+      min_on_s: 0,
+      min_off_s: 0,
+    };
+    const d = lastBeatAt("09:00", { clock: false, config });
+    d.advanceSeconds(125);
+    assert.equal(d.outputs[0], false); // timed out
+    d.advanceSeconds(120);
+    assert.equal(d.outputs[0], true); // failsafe, uptime ON
+    d.advanceSeconds(120);
+    assert.equal(d.outputs[0], false); // uptime OFF
+    d.advanceSeconds(180);
+    assert.equal(d.outputs[0], true);
   });
 });
