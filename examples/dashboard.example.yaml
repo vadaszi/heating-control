@@ -4,8 +4,10 @@
 # docs/configuration.md with two zones:
 #   - "Living room" (id living_room): sensor.living_room_temperature, valve switch.valve_living_room
 #   - "Bathroom" (id bathroom): sensor.bathroom_temperature, no valve
-# It is a "sections" view: each section is a column. The first two sections are the
-# zone columns (spread your zones over them, e.g. 3 + 2); the others follow.
+# Two views ("sections" type, each section one column):
+#   - "Floor heating": the badges, then one section per zone and the house last; with
+#     three columns the zones fill the rows (e.g. 3 + 2, the house next to zone 5);
+#   - "Setup": the parameters (one card per group), holiday, schedules and the help card.
 # Replace these with your own zones: the integration's entity ids start with the zone's
 # name, e.g. climate.<zone>_floor_heating (see docs/configuration.md#entities). Copy a
 # zone's blocks (marked "zone: ...") for every further zone.
@@ -19,7 +21,7 @@ views:
     path: floor-heating
     icon: mdi:heating-coil
     type: sections
-    max_columns: 4
+    max_columns: 3
     badges:
       - type: entity
         entity: binary_sensor.floor_heating_heat_request
@@ -69,7 +71,6 @@ views:
           - zone_state
           - reason
     sections:
-      # Zones, first column.
       - type: grid
         cards:
           # zone: Living room
@@ -107,7 +108,6 @@ views:
                   - entity: switch.valve_living_room
                     name: Valve
 
-      # Zones, second column.
       - type: grid
         cards:
           # zone: Bathroom (no valve: nothing to show for the valve)
@@ -139,7 +139,7 @@ views:
                   - entity: sensor.bathroom_floor_heating_reason
                     name: Reason
 
-      # The house: alerts and the heat source.
+      # The house, after the zones.
       - type: grid
         cards:
           # Alerts: shown only while there is at least one.
@@ -177,57 +177,81 @@ views:
               - entity: switch.floor_heating_heating_season
               - entity: switch.floor_heating_control_active
 
+
+  - title: Setup
+    path: floor-heating-setup
+    icon: mdi:cog
+    type: sections
+    max_columns: 4
+    sections:
+      # Parameters, one card per group. The zone rows (marked "zone: ...") are repeated
+      # for every zone.
       - type: grid
         cards:
-          # Setup: every parameter, grouped by function. The zone rows (marked
-          # "zone: ...") are repeated for every zone.
           - type: entities
-            title: Setup
+            title: Hysteresis
             show_header_toggle: false
             entities:
-              - type: section
-                label: Hysteresis
               # zone: Living room
               - entity: number.living_room_floor_heating_hysteresis
                 name: Living room
               # zone: Bathroom
               - entity: number.bathroom_floor_heating_hysteresis
                 name: Bathroom
-              - type: section
-                label: Wait time (open-window filter)
+      - type: grid
+        cards:
+          - type: entities
+            title: Wait time (open-window filter)
+            show_header_toggle: false
+            entities:
               # zone: Living room
               - entity: number.living_room_floor_heating_wait_time
                 name: Living room
               # zone: Bathroom
               - entity: number.bathroom_floor_heating_wait_time
                 name: Bathroom
-              - type: section
-                label: Heat source
+      - type: grid
+        cards:
+          - type: entities
+            title: Heat source
+            show_header_toggle: false
+            entities:
               - entity: number.floor_heating_heat_source_minimum_on_time
                 name: Minimum on time
               - entity: number.floor_heating_heat_source_minimum_off_time
                 name: Minimum off time
               - entity: number.floor_heating_long_run_alarm
                 name: Long run alarm
-              - type: section
-                label: Sensors and failsafe
+      - type: grid
+        cards:
+          - type: entities
+            title: Sensors and failsafe
+            show_header_toggle: false
+            entities:
               - entity: number.floor_heating_sensor_fault_timeout
                 name: Sensor fault timeout
               - entity: time.floor_heating_sensor_fault_reminder_time
                 name: Sensor fault reminder time
               - entity: number.floor_heating_failsafe_delay
                 name: Failsafe delay
-              - type: section
-                label: Manual schedules
+      - type: grid
+        cards:
+          - type: entities
+            title: Manual schedules
+            show_header_toggle: false
+            entities:
               - entity: number.floor_heating_manual_max_temperature
                 name: Manual max temperature
               - entity: number.floor_heating_manual_resume_difference
                 name: Manual resume difference
-              - type: section
-                label: Off season
+      - type: grid
+        cards:
+          - type: entities
+            title: Off season
+            show_header_toggle: false
+            entities:
               - entity: number.floor_heating_off_season_valve_exercise_duration
                 name: Valve exercise duration
-
       - type: grid
         cards:
           # Holiday: start/stop, end, each zone's holiday temperature, and the stored end

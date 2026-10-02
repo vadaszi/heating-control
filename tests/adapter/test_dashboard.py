@@ -96,8 +96,10 @@ def test_only_built_in_cards() -> None:
     assert "custom:" not in DASHBOARD.read_text()
     types = {card["type"] for card in _cards(dashboard)}
     assert types <= BUILT_IN_CARDS, types - BUILT_IN_CARDS
-    [view] = dashboard["views"]  # parameters are in the Setup card (D-144)
-    assert (view["path"], view["type"]) == ("floor-heating", "sections")
+    assert [(v["path"], v["type"]) for v in dashboard["views"]] == [
+        ("floor-heating", "sections"),
+        ("floor-heating-setup", "sections"),
+    ]
 
 
 def test_no_header_toggle() -> None:
@@ -111,7 +113,7 @@ def test_no_header_toggle() -> None:
 
 def test_badges_show_everything_at_a_glance() -> None:
     """D-143: the daily view's badges, always shown (no visibility conditions)."""
-    [daily] = _dashboard()["views"]
+    daily, _setup = _dashboard()["views"]
     badges = daily["badges"]
     assert all(badge["type"] == "entity" and "visibility" not in badge for badge in badges)
     shown = [badge["entity"] for badge in badges]
@@ -135,22 +137,37 @@ def test_badges_show_everything_at_a_glance() -> None:
     assert [b["entity"] for b in wanted] == ["climate.living_room_floor_heating"]
 
 
-def test_zone_columns_come_first_and_setup_holds_every_parameter() -> None:
-    """D-144: the zone cards side by side in the first sections; the Setup card has every
-    parameter, grouped by function."""
-    [daily] = _dashboard()["views"]
-    first, second = daily["sections"][:2]
-    assert first["cards"][0]["cards"][0]["entity"] == "climate.living_room_floor_heating"
-    assert second["cards"][0]["cards"][0]["entity"] == "climate.bathroom_floor_heating"
-    [setup] = [c for c in _cards(_dashboard()) if c.get("title") == "Setup"]
-    rows = setup["entities"]
-    labels = [row["label"] for row in rows if row.get("type") == "section"]
-    assert labels[:2] == ["Hysteresis", "Wait time (open-window filter)"]
-    numbers = {row["entity"] for row in rows if "entity" in row}
-    for zone in ("living_room", "bathroom"):
-        assert f"number.{zone}_floor_heating_hysteresis" in numbers
-        assert f"number.{zone}_floor_heating_wait_time" in numbers
-    assert "number.floor_heating_heat_source_minimum_on_time" in numbers
+def test_zones_then_house_and_a_setup_view() -> None:
+    """D-145: the daily view has one section per zone and the house last (3 columns, so
+    the zones fill the rows); the Setup view has one card per parameter group, holiday,
+    schedules and the help card."""
+    daily, setup = _dashboard()["views"]
+    first_cards = [section["cards"][0] for section in daily["sections"]]
+    assert [c["cards"][0]["entity"] for c in first_cards[:2]] == [
+        "climate.living_room_floor_heating",
+        "climate.bathroom_floor_heating",
+    ]
+    assert daily["max_columns"] == 3
+    assert [c.get("title") for c in daily["sections"][-1]["cards"]] == [None, "House"]
+    titles = [c.get("title") for c in _cards(setup)]
+    for title in (
+        "Hysteresis",
+        "Wait time (open-window filter)",
+        "Heat source",
+        "Sensors and failsafe",
+        "Manual schedules",
+        "Off season",
+        "Holiday",
+        "Schedules",
+        "New schedule",
+        "What the states and reasons mean",
+    ):
+        assert title in titles, title
+    [hysteresis] = [c for c in _cards(setup) if c.get("title") == "Hysteresis"]
+    assert [row["entity"] for row in hysteresis["entities"]] == [
+        "number.living_room_floor_heating_hysteresis",
+        "number.bathroom_floor_heating_hysteresis",
+    ]
 
 
 def test_explanation_card_covers_every_state_and_reason() -> None:
