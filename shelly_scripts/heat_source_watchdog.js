@@ -12,7 +12,6 @@
 //
 // Heartbeat and status: POST or GET http://<device>/script/<script id>/heartbeat
 // Protocol: docs/heartbeat-protocol.md. Setup and bench tests: docs/shelly-scripts.md.
-// Spec: docs/design.md §3.6 (failsafe case 2), §5.4, D-72, D-100 to D-105, D-153.
 //
 // Edit only the CONFIG block. The script engine runs a JavaScript subset: use
 // let, named top-level functions and declare them before calling them.
@@ -174,7 +173,7 @@ function localTime() {
   return sys.time;
 }
 
-// The failsafe operation runs only with the season flag true; null counts as OFF (D-105).
+// The failsafe operation runs only with the season flag true; null counts as OFF.
 function computeState() {
   let age = heartbeatAgeMs();
   if (age >= CONFIG.failsafe_trigger_s * 1000 && season === true) {
@@ -194,7 +193,7 @@ function inWindow(minutes) {
 }
 
 // Failsafe operation: the clock window, or without a valid clock the uptime cycle,
-// which starts with its ON phase when the failsafe operation starts (D-72, D-153).
+// which starts with its ON phase when the failsafe operation starts.
 function failsafeWanted() {
   let time = localTime();
   let minutes = time === null ? -1 : minutesOf(time);
@@ -399,7 +398,7 @@ function onRequest(request, response) {
 
 function start() {
   checkConfig();
-  // Script start counts as the last heartbeat (D-72, D-102); the output keeps its state.
+  // Script start counts as the last heartbeat; the output keeps its state.
   lastHeartbeatMs = Shelly.getUptimeMs();
   Shelly.call("KVS.Get", { key: CONFIG.kvs_season_key }, onSeasonLoaded);
   HTTPServer.registerEndpoint(CONFIG.endpoint, onRequest);

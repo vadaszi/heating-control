@@ -7,7 +7,6 @@
 //
 // Heartbeat and status: POST or GET http://<device>/script/<script id>/heartbeat
 // Protocol: docs/heartbeat-protocol.md. Setup and bench tests: docs/shelly-scripts.md.
-// Spec: docs/design.md §3.6 (failsafe case 2), §5.4, D-100 to D-104.
 //
 // Edit only the CONFIG block. The script engine runs a JavaScript subset: use
 // let, named top-level functions and declare them before calling them.
@@ -221,7 +220,7 @@ function onRequest(request, response) {
 function start() {
   checkConfig();
   switchIds = findSwitchIds();
-  // Script start counts as the last heartbeat (D-102); outputs keep their state.
+  // Script start counts as the last heartbeat; outputs keep their state.
   lastHeartbeatMs = Shelly.getUptimeMs();
   HTTPServer.registerEndpoint(CONFIG.endpoint, onRequest);
   Timer.set(CONFIG.check_interval_s * 1000, true, check);

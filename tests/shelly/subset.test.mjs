@@ -8,10 +8,25 @@ import { describe, test } from "node:test";
 import { checkSubset } from "./subset.mjs";
 import { HEAT_SOURCE_SCRIPT, VALVE_SCRIPT } from "./helpers.mjs";
 
+// Documents of the user manual the scripts may point to.
+const MANUAL = ["docs/shelly-scripts.md", "docs/heartbeat-protocol.md"];
+
 describe("device scripts", () => {
   for (const file of [VALVE_SCRIPT, HEAT_SOURCE_SCRIPT]) {
     test(`${basename(file)} uses only the supported subset`, () => {
       assert.deepEqual(checkSubset(readFileSync(file, "utf8")), []);
+    });
+
+    test(`${basename(file)} refers only to the user manual`, () => {
+      // The scripts are released; the development documents are not (owner, 2026-10-02).
+      const source = readFileSync(file, "utf8");
+      for (const pattern of [/design\.md/, /implementation-plan/, /\bD-\d+/, /§/]) {
+        assert.doesNotMatch(source, pattern);
+      }
+      const docs = source.match(/docs\/[\w-]+\.md/g) ?? [];
+      for (const doc of docs) {
+        assert.ok(MANUAL.includes(doc), `${doc} is not part of the user manual`);
+      }
     });
 
     test(`${basename(file)} has one CONFIG block at the top`, () => {
