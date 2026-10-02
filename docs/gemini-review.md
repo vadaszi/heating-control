@@ -11,7 +11,8 @@
 
 ## Quick Navigation
 
-- [⭐ **Latest Review: 2026-09-29 (Phases P7 & P7b / Commit `e82cdb6`)**](#review-session-2026-09-29--phases-p7--p7b-verification-commit-e82cdb6)
+- [⭐ **Latest Review: 2026-10-02 (Phases P9–P12 / Commit `75ac01e`)**](#review-session-2026-10-02--phases-p9p12-verification-commit-75ac01e)
+- [Review Session: 2026-09-29 (Phases P7 & P7b / Commit `e82cdb6`)](#review-session-2026-09-29--phases-p7--p7b-verification-commit-e82cdb6)
 - [Review Session: 2026-09-27 (Phases P5 & P6 / Commit `7f58b1a`)](#review-session-2026-09-27--phases-p5--p6-verification-commit-7f58b1a)
 - [Review Session: 2026-09-27 (Phase P4 / Commit `44098ab`)](#review-session-2026-09-27--phase-p4-verification-commit-44098ab)
 - [Review Session: 2026-09-27 (Phase P3 / Commit `c510a38`)](#review-session-2026-09-27--phase-p3-verification-commit-c510a38)
@@ -23,11 +24,64 @@
 
 | Date | Phase / Milestone | Commit | Status / Verdict | Link |
 |---|---|---|---|---|
+| **2026-10-02** | Phases P9–P12 (Schedules, holiday, dashboard, failsafe case 1, valve exercise, long run, watchdog ping, script 1.1.0) | `75ac01e` | ⚠️ Verified with 1 Critical Syntax Bug & 2 Actionable Edge Cases (700 Python tests, 112 JS tests, 100% core coverage) | [Jump to session](#review-session-2026-10-02--phases-p9p12-verification-commit-75ac01e) |
 | **2026-09-29** | Phases P7 & P7b (Shelly heartbeat client, config entry, integration rename, reason keys) | `e82cdb6` | ✅ P7-P7b Complete & Verified (483 Python tests, 94 JS tests, 100% core coverage, 99.2% overall) | [Jump to session](#review-session-2026-09-29--phases-p7--p7b-verification-commit-e82cdb6) |
 | **2026-09-27** | Phases P5 & P6 (HA adapter, entities, notifications, shadow mode, storage) | `7f58b1a` | ✅ P5-P6 Complete & Verified (411 Python tests, 94 JS tests, 100% core coverage) | [Jump to session](#review-session-2026-09-27--phases-p5--p6-verification-commit-7f58b1a) |
 | **2026-09-27** | Phase P4 (Shelly watchdog scripts v1, heartbeat protocol) | `44098ab` | ✅ P4 Complete & Verified (305 Python tests, 94 JS tests, AST subset enforced) | [Jump to session](#review-session-2026-09-27--phase-p4-verification-commit-44098ab) |
 | **2026-09-27** | Phase P3 (Season OFF, alerts, mismatch counter, v1 core complete) | `c510a38` | ✅ P3 Complete & Verified (305 tests, 100% core coverage, v1 core finished) | [Jump to session](#review-session-2026-09-27--phase-p3-verification-commit-c510a38) |
 | **2026-09-27** | Phase P2 (Core zone logic, sensor validity, HP protection) | `b0376c2` | ✅ P2 Complete & Verified (249 tests, 100% core coverage, 6 observations noted) | [Jump to session](#review-session-2026-09-27--phase-p2-verification-commit-b0376c2) |
+
+---
+
+## Review Session: 2026-10-02 — Phases P9–P12 Verification (Commit `75ac01e`)
+
+- **Scope:** Core schedules & holiday mode (`core/schedule.py`), schedule form & services (`form.py`, `services.py`, `select.py`, `date.py`, `time.py`, `number.py`, `button.py`), example dashboard (`examples/dashboard.example.yaml`, `tests/adapter/test_dashboard.py`), Failsafe Case 1 (`core/failsafe.py`), Off-season valve exercise (`core/exercise.py`), Long run alarm (`core/alerts.py`), External watchdog ping (`watchdog.py`, D-155), Shelly heat source script 1.1.0 (`shelly_scripts/heat_source_watchdog.js`, D-153, D-154), and persistent storage updates (`storage.py`).
+- **Target Specification:** Spec rev. 1.2 (`docs/design.md`), Implementation Plan Phases P9–P12 (`docs/implementation-plan.md`), decisions D-129 through D-155.
+- **Automated Verification:**
+  - `pytest --cov`: **700 passed** in 53.26s (+217 tests since last review).
+  - Core branch coverage: **100.00%** (845+ stmts, 0 missed across all core modules).
+  - Total project test coverage: **99.53%** (3051 stmts, 754 branches across all 35 modules).
+  - `npm test`: **112 passed** in 217ms across 19 test suites (`tests/shelly/**/*.test.mjs`).
+  - `mypy`: **0 errors** across 71 source files.
+  - `ruff`: **Clean** across all 73 files.
+
+### 1. Actionable Findings & Technical Issues
+
+1. **CRITICAL: Syntax Error on Python <3.14 in `storage.py:150`:**
+   - **The Bug:** Line 150 of `storage.py` reads:
+     ```python
+     except TypeError, ValueError:
+     ```
+     Unparenthesized exception tuples are only allowed in Python 3.14+. On Python 3.12 and 3.13 (which Home Assistant runs on in production across HA OS 13/14, Docker, and Core), this causes an immediate `SyntaxError: multiple exception types must be parenthesized` during import, crashing the integration on startup.
+   - **Action Required:** Change line 150 to:
+     ```python
+     except (TypeError, ValueError):
+     ```
+
+2. **Unhandled `KeyError` in Schedule Form on Zone Rename (`form.py:46`):**
+   - **The Bug:** In `async_add_from_form()`:
+     ```python
+     zone_ids = {zone.name: zone.id for zone in controller.config.core.zones}
+     ...
+     zone_ids=None if form.zone == ALL_ZONES else (zone_ids[form.zone],),
+     ```
+     If an owner renames a zone in `configuration.yaml` and reloads HA, `controller.form` retains the previous zone name in memory (as `ScheduleForm` is transient and not re-synchronized on reload). Clicking "Add schedule" crashes with an uncaught `KeyError`.
+   - **Action Required:** Guard lookup with `zone_ids.get(form.zone)` and fall back to `ALL_ZONES` or display a notification if `form.zone` is not in `zone_ids`.
+
+3. **Liveness Guard Sensitivity Floor Needed (`controller.py:146`):**
+   - **The Issue:** `loop_alive()` uses:
+     ```python
+     limit = HEARTBEAT_LIVENESS_TICKS * self.config.reconcile_interval
+     ```
+     For a configuration with `reconcile_interval: 10`, `limit` is only 30 seconds. Normal HA event loop delays (e.g. SQLite database migration, automated backup, or heavy startup) will trip `loop_alive() = False`, logging false warnings and halting heartbeats and watchdog pings.
+   - **Action Required:** Floor the limit:
+     ```python
+     limit = max(timedelta(minutes=3), HEARTBEAT_LIVENESS_TICKS * self.config.reconcile_interval)
+     ```
+
+4. **Failsafe Script 1.1.0 Bench Verification Pending (Tests S2, S3, S5):**
+   - **Status:** Heat source script 1.1.0 is deployed live on the owner's Shelly 1 Gen4, and heartbeats / status reporting are confirmed functional (`state: "normal"`).
+   - **Action Required:** Complete hardware bench tests S2 (failsafe window by clock), S3 (uptime cycle without NTP after power loss), and S5 (season flag enforcement) with shortened bench timeouts before winter go-live.
 
 ---
 
