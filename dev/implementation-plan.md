@@ -200,7 +200,7 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
 
 ## P8 — Documentation and release preparation (runs last, D-129)
 Owner decisions at the P8 start (2026-10-02): D-156 to D-159. 1.0.0 will be released from a **new, clean public repository** `multizone-floor-heating-manager` with only the published files; everything is built and checked here first as **0.11.0**. **The release itself is not part of P8** (the owner has many manual tests first).
-- Icon: 2–3 variants for the owner; then the PNG sizes HA uses (and check whether HA 2026.9 takes brand images from the integration folder, otherwise a home-assistant/brands pull request).
+- Icon: the owner chose A (house with a floor loop); `brand/icon.png`, `icon@2x.png`, `dark_icon.png`, `dark_icon@2x.png` in the integration folder (HA 2026.9 serves brand images of custom integrations from there).
 - Code cleanup: `Floorheat*` → `FloorHeating*`; code and test comments without D-numbers, § sections, `design.md`, phases or owner/date notes (reasons kept in plain words).
 - Leftover entities removed by the integration at start (D-156), tests; the doubled Bedroom id explained (HA builds a new entity's id from area + device + entity name).
 - Private/public split: dev documents in `dev/`, `CLAUDE.local.md` → `dev/CLAUDE.md`, public `CLAUDE.md`; `dev/public-files.txt` + `dev/export.sh`; `tests/test_repository.py` (no reference to private documents, every Markdown link and anchor resolves).
@@ -236,7 +236,7 @@ The owner's open checks in one list (2026-10-02). Results go into design.md §8.
 - [ ] **External watchdog:** healthchecks.io check (period 5 min, grace 30 min), `watchdog_ping_url` in the YAML, restart; the check shows pings *(done 2026-10-02)*. Still open: stop HA for longer than the grace time → "down" email; start it → "up" email.
 
 **P8 (0.11.0):**
-- [ ] **Icon:** pick one of the variants (or ask for changes).
+- [x] **Icon:** pick one of the variants *(done 2026-10-02: A, the house with a floor loop; in `brand/`)*.
 - [ ] **Install 0.11.0** (HACS redownload) and check: nothing changes in behaviour; the log shows "Removing … no longer provides it" for leftover entities of older versions, if any are still there.
 - [ ] **Read the manual** (README, Getting started, How it works, Troubleshooting) and send notes.
 - [ ] **Dashboard screenshots** (2–3) for `docs/dashboard.md` and the README.

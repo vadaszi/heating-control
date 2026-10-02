@@ -128,3 +128,17 @@ def test_relative_links_resolve(path: Path) -> None:
         elif PRIVATE and str(file.relative_to(ROOT)).startswith(PRIVATE):
             problems.append(f"{link}: a private document")
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    ("name", "size"),
+    [("icon.png", 256), ("icon@2x.png", 512), ("dark_icon.png", 256), ("dark_icon@2x.png", 512)],
+)
+def test_brand_images(name: str, size: int) -> None:
+    """Home Assistant shows the integration's icon from its `brand` folder."""
+    data = (
+        ROOT / "custom_components" / "multizone_floor_heating_manager" / "brand" / name
+    ).read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    assert (width, height) == (size, size)

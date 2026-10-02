@@ -30,3 +30,4 @@ First public release.
 **Entities and dashboard**
 - A device per zone and a "Floor heating" device; climate, state, reason, effective target and parameter entities per zone; heat request, heat source status, mode, alerts, schedules and the global parameters.
 - Example dashboard with built-in cards, a 24-hour graph per zone and a card that explains every state and reason.
+- An integration icon (in the `brand` folder; Home Assistant shows it under *Devices & services*).

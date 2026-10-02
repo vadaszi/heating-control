@@ -49,6 +49,7 @@ Why it is built this way: the logic (calling zone, sync rule, minimum times, sch
 | `notifications.py` | Events → notify services or notify entities. |
 | `services.py`, `schedules.py`, `form.py` | Schedule services, labels, the dashboard form. |
 | `entity.py` + platforms | `climate`, `sensor`, `binary_sensor`, `number`, `switch`, `time`, `date`, `select`, `button`. |
+| `brand/` | The integration's icon (`icon.png` 256 px, `icon@2x.png` 512 px, and `dark_` versions), which Home Assistant loads from this folder. |
 
 ## Rules that hold everywhere
 
