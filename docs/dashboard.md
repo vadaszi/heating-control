@@ -12,14 +12,13 @@ Two views, both of the "sections" type (each section is a column; Home Assistant
   - a thermostat card: the zone temperature and the base target, which you can change;
   - the zone's state and reason, the end of a running timer ("Until"), the effective target, and the valve relay (zones with a valve);
   - a graph of the last 24 hours: the temperature and the effective target as lines, and the state, reason and valve as coloured bars on the same time axis, so you can see what the integration decided and when. The temperature line is the sensor's raw reading, without the zone's sensor offset.
-- **House**, after the zones (with five zones next to the fifth): the alerts (a list that appears only while there is at least one), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), the mode (normal / holiday), and the Heating season and Control active switches.
+- **House**, after the zones (with five zones next to the fifth): the alerts (always shown: the active alerts, or "No active alerts."), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), the mode (normal / holiday), and the Heating season and Control active switches.
+- **What the states and reasons mean**, after the house: a card that explains every heat source status, zone state and reason in plain words. It is meant for learning; delete it when you no longer need it.
 
 **"Setup" (rarely used):**
 - **One card per group of parameters**: Hysteresis (every zone), Wait time (every zone), Heat source (minimum on and off time, long run alarm), Sensors and failsafe (sensor fault timeout and reminder time, failsafe delay), Manual schedules (max temperature, resume difference), Off season (valve exercise duration).
 - **Holiday**: the Holiday switch, the end date and end time, each zone's holiday temperature, and a line that shows the stored end, e.g. "Ends: Fri 2026-10-02 15:00" or "No end date: holiday runs until you switch it off" ([how holiday works](configuration.md#holiday)).
 - **Schedules**: the list of schedules by label, and the form to add and delete them ([how schedules work](configuration.md#schedules-and-holiday), [the form](configuration.md#schedule-form-device-floor-heating)).
-- **What the states and reasons mean**: a card that explains every heat source status, zone state and reason in plain words. It is meant for learning; delete it when you no longer need it.
-
 No card has a "toggle all" switch in its header, so one tap can never switch several settings at once.
 
 ## Installing it

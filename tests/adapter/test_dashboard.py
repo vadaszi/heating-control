@@ -138,9 +138,9 @@ def test_badges_show_everything_at_a_glance() -> None:
 
 
 def test_zones_then_house_and_a_setup_view() -> None:
-    """D-145: the daily view has one section per zone and the house last (3 columns, so
-    the zones fill the rows); the Setup view has one card per parameter group, holiday,
-    schedules and the help card."""
+    """D-145, D-146: the daily view has one section per zone, then the house (with the
+    always shown alerts) and the help card (3 columns, so the zones fill the rows); the
+    Setup view has one card per parameter group, holiday and schedules."""
     daily, setup = _dashboard()["views"]
     first_cards = [section["cards"][0] for section in daily["sections"]]
     assert [c["cards"][0]["entity"] for c in first_cards[:2]] == [
@@ -148,7 +148,8 @@ def test_zones_then_house_and_a_setup_view() -> None:
         "climate.bathroom_floor_heating",
     ]
     assert daily["max_columns"] == 3
-    assert [c.get("title") for c in daily["sections"][-1]["cards"]] == [None, "House"]
+    assert [c.get("title") for c in daily["sections"][2]["cards"]] == ["Alerts", "House"]
+    assert daily["sections"][3]["cards"][0]["title"] == "What the states and reasons mean"
     titles = [c.get("title") for c in _cards(setup)]
     for title in (
         "Hysteresis",
@@ -160,7 +161,6 @@ def test_zones_then_house_and_a_setup_view() -> None:
         "Holiday",
         "Schedules",
         "New schedule",
-        "What the states and reasons mean",
     ):
         assert title in titles, title
     [hysteresis] = [c for c in _cards(setup) if c.get("title") == "Hysteresis"]
@@ -212,6 +212,8 @@ async def test_markdown_templates_render(world: World) -> None:
     markdown = [c["content"] for c in _cards(_dashboard()) if c["type"] == "markdown"]
     for content in markdown:
         Template(content, hass).async_render()  # raises on a template error
+    [alerts] = [c for c in markdown if "floor_heating_alerts" in c]
+    assert Template(alerts, hass).async_render().strip() == "No active alerts."
     [holiday] = [c for c in markdown if "holiday_end_date" in c]
     assert "**No end date:**" in Template(holiday, hass).async_render()
     await world.controller.async_set_holiday_end_date(date(2026, 1, 14))
