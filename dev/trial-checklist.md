@@ -1,6 +1,6 @@
 # Shadow-mode trial checklist (after P6)
 
-Work through this after installing floorheat as described in [Getting started](getting-started.md). Tick each box and write what you saw under **Feedback**: errors, odd values, anything you'd like different. "OK" is enough when all is well.
+Work through this after installing floorheat as described in [Getting started](../docs/getting-started.md). Tick each box and write what you saw under **Feedback**: errors, odd values, anything you'd like different. "OK" is enough when all is well.
 
 > If this file goes back into the repository, keep private details out of it: no IP addresses, email addresses, personal names or tokens (design §0.1).
 

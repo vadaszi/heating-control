@@ -1,0 +1,29 @@
+name: Newest Home Assistant
+
+# Runs the Python tests against the newest Home Assistant release, so a breaking
+# change in HA is seen before users update. The regular CI uses the pinned version.
+on:
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest against the newest HA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+      - name: Install the newest test stack
+        run: |
+          uv venv .venv
+          uv pip install --python .venv -r requirements_test.txt
+          uv pip install --python .venv --upgrade pytest-homeassistant-custom-component
+          .venv/bin/python -c "import homeassistant.const as c; print('Home Assistant', c.__version__)"
+      - name: pytest
+        run: .venv/bin/pytest

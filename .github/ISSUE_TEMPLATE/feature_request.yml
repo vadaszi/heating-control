@@ -1,0 +1,16 @@
+name: Suggest an idea
+description: A new feature or a change in behaviour.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What do you want to achieve, and why does the integration not do it today? Describe your installation if it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How could it work? Think of the cases where it should not apply (sensor faults, shadow mode, outside the heating season, …).

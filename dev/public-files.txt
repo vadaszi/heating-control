@@ -1,0 +1,21 @@
+# Files and folders published in the public repository (private: dev/, CLAUDE.local.md).
+# One path per line; a folder means every tracked file in it. dev/export.sh copies them.
+.github/
+.gitignore
+.pre-commit-config.yaml
+CHANGELOG.md
+CLAUDE.md
+CONTRIBUTING.md
+LICENSE
+README.md
+custom_components/
+docs/
+examples/
+hacs.json
+images/
+package-lock.json
+package.json
+pyproject.toml
+requirements_test.txt
+shelly_scripts/
+tests/

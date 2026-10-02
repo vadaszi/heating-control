@@ -1,6 +1,6 @@
 [project]
 name = "multizone-floor-heating-manager"
-version = "0.10.0"
+version = "0.11.0"
 description = "Home Assistant custom integration for room-by-room underfloor heating zone control"
 readme = "README.md"
 license = "MIT"

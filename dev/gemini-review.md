@@ -63,7 +63,7 @@
      ```python
      zone_ids = {zone.name: zone.id for zone in controller.config.core.zones}
      ...
-     zone_ids=None if form.zone == ALL_ZONES else (zone_ids[form.zone],),
+     zone_ids = (None if form.zone == ALL_ZONES else (zone_ids[form.zone],),)
      ```
      If an owner renames a zone in `configuration.yaml` and reloads HA, `controller.form` retains the previous zone name in memory (as `ScheduleForm` is transient and not re-synchronized on reload). Clicking "Add schedule" crashes with an uncaught `KeyError`.
    - **Action Required:** Guard lookup with `zone_ids.get(form.zone)` and fall back to `ALL_ZONES` or display a notification if `form.zone` is not in `zone_ids`.

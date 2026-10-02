@@ -1,6 +1,6 @@
 # Implementation Plan — `floorheat`
 
-> Source of truth: `docs/design.md` (Spec rev. 1.2). If this plan and the spec disagree, the spec wins; fix the plan.
+> Source of truth: `dev/design.md` (Spec rev. 1.2). If this plan and the spec disagree, the spec wins; fix the plan.
 > Rules: one work phase at a time, committed directly to `main` (D-83); each phase ends with a summary to the owner, and the next phase starts only when the owner asks. Docs are updated in the same commit(s) as the code. `main` must stay green. The §0 rules apply everywhere.
 
 ## Overview
@@ -199,19 +199,28 @@ Collected from the owner's live use of 0.8.0 (since 2026-10-01). Nothing is impl
   - *Finding 4* (bench S2, S3, S5): already in the owner's to-do list.
 
 ## P8 — Documentation and release preparation (runs last, D-129)
-- **To discuss at the P8 start (owner, 2026-10-02):** the development documents (`design.md`, this plan) are not released; at the release the user manual is the only truth. The Shelly scripts already refer only to the manual (test in `tests/shelly/subset.test.mjs`). Open: how far the rule reaches. The manual pages link `design.md` and cite D-numbers, and so do the integration's code comments. Also open: whether `heartbeat-protocol.md` belongs to the manual.
-- **Carried over (from P10, D-140):**
-  - *Climate entity of a zone without a valve* (owner, 2026-10-01: "an important note because could be confusing"): explain prominently in the user manual (README / troubleshooting, and the climate row in `configuration.md`) that the climate state is always "Heat" (the only mode), and that "Current action: Heating" means warm water flows through the zone, not that the zone wants heat (D-116). A zone without a valve therefore shows "Heating" whenever the heat source runs for another zone, while its zone state and reason say "Idle". Its `valve` attribute shows "Unknown" (no valve). Behaviour stays as it is.
-  - *Dashboard screenshots* for `docs/dashboard.md` (§5.8): the owner takes 2–3 from the live HA; check them for §0.1 (no IP addresses or personal names) before committing.
-  - *Upgrades in release mode:* check how removed or renamed entities (e.g. the global holiday temperature removed in 0.8.0) and stored data are handled for users who upgrade, and document it in the changelog. Until the first release the integration does not clean up old entities; the owner deletes them by hand. Also: on the owner's live HA, the per-zone holiday temperature added in 0.8.0 got the id `number.bedroom_bedroom_floor_heating_holiday_temperature` on the "Bedroom floor heating" device (name correct, other zones fine, cause unknown; the owner renamed it). Find out how HA generates ids for entities added to an existing device, and whether the integration should suggest the id.
-Runs after P12; then the owner releases **1.0.0** (v1 + v1.1 + v1.2). No go-live step: the owner runs the integration live since P7b. The reference docs (`configuration.md`, `getting-started.md`, `shelly-scripts.md`) grow with each phase anyway; P8 adds and finishes the overview material, written once from the finished state.
-- Docs per §5.8: README (what it does, the logic in plain words, limitations, safety notes, hydraulic prerequisite D-80), installation (HACS + manual), a check of the configuration reference and the Shelly guide, troubleshooting (sensor faults, heartbeat, failsafe, logs), CHANGELOG, `examples/configuration.example.yaml`.
-- *Shadow mode to live* (for other users; the docs must be correct): switching Control active ON; the real switch states count from then on, so HpMinOffTime may apply before the first start while the zones that need heat open their valves (D-112).
-- *Manual control* (D-119): Control active OFF first, then switch the relays directly; leave the watchdog scripts running; Control active ON returns to automatic (min OFF may apply, D-112).
-- *First start with the heat source already ON* (D-91): with no demand, all valves stay open for up to HpMinOnTime; document it as expected behaviour.
-- `iot_class` stays `local_polling` (owner, 2026-09-29; the heartbeat polls the Shellys locally).
-- Version 1.0.0, tag `v1.0.0` and a GitHub release when the owner says so; verify the installation through HACS.
-- **Done when:** the docs describe the finished integration and 1.0.0 is released.
+Owner decisions at the P8 start (2026-10-02): D-156 to D-159. 1.0.0 will be released from a **new, clean public repository** `multizone-floor-heating-manager` with only the published files; everything is built and checked here first as **0.11.0**. **The release itself is not part of P8** (the owner has many manual tests first).
+- Icon: 2–3 variants for the owner; then the PNG sizes HA uses (and check whether HA 2026.9 takes brand images from the integration folder, otherwise a home-assistant/brands pull request).
+- Code cleanup: `Floorheat*` → `FloorHeating*`; code and test comments without D-numbers, § sections, `design.md`, phases or owner/date notes (reasons kept in plain words).
+- Leftover entities removed by the integration at start (D-156), tests; the doubled Bedroom id explained (HA builds a new entity's id from area + device + entity name).
+- Private/public split: dev documents in `dev/`, `CLAUDE.local.md` → `dev/CLAUDE.md`, public `CLAUDE.md`; `dev/public-files.txt` + `dev/export.sh`; `tests/test_repository.py` (no reference to private documents, every Markdown link and anchor resolves).
+- Docs: README, `docs/index.md`, new `getting-started.md`, `how-it-works.md`, `troubleshooting.md`, cleaned `configuration.md` / `shelly-scripts.md` / `heartbeat-protocol.md` / `dashboard.md`, `docs/development/` (6 pages), `CONTRIBUTING.md`, `CHANGELOG.md`, `examples/configuration.example.yaml` (validated by a test), issue and pull request templates, weekly newest-HA workflow.
+- Version 0.11.0.
+- *(Carried over from P10, done here: climate entity of a zone without a valve explained; upgrade handling = D-156 + "Updating" in `configuration.md`; the doubled Bedroom id explained.)*
+- **Done when:** 0.11.0 is committed, pushed, CI green, and the owner has checked it (to-do list below).
+
+### Later, not in P8: release 1.0.0 (only when the owner says go; each outward step confirmed)
+1. Screenshots in `images/` and in `docs/dashboard.md` / README (privacy check); the icon.
+2. Set 1.0.0 in `manifest.json` and `pyproject.toml`, the date in `CHANGELOG.md`; switch the `manifest.json` `documentation` / `issue_tracker` URLs to the new repository.
+3. `dev/export.sh <dir>`; in it `git init`, one commit; create the public repository `multizone-floor-heating-manager` (description, topics, issues on, secret scanning + push protection on); push; CI green (incl. hassfest, HACS).
+4. Tag `v1.0.0`; `gh release create` with the changelog text.
+5. Owner: HACS → remove the old custom repository, add the new one (same domain; settings in `.storage` are kept); this repository → private or archived.
+6. Decide how development continues (private repo inside an excluded folder of the public one; branches and pull requests).
+
+### After 1.0.0 (owner, 2026-10-02)
+- HACS default list after the test period (needs the brand icon).
+- Diagnostics download.
+- Maybe branches + pull requests instead of direct commits to `main`.
 
 ## Owner to-do: checks and tests
 The owner's open checks in one list (2026-10-02). Results go into design.md §8. Tick an item when done.
@@ -223,8 +232,14 @@ The owner's open checks in one list (2026-10-02). Results go into design.md §8.
 
 **P12 (0.10.0):**
 - [x] **Update the heat source script:** *(done 2026-10-02: 1.1.0 runs, state normal, season kept, the device time is right, default params.)*
-- [ ] **Bench S2, S5, S3** with shortened values, steps in [`shelly-scripts.md`](shelly-scripts.md#bench-tests-shortened-timeouts) ("Heat source Shelly: failsafe operation"). Take the Shelly out of `shellys` for the test as described there. S3 needs a start without a valid time (unreachable time server, or the router offline): note whether `"time"` really is `null` after the power cut.
+- [ ] **Bench S2, S5, S3** with shortened values, steps in [`shelly-scripts.md`](../docs/shelly-scripts.md#bench-tests-shortened-timeouts) ("Heat source Shelly: failsafe operation"). Take the Shelly out of `shellys` for the test as described there. S3 needs a start without a valid time (unreachable time server, or the router offline): note whether `"time"` really is `null` after the power cut.
 - [ ] **External watchdog:** healthchecks.io check (period 5 min, grace 30 min), `watchdog_ping_url` in the YAML, restart; the check shows pings *(done 2026-10-02)*. Still open: stop HA for longer than the grace time → "down" email; start it → "up" email.
+
+**P8 (0.11.0):**
+- [ ] **Icon:** pick one of the variants (or ask for changes).
+- [ ] **Install 0.11.0** (HACS redownload) and check: nothing changes in behaviour; the log shows "Removing … no longer provides it" for leftover entities of older versions, if any are still there.
+- [ ] **Read the manual** (README, Getting started, How it works, Troubleshooting) and send notes.
+- [ ] **Dashboard screenshots** (2–3) for `docs/dashboard.md` and the README.
 
 **Shelly and hardware (open since P4/P7):**
 - [ ] **S7 on the real devices:** stop the watchdog script on one Shelly → after 3 failed heartbeats (about 15 min) "Floor heating: Shelly watchdog not answering"; start it again → "answering again".

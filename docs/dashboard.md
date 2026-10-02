@@ -1,6 +1,6 @@
 # Example dashboard
 
-Multizone Floor Heating Manager ships an example dashboard: [`examples/dashboard.example.yaml`](../examples/dashboard.example.yaml). It uses only Home Assistant's built-in cards, so there is nothing extra to install. Screenshots will be added before the first release.
+Multizone Floor Heating Manager ships an example dashboard: [`examples/dashboard.example.yaml`](../examples/dashboard.example.yaml). It uses only Home Assistant's built-in cards, so there is nothing extra to install.
 
 ## What it shows
 
@@ -12,7 +12,7 @@ Two views, both of the "sections" type (each section is a column; Home Assistant
   - a thermostat card: the zone temperature and the base target, which you can change;
   - the zone's state and reason, the end of a running timer ("Until"), the effective target, and the valve relay (zones with a valve);
   - a graph of the last 24 hours: the temperature and the effective target as lines, and the state, reason and valve as coloured bars on the same time axis, so you can see what the integration decided and when. The temperature line is the sensor's raw reading, without the zone's sensor offset.
-- **House**, after the zones (with five zones next to the fifth): the alerts (always shown: the active alerts, or "No active alerts."), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), the mode (normal / holiday), and the Heating season and Control active switches.
+- **House**, after the zones (with five zones next to the fifth): the alerts (always shown: the active alerts, or "No active alerts."), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), the mode (normal / holiday / failsafe), and the Heating season and Control active switches.
 - **What the states and reasons mean**, after the house: a card that explains every heat source status, the mode, every zone state and reason in plain words. It is meant for learning; delete it when you no longer need it.
 
 **"Setup" (rarely used):**

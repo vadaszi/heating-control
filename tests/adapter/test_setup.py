@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -10,8 +12,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+from homeassistant.util.yaml import parse_yaml
 
 from custom_components.multizone_floor_heating_manager.const import DOMAIN
+from custom_components.multizone_floor_heating_manager.core.units import TemperatureUnit
+from custom_components.multizone_floor_heating_manager.schema import CONFIG_SCHEMA, build_config
 
 from .conftest import PKG, World, make_conf, no_watchdog_for_all, zone_conf
 
@@ -283,3 +288,15 @@ async def test_invalid_shelly_config_is_rejected(
 ) -> None:
     assert not await async_setup_component(hass, DOMAIN, conf)
     assert message in caplog.text
+
+
+def test_the_example_configuration_is_valid() -> None:
+    """`examples/configuration.example.yaml` passes the schema and the wiring checks."""
+    example = Path(__file__).parents[2] / "examples" / "configuration.example.yaml"
+    text = re.sub(r"!secret (\S+)", r'"https://secret.invalid/\1"', example.read_text())
+    conf = parse_yaml(text)
+    assert isinstance(conf, dict)
+    config = build_config(CONFIG_SCHEMA(conf)[DOMAIN], TemperatureUnit.CELSIUS)
+    zones = [zone.id for zone in config.core.zones]
+    assert zones == ["living_room", "kitchen", "bedroom", "bathroom"]
+    assert len(config.shellys) == 2

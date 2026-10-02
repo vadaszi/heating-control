@@ -25,13 +25,13 @@ You are implementing a Home Assistant custom integration that controls an underf
    - Every rule in §3 must be covered by unit tests with simulated time.
    - The acceptance scenarios in §6 are the minimum test set.
    - The core must never read the system clock itself; time is always passed in.
-5. **Work in phases (§5.10, `docs/implementation-plan.md`).**
+5. **Work in phases (§5.10, `dev/implementation-plan.md`).**
    - Implement one work phase (P0, P1, …) at a time, committing directly to `main` (D-83). No feature branches or pull requests.
    - `main` must stay green: run the local checks before every push, and fix a red CI run immediately.
    - At the end of a phase, summarise it for the owner (what was done, how it was verified, spec questions) and stop.
    - Do not start the next phase unasked.
 6. **Keep the repo self-explaining:**
-   - `CLAUDE.md` contains §0, the architecture summary and the working rules;
+   - `dev/CLAUDE.md` (private, imported by `CLAUDE.local.md`) contains §0, the architecture summary and the working rules; the root `CLAUDE.md` is the public version (D-157);
    - this spec lives in `docs/`;
    - user documentation is written alongside the code (§5.8).
 7. **Environment.**
@@ -39,8 +39,8 @@ You are implementing a Home Assistant custom integration that controls an underf
    - Anything that needs real hardware is marked for the owner to verify (§8).
 
 ### First task (when starting from an empty repo)
-Follow `docs/implementation-plan.md`, starting with work phase **P0** (D-82):
-1. **P0:** create the repository skeleton (§5.9), `LICENSE`, `CLAUDE.md` (linking to the implementation plan), `.gitignore`, pre-commit secret scanning, the test setup and CI. This document already lives at `docs/design.md`; keep it there. *(Done: PR #1.)*
+Follow `dev/implementation-plan.md`, starting with work phase **P0** (D-82):
+1. **P0:** create the repository skeleton (§5.9), `LICENSE`, `CLAUDE.md` (linking to the implementation plan), `.gitignore`, pre-commit secret scanning, the test setup and CI. This document already lives at `dev/design.md`; keep it there. *(Done: PR #1.)*
 2. **P1–P3** follow one at a time, each started by the owner and committed directly to `main` (D-83): they implement the **v1 control core** (`core/`) with full unit tests, including the §6 scenarios that belong to v1. No HA code yet.
 3. Every phase summary lists any spec questions that came up.
 
@@ -516,7 +516,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - number entities for the global parameters;
   - alerts sensor (count + list).
 - **Details (D-114 to D-116):**
-  - **devices and names (D-125, replaces the fixed ids of D-115):** one device per zone, "<zone name> floor heating", and one "Floor heating" device for the global entities (device type *service*). Entities follow HA's naming conventions: `has_entity_name`, the entity name names only the value ("Reason", "Hysteresis"), the climate entity has no name of its own (it is the zone device), names and state texts come from translations, settings carry the *config* entity category. HA generates the entity ids from device name + entity name when an entity is first registered (e.g. `climate.living_room_floor_heating`, `sensor.living_room_floor_heating_reason`, `switch.floor_heating_heating_season`); later renames don't change them. Unique ids are built from the zone id and the key (e.g. `living_room_reason`, `heat_request`). Zone devices are assigned to areas in the UI (no YAML key). Full list: [`configuration.md`](configuration.md#entities);
+  - **devices and names (D-125, replaces the fixed ids of D-115):** one device per zone, "<zone name> floor heating", and one "Floor heating" device for the global entities (device type *service*). Entities follow HA's naming conventions: `has_entity_name`, the entity name names only the value ("Reason", "Hysteresis"), the climate entity has no name of its own (it is the zone device), names and state texts come from translations, settings carry the *config* entity category. HA generates the entity ids from device name + entity name when an entity is first registered (e.g. `climate.living_room_floor_heating`, `sensor.living_room_floor_heating_reason`, `switch.floor_heating_heating_season`); later renames don't change them. Unique ids are built from the zone id and the key (e.g. `living_room_reason`, `heat_request`). Zone devices are assigned to areas in the UI (no YAML key). Full list: [`configuration.md`](../docs/configuration.md#entities);
   - every §4 global parameter has its number entity from v1, including those whose features come in v1.1/v1.2; the docs say from which release each is used (D-114). The times of day are time entities (SensorFaultReminder; FailsafeWindow start and end, the valve exercise time, D-147, D-149) and the valve exercise day is a select (Monday–Sunday);
   - the entities are views of the adapter's settings and state (D-106): unavailable until the first reconcile run, except the settings (switches, numbers, time), which can be changed at once;
   - climate `hvac_action` is *heating* while the heat source request is ON and the zone gets flow (valve open, or no valve), otherwise *idle*; attributes `zone_state`, `reason`, `valve` (desired), `calling_zone` (D-116);
@@ -533,7 +533,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - **Details (D-138):** the zone select offers "All zones" or one zone, the "Days" select offers once (on the form's date), every day, Monday–Friday, Saturday–Sunday or a single weekday; other combinations only through the service. The draft values stay after "Add schedule" (for adding a similar one) and return to their defaults after a restart (they are not stored). The "Existing schedule" select lists the labels.
 
 ### 5.4 Heartbeat mechanism
-- Each Shelly script registers a small local HTTP endpoint. **Protocol v1 (D-100):** [`heartbeat-protocol.md`](heartbeat-protocol.md).
+- Each Shelly script registers a small local HTTP endpoint. **Protocol v1 (D-100):** [`heartbeat-protocol.md`](../docs/heartbeat-protocol.md).
   - `POST /script/<id>/heartbeat` is the heartbeat (JSON body; the heat source's carries `season`); `GET` on the same path returns the status without counting as a heartbeat.
   - The response carries a protocol version `v`. Added fields never change it and both sides ignore unknown fields; a breaking change raises it.
   - A request that is not valid (e.g. a heat source heartbeat without a boolean `season`) gets `400` and is not a heartbeat (D-105).
@@ -570,7 +570,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
 - **Switching OFF → ON:** the next reconcile sets all outputs to the desired state.
   - **Going live (D-112):** from then on the real switch states count. If shadow mode had the heat source ON and the real switch is OFF, that is a stop, so HpMinOffTime applies before the first real start. Accepted; noted in the go-live checklist.
 - **Commanded feedback (D-109):** the commanded state is the last desired state. When it changes, `step` runs again at once with the same `now` (not a new reconcile tick), as if the switches had followed. After a restart the heat source starts from the stored last known state, the valves from OFF.
-- **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids. A new Template switch is `unknown` until it is switched once, and `unknown` counts as unavailable (no commands, D-66), so each stand-in is switched OFF once after it is created (user guide: [`getting-started.md`](getting-started.md)). Stand-ins are listed in `no_watchdog` (D-118), so they get no heartbeat.
+- **Trial without Shellys (D-113):** for a shadow-mode trial before the Shellys are installed, stand-in switches are Template switch helpers without a state template (optimistic, restored after a restart). The spec stays switch-only; going live means replacing the entity ids. A new Template switch is `unknown` until it is switched once, and `unknown` counts as unavailable (no commands, D-66), so each stand-in is switched OFF once after it is created (user guide: [`getting-started.md`](../docs/getting-started.md)). Stand-ins are listed in `no_watchdog` (D-118), so they get no heartbeat.
 - It is OFF on first install. The owner ran it next to the existing controller before switching to live (live since P7b, D-129).
 - **Manual control (D-119):** there is no separate manual mode. For pure manual control (e.g. heating one room outside the automatic logic, or heat pump maintenance) the user switches Control active OFF first, then switches the relays directly (Shelly app or HA). the integration sends nothing after the final OFF (D-110); no min ON/OFF, cap or other protection applies. The watchdog scripts keep running: shadow mode keeps sending heartbeats (D-56), so they act only if HA is down for HeartbeatTimeout. Switching Control active ON returns to automatic control from the real switch states (D-112). The user docs describe this.
 
@@ -587,7 +587,7 @@ All are exposed as HA entities (changeable from the UI) unless marked *config* (
   - `!secret` references for the watchdog ping URL and credentials.
 - **All values are changed from the UI and stored by HA:** SetPoints, parameters, holiday, schedules, season.
 - The config is validated at startup with clear error messages (unknown entity, duplicate zone id or name, etc.).
-  - **Exact keys:** [`configuration.md`](configuration.md) (D-111). `valve` is required: a switch or `none`, so a zone without a valve is a deliberate choice. Each switch may be mapped only once. Keys for later phases (notify, Shelly, watchdog) are added with them; unknown keys are rejected.
+  - **Exact keys:** [`configuration.md`](../docs/configuration.md) (D-111). `valve` is required: a switch or `none`, so a zone without a valve is a deliberate choice. Each switch may be mapped only once. Keys for later phases (notify, Shelly, watchdog) are added with them; unknown keys are rejected.
   - **Units (D-111):** temperatures in the YAML (`sensor_offset`, plausible range) are in HA's unit system and converted to °C.
   - **Unknown entities (D-107):** structural errors fail the setup. An entity that is neither in the entity registry nor has a state is reported after HA has started (error log + persistent notification), and the integration keeps running with it treated as unavailable, so a sensor integration that fails to load once does not stop heating control.
 - Startup warning (not an error) if every zone has a valve, pointing to the hydraulic prerequisite (D-80).
@@ -623,23 +623,26 @@ Use built-in HA cards only; no custom frontend code in v1/v1.1. An example dashb
 
 **Example dashboard (D-140, D-143 to D-145):** two views of the *sections* type. The daily view has one section per zone and the house section last, at most three columns, so the zones fill the rows (five zones: three, then two with the house next to the fifth). After the house section comes the help card (D-146). The "Setup" view has one card per parameter group (all hysteresis values together, all wait times together, heat source, sensors and failsafe, manual schedules, off season), the holiday card and the schedules. The alerts card in the house section is always shown (D-146). The daily view starts with badges, all always shown (no visibility conditions): heat request, heat source status, the heat source relay, alerts, and per zone temperature + zone state + reason, the wanted valve (climate attribute, plain text) and the valve relay. No entities card has a "toggle all" header switch. The Holiday card shows the stored end as text ("Ends: …" / "No end date: runs until you switch it off"). The daily view has one history graph per zone (room temperature and effective target as lines; state, reason and the valve relay as bars on the same time axis) and a Markdown card that explains every zone state and every reason in plain words (owner, 2026-09-29). This card is the only place for these explanations: no explanation attribute, no hover text. Screenshots follow in P8.
 
-### 5.8 User documentation (D-54)
-The repository must contain **detailed instructions** so another user can install and run the integration without help:
-- **README:** what it does, how the logic works in plain words, and its limitations and safety notes (a heating system is involved), including the hydraulic prerequisite (D-80).
-- **Installation:** via HACS custom repository and manually.
-- **Configuration reference:** every YAML key with type, default and example; every entity and service.
-- **Shelly scripts:** which script goes on which device, how to upload it, how to configure it, and how to test it.
-- **Example dashboard** YAML and screenshots (the YAML since P10, [`dashboard.md`](dashboard.md); screenshots in P8, D-140).
-- **Shadow mode and go-live checklist.**
-- **Troubleshooting:** sensor faults, heartbeat, failsafe, logs.
-- **Update notes / changelog** per release.
+### 5.8 User documentation (D-54, D-158)
+The repository must contain **detailed instructions** so another user can install and run the integration without help. The published docs describe the current state only: no D-numbers, § references, phases or links to the private documents (D-157), and no history (that goes into `CHANGELOG.md`).
+- **README:** what it does, who it is for (hardware), the hydraulic prerequisite (D-80), safety notes, limitations, installation in short with an "Add to HACS" button, links.
+- **`docs/getting-started.md`:** install (HACS + manual), sensors, switches (any relay; the Shelly watchdog scripts as the upgrade that adds the device failsafe, explained in the switches step), YAML, first look, shadow run, going live (checklist), external watchdog; a short "try it out" note with template switches and regularly reporting template sensors.
+- **`docs/how-it-works.md`:** the §3 rules in plain words.
+- **`docs/configuration.md`:** every YAML key, entity, service and notification; updating.
+- **`docs/shelly-scripts.md`, `docs/heartbeat-protocol.md`, `docs/dashboard.md`** (screenshots in `images/`), **`docs/troubleshooting.md`** (where to look, the `logger:` setting, alerts, manual control D-119).
+- **Developer docs** `docs/development/` (architecture, control core, reconcile loop, heartbeat, stored data, testing with the §6 scenarios in plain words), `CONTRIBUTING.md`, a public `CLAUDE.md`.
+- **`CHANGELOG.md`** plus GitHub release notes; each release lists added, renamed and removed entities.
+- `examples/`: configuration, dashboard, secrets.
 
 Docs are updated in the same commit(s) as the code they describe.
 
 ### 5.9 Repository structure (proposal)
 ```
 /
-├── CLAUDE.md                   # §0 rules, architecture summary, working rules
+├── CLAUDE.md                   # public rules for AI agents (D-158)
+├── CLAUDE.local.md             # private: imports dev/CLAUDE.md (D-157)
+├── CHANGELOG.md  CONTRIBUTING.md
+├── dev/                        # private (D-157): design.md, implementation-plan.md, reviews, checklists, public-files.txt, export.sh
 ├── README.md
 ├── LICENSE                     # MIT (D-63)
 ├── hacs.json
@@ -653,15 +656,15 @@ Docs are updated in the same commit(s) as the code they describe.
 ├── shelly_scripts/             # valve_watchdog.js, heat_source_watchdog.js
 ├── tests/                      # core unit tests (+ adapter tests); tests/shelly/: JS tests of the scripts
 ├── package.json                # Node test runner + JS subset check (acorn) for shelly_scripts/
-├── docs/                       # design.md (this file), heartbeat-protocol.md, user docs
+├── docs/                       # user manual; docs/development/ for developers
 ├── examples/                   # configuration.example.yaml, dashboard.example.yaml, secrets.example.yaml
 └── .github/workflows/          # tests; optional check against latest HA
 ```
 
 ### 5.10 Phasing
-The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phases** in `docs/implementation-plan.md` (D-82): P0–P7b = v1, P9–P10 = v1.1, P11–P12 = v1.2, and P8 (documentation and release preparation) runs last (D-129). Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
+The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phases** in `dev/implementation-plan.md` (D-82): P0–P7b = v1, P9–P10 = v1.1, P11–P12 = v1.2, and P8 (documentation and release preparation) runs last (D-129). Each work phase is committed directly to `main` and ends with a summary to the owner (D-83). The next phase starts only when the owner asks. The contents below are binding; the implementation plan only orders the work and must be updated if it drifts from this section.
 
-**Releases (D-128, D-129, D-140):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12. Until then, versions are 0.x.x and set in `manifest.json` only (P7b: 0.7.5, P10: 0.8.0, 0.8.1, P11: 0.9.0, 0.9.1, P12: 0.10.0) and the owner installs from the default branch. The owner already runs the integration live (since P7b), so there is no separate go-live step.
+**Releases (D-128, D-129, D-140, D-157):** nothing is tagged or released before 1.0.0, the first release. It contains all three feature sets and follows P8, after P9–P12 and the owner's manual tests. Until then, versions are 0.x.x and set in `manifest.json` only (P7b: 0.7.5, P10: 0.8.0, 0.8.1, P11: 0.9.0, 0.9.1, P12: 0.10.0, P8: 0.11.0) and the owner installs from the default branch. 1.0.0 is released from a new public repository (D-157). The owner already runs the integration live (since P7b), so there is no separate go-live step.
 
 **v1 — replaces the existing controller:**
 - zone logic (§3.3), min ON/OFF (§3.5), sensor fault (§3.6);
@@ -686,8 +689,8 @@ The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phas
 
 ### 5.11 Development & deployment
 - **Repository and deployment:**
-  - public GitHub repo from the start (D-46); the §0 rules keep it free of secrets;
-  - deployment via HACS custom repository; updates from GitHub releases.
+  - public GitHub repo from the start (D-46); the §0 rules keep it free of secrets. From 1.0.0 the public repository is a new, clean one, `multizone-floor-heating-manager`, with only the published files (D-157); this repository becomes private or archived;
+  - deployment via HACS custom repository (an "Add to HACS" button in the README); the HACS default list after the owner's test period (D-158); updates from GitHub releases.
 - **Where work happens (D-47):**
   - **Claude Code on the web (cloud):** core, tests, integration code, docs.
   - **Local (T14, WSL):** Shelly scripts on the bench, and anything needing the home network. The cloud sandbox cannot reach HA or the Shellys and gets no credentials.
@@ -696,7 +699,7 @@ The three feature sets below (v1, v1.1, v1.2) are split into smaller **work phas
   - Breakage is detected automatically: the heartbeat and watchdog ping come from the integration itself, so a broken integration triggers the Shelly watchdogs and healthchecks.io.
   - Use only long-standing, stable HA APIs, and watch for deprecation warnings.
   - Update routine: wait for the .1/.2 patch release, avoid major updates in deep winter, rely on HA's pre-update backup for rollback.
-  - Optional CI: a GitHub Action runs the tests against the latest HA release.
+  - CI: a weekly (and manual) workflow runs the Python tests against the newest HA release (D-159); the regular CI keeps the pinned test stack, raised by hand with the minimum HA version (no Dependabot for pip).
 
 ---
 
@@ -836,7 +839,7 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-79 | Holiday UI: "Holiday active" switch + end date/time; shadow mode shown separately from the mode sensor |
 | D-80 | Hydraulic prerequisite (flow path whenever HP request ON) documented; startup warning if every zone has a valve |
 | D-81 | HpMinOnTime / HpMinOffTime configurable 30–180 min; never below 30 min (short-cycling protection) |
-| D-82 | Releases are split into work phases P0–P12 (`docs/implementation-plan.md`); the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 *(amended by D-83; was: one pull request each)* |
+| D-82 | Releases are split into work phases P0–P12 (`dev/implementation-plan.md`); the first task is P0 (bootstrap) only, the v1 core follows in P1–P3 *(amended by D-83; was: one pull request each)* |
 | D-83 | From P1 on, work is committed directly to `main`; no branches, pull requests or PR reviews. `main` stays green (local checks before push, CI on every push). Each phase still ends with a summary to the owner, and the next phase starts only when asked |
 | D-84 | Zone `id` is an HA-style slug (`[a-z][a-z0-9_]*`); invalid ids are rejected with a suggested slug |
 | D-85 | Duplicate zone names are detected case-insensitively after trimming |
@@ -911,9 +914,12 @@ Defaults from §4 apply unless stated. All zones are valved unless stated. "HP" 
 | D-154 | Accepted and documented, no code change: HA returning during a failsafe run with no demand and the heat source last seen ON may switch it OFF after a short run (D-95); a reboot during a long HA outage restarts the FailsafeTrigger wait (D-72) (owner, 2026-10-02) |
 | D-155 | Watchdog ping: optional YAML `watchdog_ping_url` (any http(s) URL, `GET`, a secret never logged; `!secret` recommended, a plain string works) and `watchdog_ping_interval` (300 s, 60–3600); only while the reconcile loop works (D-122), also in shadow mode; a failed ping is only logged, never notified or alerted. Version 0.10.0 (owner, 2026-10-02) |
 | D-156 | Leftover entities: at every start, once every platform has set up, the integration removes the entities of its config entry that no platform creates any more (e.g. a setting an update removed or replaced), one log line each; nothing is removed when a platform failed. HA remembers a removed entity's id and settings and returns them if it comes back (downgrade, zone back in the YAML). Cause of the doubled Bedroom id: HA 2026.9 builds a *new* entity's id from area + device + entity name, so an entity added by an update to a zone device that is already in an area of the same name gets the name twice; documented, no workaround in the code. Amends D-140 (owner, 2026-10-02) |
+| D-157 | Release from a clean public repository: 1.0.0 goes to a new GitHub repository `multizone-floor-heating-manager` with only the published files (`dev/public-files.txt`, copied by `dev/export.sh`) and no file history; this repository becomes private or archived. The development documents (this spec, the plan, reviews, trial and bench records) live in `dev/` and stay private, with the private agent rules in `dev/CLAUDE.md` imported by `CLAUDE.local.md`; the root `CLAUDE.md` is public. No published file refers to them (D-numbers, § sections, their names), enforced by `tests/test_repository.py`; code and test comments state their reasons in plain words. Everything is built and checked here first as 0.11.0; the release is a later step started by the owner after the manual tests. How development continues after 1.0.0 (e.g. the private repo cloned into an excluded folder of the public one; branches and pull requests) is decided later. Amends D-46, D-51, D-128 (owner, 2026-10-02) |
+| D-158 | Public repository content: the user manual (§5.8), developer docs in `docs/development/` (several pages by topic), `CONTRIBUTING.md`, a public `CLAUDE.md`, tests, CI, issue templates (bug report, feature request) and a pull request template. Contributions: pull requests welcome, larger changes discussed in an issue first; a pull request must update the user manual, the developer docs, the tests and the changelog itself, otherwise it is not merged; the owner (with Claude) updates this spec when merging. `CHANGELOG.md` and GitHub release notes, 1.0.0 = "first public release" plus a feature list. HACS custom repository with an "Add to HACS" button; the HACS default list after the test period; a simple integration icon. The Floorheat* class names become FloorHeating* (owner, 2026-10-02) |
+| D-159 | CI additions: a weekly + manual job against the newest HA; no Dependabot for the Python test pin; no release workflow (`gh release create` with the changelog text). A diagnostics download is not in 1.0.0 (owner, 2026-10-02) |
 | – | Not adopted (2026-09-27): per-zone OFF mode; the climate entity offers `heat` only |
 
-D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 to D-140 on 2026-09-30 during P10 (owner answers on the P10 plan), D-141 to D-143 on 2026-10-01 for 0.8.1 (owner feedback on 0.8.0), D-144 to D-146 on 2026-10-02 (dashboard layout), D-147 to D-151 on 2026-10-02 during P11 (owner answers on the P11 plan), D-152 the same day after P11, D-153 to D-155 the same day during P12 (owner answers on the P12 plan), D-156 the same day during P8.
+D-01 to D-63 dated 2026-09-25 (D-56 to D-59 added during that final review). D-64 to D-82 and the amendments to D-46, D-60 and D-63 were added in the 2026-09-27 owner review (Spec rev. 1.2). D-83 and the amendment to D-82 were added on 2026-09-27 after P0. D-84 to D-89 were added on 2026-09-27 during P1, D-90 to D-93 during P2, D-94 and D-95 after the P2 review, D-96 to D-99 during P3, D-100 to D-105 during P4 (owner answers on parameters, valve reboot, re-asserting and the JS subset check). D-106 to D-113 were added on 2026-09-27 during P5 (owner answers on the P5 plan), D-114 to D-117 during P6. D-118 was added on 2026-09-28 after the first shadow trial, D-119 on 2026-09-29, D-120 to D-123 on 2026-09-29 during P7, D-124 to D-128 on 2026-09-29 at the start of P7b, D-129 on 2026-09-29 after P7b, D-130 to D-136 on 2026-09-30 during P9 (owner answers on the P9 plan), D-137 to D-140 on 2026-09-30 during P10 (owner answers on the P10 plan), D-141 to D-143 on 2026-10-01 for 0.8.1 (owner feedback on 0.8.0), D-144 to D-146 on 2026-10-02 (dashboard layout), D-147 to D-151 on 2026-10-02 during P11 (owner answers on the P11 plan), D-152 the same day after P11, D-153 to D-155 the same day during P12 (owner answers on the P12 plan), D-156 to D-159 the same day during P8 (owner answers on the P8 plan).
 
 ---
 

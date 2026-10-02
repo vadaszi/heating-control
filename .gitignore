@@ -43,6 +43,3 @@ node_modules/
 
 # --- Claude Code local settings ---
 .claude/settings.local.json
-
-# --- Owner's local notes (real entity ids, addresses): never commit ---
-owner-local/

@@ -159,7 +159,7 @@ class EventKind(StrEnum):
     WATCHDOG_FAILED = "watchdog_failed"  # Shelly unreachable / script not running
     WATCHDOG_RECOVERED = "watchdog_recovered"
     WATCHDOG_PARAMS_MISMATCH = "watchdog_params_mismatch"
-    FAILSAFE_STARTED = "failsafe_started"  # case 1: every sensor dead
+    FAILSAFE_STARTED = "failsafe_started"  # every sensor dead, HA running
     FAILSAFE_ENDED = "failsafe_ended"
     LONG_RUN = "long_run"  # heat source ON longer than LongRunAlarm
     LONG_RUN_ENDED = "long_run_ended"

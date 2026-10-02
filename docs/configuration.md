@@ -1,8 +1,8 @@
 # Configuration reference
 
-Multizone Floor Heating Manager is set up in `configuration.yaml`. The YAML holds only the **wiring**: which sensor and which switches belong to which zone. Every value you change in daily use (set points, parameters, heating season, Control active) is changed from the HA UI and stored by HA ([design §5.6](design.md#56-configuration-d-52-d-55)).
+Multizone Floor Heating Manager is set up in `configuration.yaml`. The YAML holds only the **wiring**: which sensor and which switches belong to which zone. Every value you change in daily use (set points, parameters, heating season, Control active) is changed from the HA UI and stored by the integration.
 
-For a first installation, see [Getting started](getting-started.md).
+For a first installation, see [Getting started](getting-started.md); for what the settings do, see [How it works](how-it-works.md).
 
 ## Example
 
@@ -42,8 +42,6 @@ multizone_floor_heating_manager:
 
 The entity ids and addresses are examples: use your own.
 
-> **Upgrading from 0.7 (the `floorheat` versions):** the integration was renamed (0.7.5). See [Upgrading from floorheat](#upgrading-from-floorheat) at the end of this page.
-
 ## Config entry and devices
 
 The integration reads only the YAML. At startup it imports it into a single entry under *Settings → Devices & services* ("Multizone Floor Heating Manager"), so it can create devices:
@@ -63,17 +61,17 @@ Without a `multizone_floor_heating_manager:` section the entry fails to load wit
 |---|---|---|---|
 | `heat_source_switch` | `switch` entity | required | The switch that requests heat from the heat source (e.g. a relay on the heat pump's thermostat terminals). |
 | `zones` | list | required | At least one zone; see below. The order matters: on a tie, the zone listed first becomes the calling zone. |
-| `plausible_min` | number | 0 °C | Readings below this are ignored as implausible. |
+| `plausible_min` | number | 0 °C | Readings below this are ignored as implausible. Must be below `plausible_max`. |
 | `plausible_max` | number | 40 °C | Readings above this are ignored as implausible. |
 | `reconcile_interval` | integer, seconds (10–300) | 60 | How often the outputs are checked and corrected. |
 | `output_mismatch_alert` | integer ≥ 1 | 3 | Alert after this many reconcile intervals in which a switch does not follow its command or is unavailable. |
 | `notify` | list of `notify.<name>` | none | Where notifications go: a notify service (e.g. `notify.mobile_app_phone` from the companion app, or an SMTP `notify.email`) or a notify entity. Without targets, events are only written to the log. |
 | `shellys` | list | none | The Shellys running a watchdog script; see [Shelly watchdogs](#shelly-watchdogs). |
-| `no_watchdog` | list of `switch` entities | none | Mapped switches that are **not** Shellys running the watchdog script (e.g. stand-ins or another relay). They get no heartbeat. |
+| `no_watchdog` | list of `switch` entities | none | Mapped switches that are **not** Shellys running the watchdog script: any other relay, or a template switch for a try-out. They get no heartbeat. |
 | `heartbeat_interval` | integer, seconds (60–3600) | 300 | How often every Shelly gets a heartbeat. Must be shorter than `heartbeat_timeout`. |
 | `heartbeat_fail_alert` | integer ≥ 1 | 3 | Alert after this many failed heartbeats in a row (3 × 5 min ≈ 15 min). |
-| `heartbeat_timeout` | integer, seconds | 18000 (5 h) | The `heartbeat_timeout_s` you expect in the scripts' CONFIG block. The integration alerts if a script reports another value. |
-| `heartbeat_check_interval` | integer, seconds | not checked | If set, the `check_interval_s` you expect in the scripts; otherwise it is not compared. |
+| `heartbeat_timeout` | integer, seconds (1–604800) | 18000 (5 h) | The `heartbeat_timeout_s` you expect in the scripts' CONFIG block. The integration alerts if a script reports another value. |
+| `heartbeat_check_interval` | integer, seconds (1–604800) | not checked | If set, the `check_interval_s` you expect in the scripts; otherwise it is not compared. |
 | `watchdog_ping_url` | URL (`http://` or `https://`) | none | The external watchdog's ping URL, e.g. a healthchecks.io check; see [External watchdog](#external-watchdog). Without it, no ping is sent. |
 | `watchdog_ping_interval` | integer, seconds (60–3600) | 300 | How often the URL is pinged. Set the check's period on the external service to the same value. |
 
@@ -109,7 +107,7 @@ Rules:
 - The Shelly with the heat source switch runs the **heat source script** and must hold no valve; every other listed Shelly runs the **valve script**. The integration checks this with each answer.
 - The integration does not detect device types: it trusts this list.
 
-> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the [external watchdog](#external-watchdog) would tell you that HA is down. Use `no_watchdog` only for stand-ins during a trial or for relays that cannot run the script.
+> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the [external watchdog](#external-watchdog) tells you that HA is down. With Shelly relays and the watchdog scripts the house goes into a safe state on its own ([Shelly scripts](shelly-scripts.md)).
 
 ### External watchdog
 
@@ -127,7 +125,7 @@ floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
 
 - **The URL is a secret.** Anyone who has it can keep the check "up" while your HA is dead, or send false alarms. `!secret` keeps it out of `configuration.yaml`, which people often share (forum posts, backups on GitHub). Writing the URL directly in `configuration.yaml` works the same; the integration never writes it to the log.
 - Any `http://` or `https://` URL is called with `GET`, so other services with a push/heartbeat URL work too (e.g. Uptime Kuma's push monitor).
-- **Settings on healthchecks.io:** period = `watchdog_ping_interval` (5 min), grace about 30 min. The alert then comes about 35 minutes after the last ping, so an HA update or restart (typically 5–20 min) does not raise a false alarm. Setup steps: [Getting started](getting-started.md#8-external-watchdog-healthchecksio).
+- **Settings on healthchecks.io:** period = `watchdog_ping_interval` (5 min), grace about 30 min. The alert then comes about 35 minutes after the last ping, so an HA update or restart (typically 5–20 min) does not raise a false alarm. Setup steps: [Getting started](getting-started.md#9-external-watchdog).
 - The ping goes out also in shadow mode, but only while the integration works (as the heartbeat, see [How it runs](#how-it-runs)): a broken integration triggers the alert too.
 - A failed ping (e.g. your internet is down, or a wrong URL that answers HTTP 404) is only logged: a warning at the first failure and an info line when it works again. There is no notification: the external service alerts you when its pings stop. A check that has never received a ping does not alert on healthchecks.io, so after the setup make sure the check shows the first ping.
 
@@ -139,7 +137,7 @@ floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
   - an unknown switch counts as unavailable, which is OFF.
 - A sensor without a temperature unit is logged once as a warning; its readings are ignored.
 - A `notify` target that is neither a notify service nor a notify entity is logged as a warning and shown as a persistent notification once HA has started.
-- A mapped switch that is neither on a listed Shelly nor in `no_watchdog`, a switch listed twice, a heat source Shelly holding a valve, or a `heartbeat_interval` not shorter than `heartbeat_timeout` stops the setup.
+- A mapped switch that is neither on a listed Shelly nor in `no_watchdog`, a switch listed twice, the same Shelly (`host` and `script_id`) listed twice, a heat source Shelly holding a valve, a `heartbeat_interval` not shorter than `heartbeat_timeout`, or a `plausible_min` not below `plausible_max` stops the setup.
 
 ## How it runs
 
@@ -156,7 +154,7 @@ floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
 
 ## Shadow mode
 
-After the first installation **Control active is OFF** (shadow mode). The integration then reads everything and makes its decisions, but it sends **no** switch commands. It treats its own decisions as if the switches had followed, so the decisions stay consistent. Use it to compare the integration with your existing controller before going live.
+After the first installation **Control active is OFF** (shadow mode). The integration then reads everything and makes its decisions, but it sends **no** switch commands. It treats its own decisions as if the switches had followed, so the decisions stay consistent. Use it to check the integration's decisions before it takes over; the steps are in [Getting started](getting-started.md#7-shadow-run).
 
 - **Switching Control active OFF** (live → shadow) sends one final safe set: heat source OFF, all valves OFF. A switch that is unavailable at that moment, or does not follow, gets the OFF again (with the retries above) until it has reported OFF once, also across a restart. After that, nothing more is sent.
 - **Switching Control active ON** (shadow → live) sets every output to the desired state at the next run.
@@ -202,9 +200,9 @@ The schedule services act like the schedule form on the dashboard, but they also
 
 | Service | Fields | Result |
 |---|---|---|
-| `multizone_floor_heating_manager.add_schedule` | `kind`: `auto` or `manual`; `zones`: a list of zone ids from the YAML, or `all`; either `date` (one-shot, the day the window starts) or `weekdays` (recurring: any of `mon` `tue` `wed` `thu` `fri` `sat` `sun`); `start`, `end` (local time); `temperature` (auto only, in your unit system) | Adds the schedule and returns it (`schedule`, as in the Schedules sensor). A schedule that is not valid, or an auto schedule that overlaps another one for the same zone, is rejected with an error naming the problem, and nothing is stored. |
+| `multizone_floor_heating_manager.add_schedule` | `kind`: `auto` or `manual`; `zones`: a list of zone ids from the YAML, or `all`; either `date` (one-shot, the day the window starts) or `weekdays` (recurring: any of `mon` `tue` `wed` `thu` `fri` `sat` `sun`); `start`, `end` (local time); `temperature` (auto only, 10–30 °C, in your unit system) | Adds the schedule and returns it (`schedule`, as in the Schedules sensor). A schedule that is not valid, or an auto schedule that overlaps another one for the same zone, is rejected with an error naming the problem, and nothing is stored. |
 | `multizone_floor_heating_manager.delete_schedule` | `schedule_id`: the number from the label (`3` or `#3`) | Deletes the schedule. |
-| `multizone_floor_heating_manager.list_schedules` | none | Returns `schedules`, the list in the Schedules sensor's attribute. |
+| `multizone_floor_heating_manager.list_schedules` | none | Returns `schedules`, the list in the Schedules sensor's attribute. It only returns data, so call it with a response (e.g. *Developer tools → Actions*, or `response_variable` in a script). |
 
 Example: every Monday, Wednesday and Friday 13:00–17:00, Living room and Kitchen at 23 °C:
 
@@ -240,11 +238,20 @@ Every notification goes to every `notify` target, with a title and a message:
 
 The weekly valve exercise is not notified; it only writes log lines.
 
+A few problems are shown as a **persistent notification** in HA (the bell in the sidebar) instead, because they need you, not the heating:
+
+| Title | When |
+|---|---|
+| Floor heating: unknown entities | A sensor or switch in the YAML is unknown to HA after it has started (typo, or its integration did not load). It counts as unavailable. |
+| Floor heating: unknown notify targets | A `notify` target is neither a notify service nor a notify entity. |
+| Floor heating: schedule not added | The schedule form's draft was rejected; the message names the problem. |
+| Floor heating: schedule not deleted | The schedule chosen in the form no longer exists. |
+
 A target that is a notify service (the companion app, SMTP) is called as `notify.<name>`; otherwise the notify entity of that id gets `notify.send_message`. A failing target is logged and never stops the control.
 
 ## Entities
 
-The entities follow Home Assistant's naming conventions. Each belongs to a zone device ("<zone name> floor heating") or to the "Floor heating" device, and its name names only the value (e.g. "Reason"). Home Assistant generates each entity id from the device name and the entity name when the entity is first created, e.g. `sensor.living_room_floor_heating_reason`. After that the id is kept, also when you rename the zone; you can change it yourself in the entity settings. The ids below are the generated ones, for a zone named "Living room" (`<zone>` = `living_room`). An entity renamed in a later version keeps the id it got when it was first created (e.g. "Failsafe delay", renamed "Failsafe operation delay" in 0.9.1, stays `number.floor_heating_failsafe_delay` on an installation that had it). Values changed through these entities are stored by the integration and survive restarts.
+The entities follow Home Assistant's naming conventions. Each belongs to a zone device ("<zone name> floor heating") or to the "Floor heating" device, and its name names only the value (e.g. "Reason"). Home Assistant generates each entity id from the device name and the entity name when the entity is first created, e.g. `sensor.living_room_floor_heating_reason`. After that the id is kept, also when you rename the zone; you can change it yourself in the entity settings. The ids below are the generated ones, for a zone named "Living room" (`<zone>` = `living_room`). Values changed through these entities are stored by the integration and survive restarts.
 
 Settings (the parameter numbers, the times of day and the valve exercise day) have the *configuration* category: HA shows them under "Configuration" on the device page and leaves them out of automatically generated dashboards.
 
@@ -259,6 +266,8 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 | `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
 | `number.<zone>_floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (default 18). The zone's target while holiday is on; it may be above or below the base set point. |
+
+> **Zone without a valve:** its climate entity shows *Heating* whenever the heat source runs for any zone, because warm water then flows through it. *Heating* on a climate entity means "warm water flows here", not "this zone wants heat". The zone's state and reason say what the zone itself wants (e.g. Idle). The climate mode is always *Heat*: it is the only mode, there is no per-zone off.
 
 ### Reasons
 
@@ -290,7 +299,7 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 | `sensor.floor_heating_heat_source` (Heat source) | What the heat source does and why: `heating` (Heating), `idle` (Off, no heat demand), `held_by_minimum_off_time` (Waiting for minimum off time: a zone wants heat, but the heat source stopped less than its minimum off time ago), `spreading_heat` (Running for minimum on time (spreading heat): no zone needs heat, but the minimum on time has not passed), `season_off` (Heating season off), `unavailable` (Switch unavailable), `failsafe_heating` (Failsafe heating), `failsafe_waiting` (Failsafe, waiting for operation start). If several apply, the first in this order wins: unavailable, season off, waiting, spreading, failsafe heating, failsafe waiting, heating, off. While waiting or spreading, the attribute `until` holds the end of that timer, in the failsafe the operation stop or the next operation start; otherwise there is no `until`. In shadow mode it shows the simulated heat source. |
 | `sensor.floor_heating_mode` (Mode) | `normal`; `holiday` while holiday is on; `failsafe` from when no sensor has sent a valid reading for longer than the failsafe operation delay until the first one reports again (heating season only; failsafe wins over holiday). Attribute `shadow`: true while Control active is OFF. |
 | `sensor.floor_heating_schedules` (Schedules) | Number of schedules; attribute `schedules` lists them, each with `id`, `label` (e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`), `kind`, `zones` (zone ids or `all`), `date` (one-shot) or `weekdays` (`mon` … `sun`), `start`, `end`, `temperature` (auto, in your unit system). See [Schedules and holiday](#schedules-and-holiday). |
-| `sensor.floor_heating_alerts` (Alerts) | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults, switches not following, Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`), the failsafe (`failsafe_started`) and a long run (`long_run`). |
+| `sensor.floor_heating_alerts` (Alerts) | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults (`sensor_fault_started`), switches not following (`output_mismatch`), Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`), the failsafe (`failsafe_started`) and a long run (`long_run`). |
 | `switch.floor_heating_heating_season` (Heating season) | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
 | `switch.floor_heating_control_active` (Control active) | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |
 | `time.floor_heating_sensor_fault_reminder_time` (Sensor fault reminder time) | Time of the daily sensor fault reminder (default 08:00). Configuration category. |
@@ -316,19 +325,19 @@ These entities are a form for adding and deleting schedules from the dashboard, 
 
 ### Global parameters (device "Floor heating", configuration category)
 
-| Entity (name) | Range (default) | Used from |
-|---|---|---|
-| `number.floor_heating_heat_source_minimum_on_time` (Heat source minimum on time) | 30–180 min (60) | v1 |
-| `number.floor_heating_heat_source_minimum_off_time` (Heat source minimum off time) | 30–180 min (60) | v1 |
-| `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) | v1 |
-| `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) | v1 (heat spread limit), v1.1 (manual schedules cap) |
-| `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) | v1.1 (manual schedules) |
-| `number.floor_heating_failsafe_operation_delay` (Failsafe operation delay) | 1–72 h (24) | v1.2 (failsafe) |
-| `time.floor_heating_failsafe_operation_start` (Failsafe operation start), `time.floor_heating_failsafe_operation_stop` (Failsafe operation stop) | local time (10:00–15:00) | v1.2 (failsafe) |
-| `select.floor_heating_off_season_valve_exercise_day` (Off-season valve exercise day) | Monday–Sunday (Monday) | v1.2 (valve exercise) |
-| `time.floor_heating_off_season_valve_exercise_time` (Off-season valve exercise time) | local time (08:00) | v1.2 (valve exercise) |
-| `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) | v1.2 (valve exercise) |
-| `number.floor_heating_long_run_alarm` (Long run alarm) | 2–48 h (12) | v1.2 (long run alarm) |
+| Entity (name) | Range (default) |
+|---|---|
+| `number.floor_heating_heat_source_minimum_on_time` (Heat source minimum on time) | 30–180 min (60) |
+| `number.floor_heating_heat_source_minimum_off_time` (Heat source minimum off time) | 30–180 min (60) |
+| `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) |
+| `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) |
+| `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) |
+| `number.floor_heating_failsafe_operation_delay` (Failsafe operation delay) | 1–72 h (24) |
+| `time.floor_heating_failsafe_operation_start` (Failsafe operation start), `time.floor_heating_failsafe_operation_stop` (Failsafe operation stop) | local time (10:00–15:00) |
+| `select.floor_heating_off_season_valve_exercise_day` (Off-season valve exercise day) | Monday–Sunday (Monday) |
+| `time.floor_heating_off_season_valve_exercise_time` (Off-season valve exercise time) | local time (08:00) |
+| `number.floor_heating_off_season_valve_exercise_duration` (Off-season valve exercise duration) | 5–30 min (15) |
+| `number.floor_heating_long_run_alarm` (Long run alarm) | 2–48 h (12) |
 
 The minimum on/off times can never be set below 30 minutes: they protect the heat pump from short cycles. Temperatures are shown in your HA unit system.
 
@@ -336,13 +345,9 @@ The minimum on/off times can never be set below 30 minutes: they protect the hea
 
 **Valve exercise** (heating season off): once a week on the set day and time, the valves open one after another in the order of the zones in the YAML, each for the exercise duration, with the heat source off (zones without a valve are skipped). If HA is not running at that time, the run is skipped until the next week; after a restart during a run, the remaining valves continue. Switching the heating season on ends it.
 
-## Upgrading from floorheat
+## Updating
 
-Up to 0.7.0 the integration was called `floorheat`. From 0.7.5 on it is **Multizone Floor Heating Manager** with the domain `multizone_floor_heating_manager`. Home Assistant sees it as a new integration:
-
-1. Rename the top-level key in `configuration.yaml` from `floorheat:` to `multizone_floor_heating_manager:`. Nothing else in the YAML changes.
-2. Update through HACS (or copy the new folder `custom_components/multizone_floor_heating_manager`), then **delete the old folder** `custom_components/floorheat`.
-3. Restart HA. The new entry, devices and entities appear.
-4. Set your targets and parameters again: they start from the defaults (they were stored under the old name). Control active starts OFF (shadow mode).
-5. Assign the zone devices to their areas, and update dashboards, automations and template sensors to the new entity ids (tables above).
-6. The old `floorheat` entities are left as orphans: delete them in *Settings → Entities* (search "floorheat", select, *Delete*). You may also delete the file `.storage/floorheat`.
+- Update through HACS (or copy the new `custom_components/multizone_floor_heating_manager` folder) and restart HA. Read the [changelog](../CHANGELOG.md) first: it lists every entity that was added, renamed or removed, so you know which dashboard cards and automations to check.
+- Your settings, schedules and the control state are kept: they are stored by zone id, not by entity.
+- **Entities a new version no longer provides are removed** at the start, one log line each. Home Assistant remembers a removed entity's id and settings for a while and gives them back if the entity returns (e.g. after going back to an older version).
+- **Ids of new entities:** Home Assistant builds a new entity's id from the device's **area**, the device name and the entity name. An entity added by an update to a zone device that you have already placed in an area gets the area in its id, e.g. `number.bedroom_bedroom_floor_heating_holiday_temperature` for a zone "Bedroom" in the area "Bedroom". Entities that existed before keep their ids. Rename such an id in the entity settings if you like.

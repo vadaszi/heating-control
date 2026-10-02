@@ -1,0 +1,47 @@
+name: Report a bug
+description: Something does not work as described in the documentation.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please remove passwords, the watchdog ping URL, IP addresses and anything else private from what you paste.
+        [Troubleshooting](https://github.com/vadaszi/multizone-floor-heating-manager/blob/main/docs/troubleshooting.md) explains how to get the log lines.
+  - type: input
+    id: version
+    attributes:
+      label: Integration version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.9.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the times, the zone's state and reason, and the heat request if it is about a heating decision.
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Your YAML configuration
+      description: The `multizone_floor_heating_manager:` section, without secrets.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: From Settings → System → Logs, filtered for "multizone_floor_heating_manager" (info level if possible).
+      render: text
+  - type: input
+    id: hardware
+    attributes:
+      label: Relays and sensors
+      description: e.g. "Shelly Plus 2PM Gen2 (firmware 1.7.5), Zigbee thermometers"

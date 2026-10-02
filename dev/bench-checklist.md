@@ -7,7 +7,7 @@ Work through this with the valve Shellys on the bench (nothing connected to the 
 Devices: Shelly Plus 2PM (Gen2) × 2. Firmware version(s): 1.7.5 (20260311-095847/1.7.5-g9979d16), device 1
 floorheat version: 0.6.0  HA version: 2026.9.3  Date: ______
 
-The detailed steps for B are in [Shelly scripts](shelly-scripts.md#bench-tests-shortened-timeouts).
+The detailed steps for B are in [Shelly scripts](../docs/shelly-scripts.md#bench-tests-shortened-timeouts).
 
 ---
 

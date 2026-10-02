@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/vadaszi/multizone-floor-heating-manager/blob/main/docs/index.md
+    about: Getting started, how it works, configuration and troubleshooting.

@@ -20,7 +20,7 @@ describe("device scripts", () => {
     test(`${basename(file)} refers only to the user manual`, () => {
       // The scripts are released; they refer only to the user manual.
       const source = readFileSync(file, "utf8");
-      for (const pattern of [/design\.md/, /implementation-plan/, /\bD-\d+/, /§/]) {
+      for (const pattern of [/design\.md/, /implementation[-]plan/, /\bD-\d+/, /\u00a7/]) {
         assert.doesNotMatch(source, pattern);
       }
       const docs = source.match(/docs\/[\w-]+\.md/g) ?? [];
