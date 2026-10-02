@@ -1,10 +1,10 @@
-"""The schedule form on the dashboard (docs/design.md §5.3, D-74, D-138).
+"""The schedule form on the dashboard.
 
 The form's entities (selects, date, times, temperature, buttons) edit one draft held by
 the controller. The draft is not stored: it keeps its values after "Add schedule", so a
-similar schedule is quick to add, and starts from the defaults after a restart (D-138).
+similar schedule is quick to add, and starts from the defaults after a restart.
 The buttons use the same validated controller methods as the services; a rejected
-schedule is shown as a persistent notification instead of an error (D-74).
+schedule is shown as a persistent notification instead of an error.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from .core.schedule import ScheduleKind
 from .schedules import DAY_OPTIONS, ONCE
 
 if TYPE_CHECKING:
-    from .controller import FloorheatController
+    from .controller import FloorHeatingController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class ScheduleForm:
     selected: str | None = None  # id of the schedule chosen in "Existing schedule"
 
 
-async def async_add_from_form(hass: HomeAssistant, controller: FloorheatController) -> None:
+async def async_add_from_form(hass: HomeAssistant, controller: FloorHeatingController) -> None:
     """The "Add schedule" button."""
     form = controller.form
     zone_ids = {zone.name: zone.id for zone in controller.config.core.zones}
@@ -68,7 +68,7 @@ async def async_add_from_form(hass: HomeAssistant, controller: FloorheatControll
     persistent_notification.async_dismiss(hass, NOTIFICATION)
 
 
-async def async_delete_from_form(hass: HomeAssistant, controller: FloorheatController) -> None:
+async def async_delete_from_form(hass: HomeAssistant, controller: FloorHeatingController) -> None:
     """The "Delete schedule" button: deletes the schedule chosen in "Existing schedule"."""
     schedule_id = selected_schedule(controller)
     if schedule_id is None:
@@ -80,7 +80,7 @@ async def async_delete_from_form(hass: HomeAssistant, controller: FloorheatContr
     persistent_notification.async_dismiss(hass, NOTIFICATION)
 
 
-def selected_schedule(controller: FloorheatController) -> str | None:
+def selected_schedule(controller: FloorHeatingController) -> str | None:
     """The chosen schedule, or the first one if none (or a deleted one) is chosen."""
     ids = [schedule.id for schedule in controller.settings.schedules]
     if controller.form.selected in ids:

@@ -1,6 +1,6 @@
 """Pure-Python control core of Multizone Floor Heating Manager.
 
-Rules (docs/design.md §5.3):
+Rules:
 - no Home Assistant imports;
 - the core never reads the system clock; time is always passed in.
 

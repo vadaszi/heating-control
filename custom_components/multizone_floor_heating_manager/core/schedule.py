@@ -1,15 +1,14 @@
-"""Auto and manual schedules and holiday (docs/design.md §3.4, D-16 to D-19, D-57 to D-59,
-D-130 to D-136).
+"""Auto and manual schedules and holiday.
 
-Schedules and the holiday end are owned by the adapter and reach `step` through `Inputs`
-(D-136). This module is pure: it resolves them into each zone's target for a given
-moment, checks a new schedule before it is stored, and (de)serialises schedules.
+Schedules and the holiday end are owned by the adapter and reach `step` through `Inputs`. This
+module is pure: it resolves them into each zone's target for a given moment, checks a new schedule
+before it is stored, and (de)serialises schedules.
 
-Windows (D-132):
+Windows:
 - local wall-clock times in HA's time zone, half-open `[start, end)`; an end before the
   start crosses midnight; start == end is rejected;
 - a recurring window belongs to the weekday it starts on, a one-shot window to its date;
-- DST (D-96, D-134): a local time is resolved with `fold=0`. A time in the repeated autumn
+- DST: a local time is resolved with `fold=0`. A time in the repeated autumn
   hour is its first occurrence; a time in the spring gap is shifted by the gap length
   (02:30 -> 03:30 CEST), as for the sensor fault reminder. A window whose start ends up
   at or after its end is empty that day.
@@ -26,7 +25,7 @@ from typing import Any
 
 from .config import ConfigError, CoreConfig, ParamSpec, ParamUnit, ZoneParams
 
-# Auto schedule temperature: the BaseSetPoint range (D-132).
+# Auto schedule temperature: the BaseSetPoint range.
 SCHEDULE_TEMPERATURE_SPEC = ParamSpec("temperature", 22.0, 10, 30, 0.1, ParamUnit.CELSIUS)
 
 WEEKDAYS = frozenset(range(7))  # Monday = 0, as `date.weekday()`; "daily" = all seven
@@ -38,16 +37,16 @@ _UNION_HORIZON = timedelta(days=8)
 
 
 class ScheduleKind(StrEnum):
-    AUTO = "auto"  # overrides the SetPoint (D-19)
-    MANUAL = "manual"  # forces the zone (D-18)
+    AUTO = "auto"  # overrides the SetPoint
+    MANUAL = "manual"  # forces the zone
 
 
 @dataclass(frozen=True)
 class Schedule:
-    """One auto or manual schedule (§3.4).
+    """One auto or manual schedule.
 
     - `zone_ids`: the zones it covers; None means all zones, including zones added to
-      the YAML later (D-132).
+      the YAML later.
     - One-shot: `on_date` set, `weekdays` empty. Recurring: `weekdays` set, no date.
     - `temperature`: °C, auto schedules only.
     """
@@ -130,7 +129,7 @@ class Schedule:
         return None
 
     def has_ended(self, now: datetime, time_zone: tzinfo) -> bool:
-        """A one-shot schedule whose window is over (deleted by the adapter, §3.4)."""
+        """A one-shot schedule whose window is over (deleted by the adapter)."""
         if self.on_date is None:
             return False
         return now >= self.window_on(self.on_date, time_zone)[1]
@@ -138,7 +137,7 @@ class Schedule:
     # ------------------------------------------------------------ persistence
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON-serialisable form; the adapter stores it (D-136)."""
+        """JSON-serialisable form; the adapter stores it."""
         return {
             "id": self.id,
             "kind": self.kind.value,
@@ -177,9 +176,9 @@ class Schedule:
 
 
 def local_instant(day: date, at: time, time_zone: tzinfo) -> datetime:
-    """A local wall-clock time as a UTC instant (fold=0, D-134): a time in the repeated
+    """A local wall-clock time as a UTC instant (fold=0): a time in the repeated
     autumn hour is its first occurrence, one in the spring gap is shifted by the gap.
-    Also used by the adapter for the holiday end (D-142)."""
+    Also used by the adapter for the holiday end."""
     return datetime.combine(day, at.replace(fold=0), tzinfo=time_zone).astimezone(UTC)
 
 
@@ -211,16 +210,17 @@ def _zone_errors(zone_ids: object) -> list[str]:
 
 @dataclass(frozen=True)
 class ZoneTarget:
-    """What schedules and holiday make of one zone at one moment (precedence D-16)."""
+    """What schedules and holiday make of one zone at one moment (precedence: holiday > manual >
+    auto > base)."""
 
     setpoint: float  # effective SetPoint, °C
-    forced: bool = False  # a manual window is running (the engine applies D-70, D-130)
+    forced: bool = False  # a manual window is running (the engine does not force a faulty zone)
     forced_until: datetime | None = None  # end of the running manual windows
 
 
 def holiday_active(on: bool, until: datetime | None, now: datetime) -> bool:
-    """Holiday runs from activation until its end (D-59, D-136), or until it is switched
-    off if it has no end (D-137)."""
+    """Holiday runs from activation until its end, or until it is switched
+    off if it has no end."""
     return on and (until is None or now < until)
 
 
@@ -232,12 +232,12 @@ def zone_target(
     now: datetime,
     time_zone: tzinfo,
 ) -> ZoneTarget:
-    """Holiday > manual > auto > BaseSetPoint (D-16); `holiday`: holiday is active.
+    """Holiday > manual > auto > BaseSetPoint; `holiday`: holiday is active.
 
-    - Holiday: the zone's own holiday temperature (D-133); schedules are suspended.
-    - Manual: the zone is forced; its SetPoint is the one below (auto or base, D-130).
-      Overlapping manual windows form their union (D-58).
-    - Auto: at most one covers a zone at a time (D-19); should stored data hold more,
+    - Holiday: the zone's own holiday temperature; schedules are suspended.
+    - Manual: the zone is forced; its SetPoint is the one below (auto or base).
+      Overlapping manual windows form their union.
+    - Auto: at most one covers a zone at a time; should stored data hold more,
       the first in list order wins.
     """
     if holiday:
@@ -284,7 +284,7 @@ def check_new_schedule(
     now: datetime,
     time_zone: tzinfo,
 ) -> list[str]:
-    """Problems that reject `new` before it is stored (§3.4, D-19, D-132); empty if none."""
+    """Problems that reject `new` before it is stored; empty if none."""
     errors: list[str] = []
     if any(s.id == new.id for s in existing):
         errors.append(f"a schedule with id {new.id!r} already exists")
@@ -317,7 +317,7 @@ _REFERENCE_MONDAY = date(2024, 1, 1)
 
 
 def overlaps(a: Schedule, b: Schedule) -> bool:
-    """Whether the windows of `a` and `b` share any local wall-clock minute (D-132).
+    """Whether the windows of `a` and `b` share any local wall-clock minute.
 
     Zones are not considered; touching windows (one ends when the other starts) do not
     overlap.
@@ -354,7 +354,7 @@ def load_schedules(data: object, config: CoreConfig) -> tuple[tuple[Schedule, ..
     """Restore stored schedules for `config`; returns them and warnings to log.
 
     Unusable entries are dropped. A zone no longer configured is removed from every
-    schedule, and a schedule left without zones is dropped (D-132). "All zones"
+    schedule, and a schedule left without zones is dropped. "All zones"
     schedules are kept as they are.
     """
     if data is None:

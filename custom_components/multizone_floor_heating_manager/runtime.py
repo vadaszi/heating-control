@@ -1,4 +1,4 @@
-"""What a loaded config entry holds (D-124): the controller, heartbeat and watchdog ping."""
+"""What a loaded config entry holds: the controller, heartbeat and watchdog ping."""
 
 from __future__ import annotations
 
@@ -6,16 +6,16 @@ from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .heartbeat import HeartbeatClient
 from .watchdog import WatchdogPing
 
 
 @dataclass(frozen=True)
-class FloorheatRuntime:
-    controller: FloorheatController
+class FloorHeatingRuntime:
+    controller: FloorHeatingController
     heartbeat: HeartbeatClient
     watchdog: WatchdogPing
 
 
-type FloorheatConfigEntry = ConfigEntry[FloorheatRuntime]
+type FloorHeatingConfigEntry = ConfigEntry[FloorHeatingRuntime]

@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING, Final
 from homeassistant.util.hass_dict import HassKey
 
 if TYPE_CHECKING:
-    from .schema import FloorheatConfig
+    from .schema import FloorHeatingConfig
 
 DOMAIN: Final = "multizone_floor_heating_manager"
-NAME: Final = "Multizone Floor Heating Manager"  # the config entry title (D-127)
-SHORT_NAME: Final = "Floor heating"  # the global device and notification titles (D-125)
+NAME: Final = "Multizone Floor Heating Manager"  # the config entry title
+SHORT_NAME: Final = "Floor heating"  # the global device and notification titles
 ZONE_DEVICE_SUFFIX: Final = "floor heating"  # zone device: "<zone name> floor heating"
 GLOBAL_DEVICE: Final = "global"  # identifier of the "Floor heating" device
 
-# The validated YAML, kept in memory for the config entry (D-124).
-DATA_YAML: HassKey[FloorheatConfig] = HassKey(DOMAIN)
+# The validated YAML, kept in memory for the config entry.
+DATA_YAML: HassKey[FloorHeatingConfig] = HassKey(DOMAIN)
 
 # YAML keys (docs/configuration.md)
 CONF_HEAT_SOURCE_SWITCH: Final = "heat_source_switch"
@@ -47,28 +47,28 @@ CONF_WATCHDOG_PING_INTERVAL: Final = "watchdog_ping_interval"
 
 NO_VALVE: Final = "none"
 
-DEFAULT_RECONCILE_INTERVAL: Final = 60  # s (§4)
+DEFAULT_RECONCILE_INTERVAL: Final = 60  # s
 MIN_RECONCILE_INTERVAL: Final = 10
 MAX_RECONCILE_INTERVAL: Final = 300
 
-# Heartbeat to the Shelly watchdog scripts (§4, §5.4, docs/heartbeat-protocol.md)
+# Heartbeat to the Shelly watchdog scripts (docs/heartbeat-protocol.md)
 DEFAULT_HEARTBEAT_INTERVAL: Final = 300  # s, HeartbeatInterval
 MIN_HEARTBEAT_INTERVAL: Final = 60
 MAX_HEARTBEAT_INTERVAL: Final = 3600
-DEFAULT_HEARTBEAT_FAIL_ALERT: Final = 3  # HeartbeatFailAlert (D-61)
+DEFAULT_HEARTBEAT_FAIL_ALERT: Final = 3  # HeartbeatFailAlert
 DEFAULT_HEARTBEAT_TIMEOUT: Final = 18000  # s; the scripts' expected heartbeat_timeout_s
 MAX_SCRIPT_SECONDS: Final = 604800  # the scripts accept 1 s to 7 days
 HEARTBEAT_CALL_TIMEOUT: Final = 10  # s; per heartbeat call
-HEARTBEAT_LIVENESS_TICKS: Final = 3  # heartbeat only after a run within 3 intervals (D-122)
+HEARTBEAT_LIVENESS_TICKS: Final = 3  # heartbeat only after a run within 3 intervals
 SHELLY_USERNAME: Final = "admin"  # Shelly digest auth always uses "admin"
 
-# External watchdog ping, e.g. healthchecks.io (§4, §5.3, D-62, D-155)
+# External watchdog ping, e.g. healthchecks.io
 DEFAULT_WATCHDOG_PING_INTERVAL: Final = 300  # s, WatchdogPingInterval
 MIN_WATCHDOG_PING_INTERVAL: Final = 60
 MAX_WATCHDOG_PING_INTERVAL: Final = 3600
 WATCHDOG_PING_TIMEOUT: Final = 10  # s; per ping
 
-# Command retries while an output does not follow (D-108): the delay after the n-th
+# Command retries while an output does not follow: the delay after the n-th
 # command, then REPEAT for every further retry.
 COMMAND_BACKOFF: Final = (
     timedelta(minutes=1),

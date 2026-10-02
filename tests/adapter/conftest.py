@@ -3,7 +3,7 @@
 `World` fakes the user's entities: temperature sensors set through the state machine
 (which maintains `last_reported`), and real switch entities on a `test` platform whose
 commands are recorded and, unless told otherwise, followed (like a Template switch
-stand-in, D-113). Time is frozen with `freezer`;
+stand-in). Time is frozen with `freezer`;
 `World.advance` moves it minute by minute and fires the timers like HA would.
 """
 
@@ -27,8 +27,8 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.multizone_floor_heating_manager.const import DOMAIN
-from custom_components.multizone_floor_heating_manager.controller import FloorheatController
-from custom_components.multizone_floor_heating_manager.runtime import FloorheatConfigEntry
+from custom_components.multizone_floor_heating_manager.controller import FloorHeatingController
+from custom_components.multizone_floor_heating_manager.runtime import FloorHeatingConfigEntry
 
 PKG = "custom_components.multizone_floor_heating_manager"  # for patch targets
 
@@ -48,7 +48,7 @@ def zone_conf(n: int, *, valve: bool = True, **extra: Any) -> dict[str, Any]:
 
 
 def make_conf(zones: int = 2, *, unvalved: tuple[int, ...] = (), **extra: Any) -> dict[str, Any]:
-    """Without `shellys` / `no_watchdog`, every switch is listed in `no_watchdog` (D-118)."""
+    """Without `shellys` / `no_watchdog`, every switch is listed in `no_watchdog`."""
     conf: dict[str, Any] = {
         "heat_source_switch": HEAT_SOURCE,
         "zones": [zone_conf(n, valve=n not in unvalved) for n in range(1, zones + 1)],
@@ -178,12 +178,12 @@ class World:
         return ok
 
     @property
-    def entry(self) -> FloorheatConfigEntry:
+    def entry(self) -> FloorHeatingConfigEntry:
         [entry] = self.hass.config_entries.async_entries(DOMAIN)
         return entry
 
     @property
-    def controller(self) -> FloorheatController:
+    def controller(self) -> FloorHeatingController:
         return self.entry.runtime_data.controller
 
     def mode(self, n: int) -> str:

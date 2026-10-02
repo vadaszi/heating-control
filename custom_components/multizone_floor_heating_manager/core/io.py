@@ -1,7 +1,7 @@
-"""Inputs, outputs and events of the step function (docs/design.md §5.3).
+"""Inputs, outputs and events of the step function.
 
-`step(config, state, inputs, now) -> (outputs, new_state, events)` (P2). All
-temperatures are °C; the adapter converts from HA's unit system (D-77).
+`step(config, state, inputs, now) -> (outputs, new_state, events)`. All
+temperatures are °C; the adapter converts from HA's unit system.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from .schedule import Schedule
 class OutputState(StrEnum):
     """Actual state of a switch as reported by HA.
 
-    In shadow mode the adapter passes the commanded state instead (D-66).
+    In shadow mode the adapter passes the commanded state instead.
     """
 
     ON = "on"
@@ -27,7 +27,7 @@ class OutputState(StrEnum):
 
     @property
     def is_on(self) -> bool:
-        """Unavailable counts as OFF (D-66)."""
+        """Unavailable counts as OFF."""
         return self is OutputState.ON
 
 
@@ -36,7 +36,7 @@ class ZoneInput:
     """What the adapter observed for one zone."""
 
     reading: float | None  # raw sensor value, °C, before the offset; None if not numeric
-    last_reported: datetime | None  # the sensor's `last_reported` (§5.3)
+    last_reported: datetime | None  # the sensor's `last_reported`
     valve: OutputState | None  # None for a zone without a valve
 
 
@@ -44,17 +44,16 @@ class ZoneInput:
 class Inputs:
     """Everything `step` reads besides config, state and time.
 
-    Keyed by zone id (D-76); every valved zone carries its valve state.
+    Keyed by zone id; every valved zone carries its valve state.
 
     - `time_zone`: HA's configured time zone. `now` may be in any time zone; the core
-      converts it for local wall-clock rules (D-96).
+      converts it for local wall-clock rules.
     - `reconcile_tick`: True only for the run started by the ReconcileInterval timer, not
       for runs on sensor updates or heat source changes. The mismatch counter counts
-      these ticks (D-67, D-99).
-    - `schedules`, `holiday_on` and `holiday_until`: owned and stored by the adapter
-      (D-136). Holiday is active while it is switched on and `now` is before its end;
-      without an end it runs until switched off (D-137).
-    """
+      these ticks.
+    - `schedules`, `holiday_on` and `holiday_until`: owned and stored by the adapter. Holiday is
+      active while it is switched on and `now` is before its end; without an end it runs until
+      switched off."""
 
     zones: Mapping[str, ZoneInput]
     heat_source: OutputState
@@ -66,11 +65,11 @@ class Inputs:
     reconcile_tick: bool
     schedules: Sequence[Schedule] = ()
     holiday_on: bool = False
-    holiday_until: datetime | None = None  # the holiday end; None: no end (D-137)
+    holiday_until: datetime | None = None  # the holiday end; None: no end
 
 
 class Reason(StrEnum):
-    """Why a zone is in its state (D-89, D-126): fixed keys, never countdowns (D-123).
+    """Why a zone is in its state: fixed keys, never countdowns.
 
     The adapter shows them as translated texts; history and automations see the key.
     """
@@ -87,29 +86,29 @@ class Reason(StrEnum):
     SENSOR_FAULT = "sensor_fault"
     SEASON_OFF = "season_off"
     SENSOR_FAULT_SEASON_OFF = "sensor_fault_season_off"
-    FORCED = "forced"  # manual schedule (D-135)
-    FORCED_TOO_WARM = "forced_too_warm"  # manual schedule paused by ManualMaxTemp (D-38)
-    FAILSAFE_HEATING = "failsafe_heating"  # failsafe window (D-148)
-    FAILSAFE_WAITING = "failsafe_waiting"  # failsafe, before the next window (D-148)
-    VALVE_EXERCISE = "valve_exercise"  # off season: this valve is exercised (D-149)
+    FORCED = "forced"  # manual schedule
+    FORCED_TOO_WARM = "forced_too_warm"  # manual schedule paused by ManualMaxTemp
+    FAILSAFE_HEATING = "failsafe_heating"  # failsafe window
+    FAILSAFE_WAITING = "failsafe_waiting"  # failsafe, before the next window
+    VALVE_EXERCISE = "valve_exercise"  # off season: this valve is exercised
 
 
 class HeatSourceStatus(StrEnum):
-    """What the heat source does and why (D-141): fixed keys like `Reason`; the end of a
+    """What the heat source does and why: fixed keys like `Reason`; the end of a
     running min ON/OFF timer is reported separately. The first that applies wins."""
 
     UNAVAILABLE = "unavailable"  # the switch does not report
     SEASON_OFF = "season_off"
-    HELD_BY_MIN_OFF = "held_by_minimum_off_time"  # demand waits for HpMinOffTime (D-64)
-    SPREADING_HEAT = "spreading_heat"  # no demand, running until HpMinOnTime (D-20)
-    FAILSAFE_HEATING = "failsafe_heating"  # failsafe window (D-148)
-    FAILSAFE_WAITING = "failsafe_waiting"  # failsafe, before the next window (D-148)
+    HELD_BY_MIN_OFF = "held_by_minimum_off_time"  # demand waits for HpMinOffTime
+    SPREADING_HEAT = "spreading_heat"  # no demand, running until HpMinOnTime
+    FAILSAFE_HEATING = "failsafe_heating"  # failsafe window
+    FAILSAFE_WAITING = "failsafe_waiting"  # failsafe, before the next window
     HEATING = "heating"
     IDLE = "idle"  # no demand
 
 
 class Mode(StrEnum):
-    """The mode sensor (§5.3): failsafe before holiday (D-16, D-148)."""
+    """The mode sensor: failsafe before holiday."""
 
     NORMAL = "normal"
     HOLIDAY = "holiday"
@@ -118,7 +117,7 @@ class Mode(StrEnum):
 
 @dataclass(frozen=True)
 class ZoneReport:
-    """What the adapter shows for one zone (D-89, D-123)."""
+    """What the adapter shows for one zone."""
 
     reason: Reason
     room_temp: float | None  # RoomTemp, °C; None while unknown or faulty
@@ -132,10 +131,10 @@ class Outputs:
     """Desired output states; `valves` has entries for valved zones only.
 
     `holiday_active` and `ended_schedules` (one-shot schedules whose window is over) tell
-    the adapter to switch holiday off and delete those schedules (D-136).
-    `heat_source_status` / `heat_source_until`: the heat source sensor (D-141).
-    `mode`: normal / holiday / failsafe (D-148). `valve_exercise`: the zone whose valve
-    is being exercised, if any (D-149).
+    the adapter to switch holiday off and delete those schedules.
+    `heat_source_status` / `heat_source_until`: the heat source sensor.
+    `mode`: normal / holiday / failsafe. `valve_exercise`: the zone whose valve
+    is being exercised, if any.
     """
 
     heat_source_on: bool
@@ -150,19 +149,19 @@ class Outputs:
 
 
 class EventKind(StrEnum):
-    """Notifications from the core (§3.6 table); later phases add their kinds."""
+    """Notifications from the core."""
 
     SENSOR_FAULT_STARTED = "sensor_fault_started"
     SENSOR_FAULT_REMINDER = "sensor_fault_reminder"
     SENSOR_FAULT_RECOVERED = "sensor_fault_recovered"
     OUTPUT_MISMATCH = "output_mismatch"
     OUTPUT_MISMATCH_RECOVERED = "output_mismatch_recovered"
-    WATCHDOG_FAILED = "watchdog_failed"  # Shelly unreachable / script not running (D-61)
+    WATCHDOG_FAILED = "watchdog_failed"  # Shelly unreachable / script not running
     WATCHDOG_RECOVERED = "watchdog_recovered"
-    WATCHDOG_PARAMS_MISMATCH = "watchdog_params_mismatch"  # D-73
-    FAILSAFE_STARTED = "failsafe_started"  # case 1: every sensor dead (D-148)
+    WATCHDOG_PARAMS_MISMATCH = "watchdog_params_mismatch"
+    FAILSAFE_STARTED = "failsafe_started"  # case 1: every sensor dead
     FAILSAFE_ENDED = "failsafe_ended"
-    LONG_RUN = "long_run"  # heat source ON longer than LongRunAlarm (D-150)
+    LONG_RUN = "long_run"  # heat source ON longer than LongRunAlarm
     LONG_RUN_ENDED = "long_run_ended"
 
 

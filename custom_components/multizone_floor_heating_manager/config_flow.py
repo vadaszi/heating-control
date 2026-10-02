@@ -1,7 +1,7 @@
-"""Config flow: the YAML is imported into a single config entry (D-124).
+"""Config flow: the YAML is imported into a single config entry.
 
 The YAML stays the only configuration. The entry holds no data; it only lets the
-integration appear under Devices & services and own its devices (D-125). Adding the
+integration appear under Devices & services and own its devices. Adding the
 integration from the UI only points to the YAML.
 """
 
@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from .const import DOMAIN, NAME
 
 
-class FloorheatConfigFlow(ConfigFlow, domain=DOMAIN):
+class FloorHeatingConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:

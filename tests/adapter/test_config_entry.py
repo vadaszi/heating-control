@@ -1,4 +1,4 @@
-"""Config entry from the YAML (D-124), devices and names (D-125), translations (D-126)."""
+"""Config entry from the YAML, devices and names, translations."""
 
 from __future__ import annotations
 

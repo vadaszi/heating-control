@@ -4,11 +4,11 @@ A `Scenario` owns the config, the core state and the simulated world (sensor rea
 actual switch states). `step()` runs `step` at the current time as a reconcile tick.
 Like the reconcile loop, it makes the actual switches follow the commanded state and,
 when the heat source changed, steps again at the same time, so transitions are seen
-without delay. Like the adapter (D-136), it deletes one-shot schedules the core reports
+without delay. Like the adapter, it deletes one-shot schedules the core reports
 as ended and clears the holiday end once holiday is over. Every call checks that `step`
 is idempotent: running it again on its own result changes nothing and emits no further
 events. A second `step()` at the same time (after changing the world) is not a new
-reconcile tick for the mismatch counter (D-99).
+reconcile tick for the mismatch counter.
 
 Times are given as local wall-clock times in the scenario's time zone (UTC by default).
 """
@@ -196,7 +196,7 @@ class Scenario:
         self.holiday_until = None if until is None else at(until, day or self.day, self.tz)
 
     def holiday_without_end(self) -> None:
-        """Activate holiday with no end (D-137)."""
+        """Activate holiday with no end."""
         self.holiday_on, self.holiday_until = True, None
 
     def restart(self, downtime: int = 0) -> None:
@@ -240,10 +240,10 @@ class Scenario:
         assert again == (outputs, new_state, []), f"step is not idempotent at {self.now}"
         self.state, self.outputs = new_state, outputs
         self.events.extend(events)
-        # The adapter's bookkeeping (D-136).
+        # The adapter's bookkeeping.
         self.schedules = [s for s in self.schedules if s.id not in outputs.ended_schedules]
         if self.holiday_on and not outputs.holiday_active:
-            self.holiday_on, self.holiday_until = False, None  # the end clears (D-137)
+            self.holiday_on, self.holiday_until = False, None  # the end clears
         return outputs
 
     def step(self) -> Outputs:
@@ -290,7 +290,7 @@ class Scenario:
 
     @property
     def source_status(self) -> str:
-        """What the heat source does and why (D-141)."""
+        """What the heat source does and why."""
         return self._out().heat_source_status
 
     @property
@@ -308,20 +308,20 @@ class Scenario:
         return self._out().zones[zone_id(zone)].reason
 
     def until(self, zone: ZoneRef) -> datetime | None:
-        """End of the timer named by the zone's reason (D-123)."""
+        """End of the timer named by the zone's reason."""
         return self._out().zones[zone_id(zone)].until
 
     def setpoint(self, zone: ZoneRef) -> float:
-        """Effective SetPoint (§3.4)."""
+        """Effective SetPoint."""
         return self._out().zones[zone_id(zone)].setpoint
 
     def system_mode(self) -> Mode:
-        """The mode sensor: normal / holiday / failsafe (D-148)."""
+        """The mode sensor: normal / holiday / failsafe."""
         return self._out().mode
 
     @property
     def valve_exercise(self) -> str | None:
-        """The zone whose valve is being exercised (D-149)."""
+        """The zone whose valve is being exercised."""
         return self._out().valve_exercise
 
     @property

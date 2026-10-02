@@ -1,4 +1,4 @@
-"""Failsafe case 1: HA alive, every sensor dead (docs/design.md §3.6, D-147, D-148)."""
+"""Failsafe case 1: HA alive, every sensor dead."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ def test_reached_inside_the_window_heats_for_the_rest_of_it() -> None:
 
 def test_min_on_keeps_the_heat_source_running_after_a_late_start() -> None:
     """Reached at 14:51: the window ends at 15:00, min ON keeps it running (all valves
-    open) until 15:51 (§3.5, D-147)."""
+    open) until 15:51."""
     sc = _dead_from("14:50")
     sc.advance_to("14:51", NEXT)
     assert sc.hp
@@ -154,7 +154,7 @@ def test_window_across_midnight() -> None:
 
 def test_first_valid_reading_ends_it_at_once() -> None:
     """In the window, zone 1 reports 21.0 °C: normal control at once; the running heat
-    pump keeps zone 1 heating (rule 3) and it becomes the calling zone (D-92)."""
+    pump keeps zone 1 heating and it becomes the calling zone."""
     sc = _dead_from("06:00")
     sc.advance_to("11:00", NEXT)
     assert sc.hp
@@ -183,7 +183,7 @@ def test_no_failsafe_while_one_sensor_still_reports() -> None:
 
 def test_a_short_trigger_waits_for_the_sensor_faults() -> None:
     """FailsafeTrigger 1 h, SensorFaultTimeout 4 h: the last reading counts until the
-    sensor fault (§3.6), so the failsafe starts with the faults, 4 h after it."""
+    sensor fault, so the failsafe starts with the faults, 4 h after it."""
     params = GlobalParams(
         failsafe_trigger=timedelta(hours=1), sensor_fault_timeout=timedelta(hours=4)
     )
@@ -197,7 +197,7 @@ def test_a_short_trigger_waits_for_the_sensor_faults() -> None:
 
 
 def test_counts_from_startup_without_any_reading() -> None:
-    """No reading since the first start (D-93): the trigger counts from startup."""
+    """No reading since the first start: the trigger counts from startup."""
     sc = Scenario(2, temps=None)  # type: ignore[arg-type]
     sc.step()
     sc.advance_to("06:00", NEXT)
@@ -224,7 +224,7 @@ def test_only_in_the_heating_season() -> None:
     sc.set_season(False)
     sc.step()
     assert sc.system_mode() is Mode.NORMAL
-    assert not sc.hp  # season OFF overrides min ON (D-68)
+    assert not sc.hp  # season OFF overrides min ON
     assert sc.open_valves() == set()
     [ended] = sc.events_of(EventKind.FAILSAFE_ENDED)
     assert "heating season was switched off" in ended.message
@@ -280,7 +280,7 @@ def test_inactive_without_any_known_reading_time() -> None:
 
 
 def test_window_in_the_spring_dst_gap() -> None:
-    """D-134: a window start in the gap (02:30 on the spring change) is shifted by the
+    """DST: a window start in the gap (02:30 on the spring change) is shifted by the
     gap length (03:30 local); a window that DST leaves empty is skipped."""
     tz = ZoneInfo("Europe/Budapest")
     dst_day = date(2026, 3, 29)

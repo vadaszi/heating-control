@@ -1,4 +1,4 @@
-"""Temperature unit conversion for the adapter (docs/design.md §0.2, D-77).
+"""Temperature unit conversion for the adapter.
 
 The core computes in °C. The adapter converts sensor readings and parameter values
 from HA's unit system on the way in, and back for display.

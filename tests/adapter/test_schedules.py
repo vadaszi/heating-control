@@ -1,4 +1,4 @@
-"""Schedules and holiday in the adapter (docs/design.md §3.4, D-136 to D-139)."""
+"""Schedules and holiday in the adapter."""
 
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ async def _end(world: World, when: datetime) -> None:
 
 
 async def test_holiday_without_end_runs_until_switched_off(world: World) -> None:
-    """D-137: switched on without an end date, holiday runs until switched off."""
+    """Switched on without an end date, holiday runs until switched off."""
     world.setup_entities()
     assert await world.setup()
     await world.controller.async_set_holiday_end_time(time(15, 0))  # a time alone: no end
@@ -146,12 +146,12 @@ async def test_holiday_end_reached_switches_off_and_clears_the_date(world: World
     await world.advance()
     settings = world.controller.settings
     assert (settings.holiday_on, settings.holiday_end_date) == (False, None)
-    assert settings.holiday_end_time == time(8, 0)  # the time stays (D-142)
+    assert settings.holiday_end_time == time(8, 0)  # the time stays
     assert world.state(MODE) == "normal"
 
 
 async def test_values_are_checked_only_when_switching_on(world: World) -> None:
-    """D-137: entering a past end is accepted; switching on with it is refused."""
+    """Entering a past end is accepted; switching on with it is refused."""
     world.setup_entities()
     assert await world.setup()
     await _end(world, START - timedelta(days=1))  # accepted while off
@@ -182,7 +182,7 @@ async def test_switching_holiday_off_clears_the_date(world: World) -> None:
 
 
 async def test_changing_the_end_while_on_moves_it_or_ends_it(world: World) -> None:
-    """D-137: a later end extends the holiday; an end in the past ends it at once."""
+    """A later end extends the holiday; an end in the past ends it at once."""
     world.setup_entities()
     assert await world.setup()
     await _end(world, START + timedelta(hours=1))
@@ -232,7 +232,7 @@ async def test_schedules_and_holiday_survive_a_restart(world: World) -> None:
 
 
 async def test_holiday_end_of_0_8_0_is_migrated(world: World, hass_storage: dict[str, Any]) -> None:
-    """D-142: the 0.8.0 end (an aware datetime) becomes local date and time."""
+    """An older stored end (an aware datetime) becomes local date and time."""
     await world.hass.config.async_set_time_zone("Europe/Budapest")
     _preload(
         hass_storage,
@@ -296,7 +296,7 @@ async def test_stored_counter_is_never_below_a_used_number(
     assert world.controller.settings.schedule_counter == 5
 
 
-# ---------------------------------------------------------------- labels (D-138)
+# ---------------------------------------------------------------- labels
 
 
 def _schedule(**kwargs: Any) -> Schedule:

@@ -1,9 +1,9 @@
-"""Zone climate entities (docs/design.md §5.3).
+"""Zone climate entities.
 
 Current temperature = RoomTemp, target = BaseSetPoint, `heat` mode only (no per-zone
-OFF). The entity works in °C; HA converts to and from its unit system (D-77).
+OFF). The entity works in °C; HA converts to and from its unit system.
 `hvac_action` is heating while the heat source request is ON and the zone gets flow:
-its valve is open, or it has no valve (D-116).
+its valve is open, or it has no valve.
 """
 
 from __future__ import annotations
@@ -17,24 +17,24 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.config import ZONE_PARAM_SPECS, ZoneConfig
-from .entity import FloorheatEntity, async_apply
-from .runtime import FloorheatConfigEntry
+from .entity import FloorHeatingEntity, async_apply
+from .runtime import FloorHeatingConfigEntry
 
 _SETPOINT = ZONE_PARAM_SPECS["base_setpoint"]
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
     async_add_entities(ZoneClimate(controller, zone) for zone in controller.config.core.zones)
 
 
-class ZoneClimate(FloorheatEntity, ClimateEntity):
+class ZoneClimate(FloorHeatingEntity, ClimateEntity):
     """One zone's thermostat."""
 
     _attr_hvac_modes = [HVACMode.HEAT]  # noqa: RUF012 - HA's attribute convention
@@ -45,10 +45,10 @@ class ZoneClimate(FloorheatEntity, ClimateEntity):
     _attr_target_temperature_step = _SETPOINT.step
     _attr_min_temp = _SETPOINT.minimum
     _attr_max_temp = _SETPOINT.maximum
-    _attr_name = None  # the zone device's main entity: named like the device (D-125)
+    _attr_name = None  # the zone device's main entity: named like the device
     _attr_translation_key = "zone"  # translates the attribute values
 
-    def __init__(self, controller: FloorheatController, zone: ZoneConfig) -> None:
+    def __init__(self, controller: FloorHeatingController, zone: ZoneConfig) -> None:
         super().__init__(controller, "climate", zone)
         self._attr_unique_id = zone.id
         self._zone = zone

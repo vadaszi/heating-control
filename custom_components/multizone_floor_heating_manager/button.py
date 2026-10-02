@@ -1,4 +1,4 @@
-"""Schedule form buttons (docs/design.md §5.3, D-74): "Add schedule" adds the draft,
+"""Schedule form buttons: "Add schedule" adds the draft,
 "Delete schedule" deletes the schedule chosen in "Existing schedule". A rejected
 schedule is shown as a persistent notification."""
 
@@ -10,15 +10,15 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .entity import FormEntity
 from .form import async_add_from_form, async_delete_from_form
-from .runtime import FloorheatConfigEntry
+from .runtime import FloorHeatingConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -33,9 +33,9 @@ async def async_setup_entry(
 class FormButton(FormEntity, ButtonEntity):
     def __init__(
         self,
-        controller: FloorheatController,
+        controller: FloorHeatingController,
         key: str,
-        action: Callable[[HomeAssistant, FloorheatController], Awaitable[None]],
+        action: Callable[[HomeAssistant, FloorHeatingController], Awaitable[None]],
     ) -> None:
         super().__init__(controller, key)
         self._action = action

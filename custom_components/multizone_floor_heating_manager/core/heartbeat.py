@@ -1,10 +1,10 @@
-"""Evaluation of the Shelly watchdog heartbeat (docs/design.md §5.4, D-61, D-73, D-121).
+"""Evaluation of the Shelly watchdog heartbeat.
 
 The adapter sends the heartbeat (protocol v1, docs/heartbeat-protocol.md) and passes in
 what came back; this module decides what it means:
 - `parse_status`: the status JSON of a script, checked against the protocol version and
-  the role HA expects from the YAML wiring (D-120). Unknown fields are ignored (D-100).
-- `param_differences`: the script's `params` against HA's expected values (D-73); only
+  the role HA expects from the YAML wiring. Unknown fields are ignored.
+- `param_differences`: the script's `params` against HA's expected values; only
   the parameters HA has an expectation for are compared.
 - `record_failure` / `record_success`: per Shelly, consecutive failed calls. After
   `limit` failures in a row one alert names the cause; the next good answer is a
@@ -25,14 +25,14 @@ PROTOCOL_VERSION = 1
 
 
 class ShellyRole(StrEnum):
-    """Which watchdog script a Shelly runs; fixed by the script file (D-100)."""
+    """Which watchdog script a Shelly runs; fixed by the script file."""
 
     VALVE = "valve"
     HEAT_SOURCE = "heat_source"
 
 
 class FailureKind(StrEnum):
-    """Why a heartbeat call failed (D-61, D-121)."""
+    """Why a heartbeat call failed."""
 
     UNREACHABLE = "unreachable"  # connection error or timeout
     SCRIPT_NOT_RUNNING = "script_not_running"  # HTTP 404: script stopped or wrong id
@@ -49,7 +49,7 @@ class ShellyStatus:
     """The fields of a status HA uses."""
 
     role: ShellyRole
-    state: str  # "normal", "timed_out", "failsafe" (heat source script 1.1.0, D-153)
+    state: str  # "normal", "timed_out", "failsafe" (heat source script 1.1.0)
     heartbeat_age_s: int
     uptime_s: int
     params: Mapping[str, Any]
@@ -86,9 +86,9 @@ def parse_status(body: object, role: ShellyRole) -> ShellyStatus:
 
 @dataclass(frozen=True)
 class ExpectedParams:
-    """Script parameters HA expects (*config*, D-73); None = not checked."""
+    """Script parameters HA expects (*config*); None = not checked."""
 
-    heartbeat_timeout_s: int = 18000  # HeartbeatTimeout, 5 h (§4, D-60)
+    heartbeat_timeout_s: int = 18000  # HeartbeatTimeout, 5 h
     check_interval_s: int | None = None
 
 
@@ -161,7 +161,7 @@ def _failure_message(name: str, kind: FailureKind, detail: str, count: int) -> s
 def record_failure(
     tracking: HeartbeatTracking, name: str, kind: FailureKind, detail: str, limit: int
 ) -> tuple[HeartbeatTracking, list[Event]]:
-    """A failed call; alert once when `limit` calls in a row have failed (D-61)."""
+    """A failed call; alert once when `limit` calls in a row have failed."""
     count = min(tracking.fail_count + 1, limit)
     alert = count >= limit and not tracking.alerted
     new = HeartbeatTracking(count, tracking.alerted or alert, kind, tracking.params_alerted)
@@ -178,7 +178,7 @@ def record_failure(
 def record_success(
     tracking: HeartbeatTracking, name: str, differences: list[str]
 ) -> tuple[HeartbeatTracking, list[Event]]:
-    """A good answer: recovery if the alert was sent; the parameter check (D-73)."""
+    """A good answer: recovery if the alert was sent; the parameter check."""
     events: list[Event] = []
     if tracking.alerted:
         events.append(

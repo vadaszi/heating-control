@@ -1,9 +1,9 @@
-"""Heat request binary sensor (docs/design.md §5.3, D-116).
+"""Heat request binary sensor.
 
 On = the desired heat source request (in shadow mode: the simulated one). While the
 heat source (actual, or commanded in shadow mode) runs, `on_since` is when it switched
 ON and `on_duration` its running time in minutes, not recorded in the history. Both are
-left out while it is not running (D-123).
+left out while it is not running.
 """
 
 from __future__ import annotations
@@ -16,24 +16,24 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .controller import FloorheatController
-from .entity import FloorheatEntity
-from .runtime import FloorheatConfigEntry
+from .controller import FloorHeatingController
+from .entity import FloorHeatingEntity
+from .runtime import FloorHeatingConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     async_add_entities([HeatRequestSensor(entry.runtime_data.controller)])
 
 
-class HeatRequestSensor(FloorheatEntity, BinarySensorEntity):
+class HeatRequestSensor(FloorHeatingEntity, BinarySensorEntity):
     _attr_device_class = BinarySensorDeviceClass.RUNNING
     _unrecorded_attributes = frozenset({"on_duration"})
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "heat_request")
 
     @property

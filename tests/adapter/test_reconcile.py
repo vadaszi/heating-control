@@ -1,4 +1,4 @@
-"""Reconcile loop in live mode (docs/design.md §5.3; A25, A27; D-95, D-99, D-108)."""
+"""Reconcile loop in live mode."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ async def test_new_desired_state_is_sent_at_once_during_backoff(world: World) ->
 
 
 async def test_heat_source_back_on_after_glitch_gets_no_off(world: World) -> None:
-    """A Wi-Fi glitch must never switch a working heat pump OFF (D-95, review E)."""
+    """A Wi-Fi glitch must never switch a working heat pump OFF."""
     await _heating(world)
     world.calls.clear()
     world.switch(HEAT_SOURCE, "unavailable")

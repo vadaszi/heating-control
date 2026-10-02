@@ -1,4 +1,4 @@
-"""Reading HA states into core inputs (docs/design.md §5.3; D-66, D-77, D-96, D-107)."""
+"""Reading HA states into core inputs."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ async def test_fahrenheit_sensor_reaches_the_core_in_celsius(world: World) -> No
 
 
 async def test_repeated_value_keeps_the_sensor_valid(world: World) -> None:
-    """`last_reported` moves when the value repeats (§5.3); silence leads to a fault."""
+    """`last_reported` moves when the value repeats; silence leads to a fault."""
     world.setup_entities()
     assert await world.setup(live=False)
     await world.advance(90)  # the sensors keep reporting 22.0
@@ -107,7 +107,7 @@ async def test_time_zone_follows_ha(
     assert seen[-1].time_zone == ZoneInfo("Europe/Budapest")
     assert seen[-1].reconcile_tick
 
-    world.temp(1, 21.0)  # a sensor change is not a tick (D-99)
+    world.temp(1, 21.0)  # a sensor change is not a tick
     await hass.async_block_till_done()
     assert not seen[-1].reconcile_tick
     assert datetime.now(UTC) > START

@@ -1,4 +1,4 @@
-"""Shadow mode (docs/design.md §5.5; A21; D-56, D-66, D-69, D-109, D-110)."""
+"""Shadow mode."""
 
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ async def _shadow_heating(world: World) -> None:
 async def test_a21_shadow_mode_decides_but_sends_nothing(world: World) -> None:
     await _shadow_heating(world)
     controller = world.controller
-    assert not controller.settings.control_active  # OFF on first install (§5.5)
+    assert not controller.settings.control_active  # OFF on first install
     assert world.mode(1) == "heating"
     outputs = controller.outputs
     assert outputs is not None
     assert outputs.heat_source_on
     assert outputs.valves == {"zone_1": True, "zone_2": False}
-    # the commanded state is the feedback: the core saw the heat source go ON (D-66)
+    # the commanded state is the feedback: the core saw the heat source go ON
     assert controller.state.hp_actual_on is True
     assert controller.state.hp_last_on_at is not None
     assert world.reason(1) == "calling_zone"
@@ -81,12 +81,12 @@ async def test_a21_switching_off_sends_one_final_safe_set(world: World) -> None:
     world.temp(2, 21.0)
     await world.advance(90)
     assert world.calls == []
-    # shadow mode continues from the safe state it commanded (D-66)
+    # shadow mode continues from the safe state it commanded
     assert world.controller.state.hp_actual_on is not None
 
 
 async def test_final_off_waits_for_an_unavailable_heat_source(world: World) -> None:
-    """D-110: the final OFF is delivered even if the switch was unreachable."""
+    """The final OFF is delivered even if the switch was unreachable."""
     world.setup_entities()
     assert await world.setup()
     world.temp(1, 21.8)
@@ -137,11 +137,11 @@ async def test_switching_on_sets_all_outputs(world: World) -> None:
 
 async def test_going_live_while_shadow_heats_applies_min_off(world: World) -> None:
     """Shadow had the HP ON, the real switch is OFF: that counts as a stop, so min OFF
-    applies before the first real start (accepted by the owner, go-live checklist)."""
+    applies before the first real start (accepted and documented)."""
     await _shadow_heating(world)
     await world.controller.async_set_control_active(True)
     await world.hass.async_block_till_done()
-    assert world.calls == [(valve(1), "on")]  # HEATING, held by min OFF (D-64)
+    assert world.calls == [(valve(1), "on")]  # HEATING, held by min OFF
     assert world.reason(1) == "held_by_minimum_off_time"
     await world.advance(59)
     assert world.state(HEAT_SOURCE) == "off"

@@ -1,14 +1,14 @@
-"""YAML configuration of the integration (docs/design.md §5.6, docs/configuration.md).
+"""YAML configuration of the integration.
 
 Two stages:
 - `CONFIG_SCHEMA` checks the structure and everything that does not depend on HA's
   unit system (zone ids and names, duplicate switches), so `ha core check` finds it;
-- `build_config` converts the temperatures from HA's unit system to °C (D-77, D-111)
+- `build_config` converts the temperatures from HA's unit system to °C
   and builds the core configuration, reporting every remaining problem at once.
 
-Entity existence is checked after HA has started (D-107), not here.
+Entity existence is checked after HA has started, not here.
 
-Shelly watchdogs (D-118, D-120): every mapped switch is either on a Shelly listed under
+Shelly watchdogs: every mapped switch is either on a Shelly listed under
 `shellys` (address, script id, the switches on it) or listed in `no_watchdog`. The Shelly
 holding the heat source switch runs the heat source script and holds nothing else; every
 other Shelly runs the valve script.
@@ -92,7 +92,7 @@ def _notify_target(value: Any) -> str:
 
 
 def _ping_url(value: Any) -> str:
-    """An http(s) URL; the error never repeats it, because it is a secret (D-155)."""
+    """An http(s) URL; the error never repeats it, because it is a secret."""
     try:
         return str(cv.url(value))
     except vol.Invalid:
@@ -133,7 +133,7 @@ ZONE_SCHEMA = vol.Schema(
 
 
 def _check_wiring(conf: dict[str, Any]) -> dict[str, Any]:
-    """Unit-independent checks: zone ids and names (D-84, D-85), duplicate switches."""
+    """Unit-independent checks: zone ids and names, duplicate switches."""
     errors: list[str] = []
     zones: list[ZoneConfig] = []
     for zone in conf[CONF_ZONES]:
@@ -165,7 +165,7 @@ def _shelly_name(shelly: dict[str, Any]) -> str:
 
 
 def _check_watchdogs(conf: dict[str, Any], switches: list[str]) -> list[str]:
-    """Every mapped switch is on a listed Shelly or in `no_watchdog` (D-118, D-120)."""
+    """Every mapped switch is on a listed Shelly or in `no_watchdog`."""
     errors: list[str] = []
     mapped = set(switches)
     heat_source = conf[CONF_HEAT_SOURCE_SWITCH]
@@ -216,7 +216,7 @@ def _check_watchdogs(conf: dict[str, Any], switches: list[str]) -> list[str]:
     return errors
 
 
-FLOORHEAT_SCHEMA = vol.All(
+FLOOR_HEATING_SCHEMA = vol.All(
     vol.Schema(
         {
             vol.Required(CONF_HEAT_SOURCE_SWITCH): cv.entity_domain("switch"),
@@ -254,7 +254,7 @@ FLOORHEAT_SCHEMA = vol.All(
     _check_wiring,
 )
 
-CONFIG_SCHEMA = vol.Schema({DOMAIN: FLOORHEAT_SCHEMA}, extra=vol.ALLOW_EXTRA)
+CONFIG_SCHEMA = vol.Schema({DOMAIN: FLOOR_HEATING_SCHEMA}, extra=vol.ALLOW_EXTRA)
 
 
 @dataclass(frozen=True)
@@ -268,7 +268,7 @@ class ZoneWiring:
 
 @dataclass(frozen=True)
 class ShellyWiring:
-    """A Shelly running a watchdog script (D-120)."""
+    """A Shelly running a watchdog script."""
 
     name: str
     host: str
@@ -288,7 +288,7 @@ class ShellyWiring:
 
 
 @dataclass(frozen=True)
-class FloorheatConfig:
+class FloorHeatingConfig:
     """The validated YAML configuration."""
 
     core: CoreConfig
@@ -300,7 +300,7 @@ class FloorheatConfig:
     heartbeat_interval: timedelta = timedelta(seconds=DEFAULT_HEARTBEAT_INTERVAL)
     heartbeat_fail_alert: int = DEFAULT_HEARTBEAT_FAIL_ALERT
     expected_params: ExpectedParams = field(default_factory=ExpectedParams)
-    watchdog_ping_url: str | None = field(default=None, repr=False)  # a secret (D-155)
+    watchdog_ping_url: str | None = field(default=None, repr=False)  # a secret
     watchdog_ping_interval: timedelta = timedelta(seconds=DEFAULT_WATCHDOG_PING_INTERVAL)
 
     @property
@@ -319,10 +319,10 @@ class FloorheatConfig:
         return tuple(dict.fromkeys([*self.switches, *(zone.sensor for zone in self.zones)]))
 
 
-def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig:
-    """Build the configuration from `FLOORHEAT_SCHEMA` output.
+def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorHeatingConfig:
+    """Build the configuration from `FLOOR_HEATING_SCHEMA` output.
 
-    YAML temperatures are in HA's unit system and converted to °C (D-111). Raises
+    YAML temperatures are in HA's unit system and converted to °C. Raises
     `ConfigError` listing every problem.
     """
     errors: list[str] = []
@@ -356,7 +356,7 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorheatConfig
         ),
         output_mismatch_alert=conf[CONF_OUTPUT_MISMATCH_ALERT],
     )
-    return FloorheatConfig(
+    return FloorHeatingConfig(
         core=core,
         heat_source=conf[CONF_HEAT_SOURCE_SWITCH],
         zones=tuple(

@@ -1,4 +1,4 @@
-"""YAML configuration and startup checks (docs/design.md §5.6; D-80, D-84, D-85, D-107, D-111)."""
+"""YAML configuration and startup checks."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ async def test_valid_config_sets_up(world: World, caplog: pytest.LogCaptureFixtu
 async def test_all_valved_warning(world: World, caplog: pytest.LogCaptureFixture) -> None:
     world.setup_entities()
     assert await world.setup(make_conf(2), live=False)
-    assert "Every zone has a valve" in caplog.text  # D-80
+    assert "Every zone has a valve" in caplog.text
 
 
 async def test_optional_keys(world: World) -> None:
@@ -159,7 +159,7 @@ async def test_unknown_entities_are_reported_but_control_runs(
 
 
 async def test_registered_entity_without_state_is_known(world: World, hass: HomeAssistant) -> None:
-    """An entity of an integration that has not loaded yet is not unknown (D-107)."""
+    """An entity of an integration that has not loaded yet is not unknown."""
     registry = er.async_get(hass)
     registry.async_get_or_create(
         "sensor", "bthome", "abc", suggested_object_id="zone_2_temperature"
@@ -171,7 +171,7 @@ async def test_registered_entity_without_state_is_known(world: World, hass: Home
     notify.assert_not_called()
 
 
-# ---------------------------------------------------------------- Shellys (D-118, D-120)
+# ---------------------------------------------------------------- Shellys
 
 _VALVES = {"host": "192.0.2.11", "script_id": 1, "switches": ["switch.valve_1", "switch.valve_2"]}
 _HEAT = {"name": "Heat", "host": "192.0.2.12", "script_id": 1, "switches": ["switch.heat_source"]}

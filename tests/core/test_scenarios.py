@@ -1,6 +1,6 @@
-"""§6 acceptance scenarios covered by the core in P2, P3, P9 and P11 (docs/design.md §6).
+"""Acceptance scenarios covered by the core (docs/development/testing.md).
 
-Defaults from §4: SetPoint 22.0, Hysteresis 0.2 (StartTemp 21.8, StopTemp 22.2),
+Defaults: SetPoint 22.0, Hysteresis 0.2 (StartTemp 21.8, StopTemp 22.2),
 WaitTime 30 min, HpMinOnTime/HpMinOffTime 60 min, SensorFaultTimeout 60 min,
 ManualMaxTemp 25.
 """
@@ -66,7 +66,7 @@ def test_a01_wait_then_start() -> None:
     sc.advance_to("06:29")
     assert sc.mode(1) is WAITING
     assert not sc.hp
-    assert sc.reason(1) == Reason.WAITING  # fixed text, no countdown (D-123)
+    assert sc.reason(1) == Reason.WAITING  # fixed text, no countdown
     assert sc.until(1) == at("06:30")
 
     sc.advance_to("06:30")
@@ -97,7 +97,7 @@ def test_a03_only_the_expiry_check_counts() -> None:
     sc.advance_to("06:10")
     sc.temp(1, 22.1)  # above StartTemp during the wait
     sc.advance_to("06:20")
-    assert sc.mode(1) is WAITING  # readings during the wait are ignored (D-05)
+    assert sc.mode(1) is WAITING  # readings during the wait are ignored
     sc.temp(1, 21.7)
     sc.advance_to("06:30")
     assert sc.mode(1) is HEATING
@@ -198,7 +198,7 @@ def test_a08_all_satisfied_before_min_on_spreads_heat() -> None:
 
 def _hp_off_at_0800() -> Scenario:
     """First start at 07:00 with the heat source ON and no demand: min ON counts from
-    startup (D-91), so the request goes OFF at 08:00."""
+    startup, so the request goes OFF at 08:00."""
     sc = Scenario(3, start="07:00", hp_on=True)
     sc.step()
     assert sc.hp
@@ -222,7 +222,7 @@ def test_a09_demand_held_back_by_min_off() -> None:
     assert sc.valve(2) is False
     sc.advance_to("08:40")
     assert sc.mode(2) is HEATING
-    assert sc.valve(2) is True  # valve opens at the end of the wait (D-64)
+    assert sc.valve(2) is True  # valve opens at the end of the wait
     assert not sc.hp
     assert sc.calling_zone is None
     assert sc.reason(2) == Reason.HELD_BY_MIN_OFF
@@ -235,7 +235,7 @@ def test_a09_demand_held_back_by_min_off() -> None:
     assert sc.calling_zone == "zone_2"
 
 
-# ---------------------------------------------------------------- heat source status (D-141)
+# ---------------------------------------------------------------- heat source status
 
 
 def test_heat_source_status_through_a_cycle() -> None:
@@ -309,7 +309,7 @@ def test_a18_calling_zone_sensor_fails_mid_cycle() -> None:
     sc.advance_to("07:41")
     assert sc.mode(1) is FAULT
     assert sc.state.zones["zone_1"].fault_since == sc.now
-    assert sc.sync_fired  # a faulty calling zone counts as having reached SetPoint (D-28)
+    assert sc.sync_fired  # a faulty calling zone counts as having reached SetPoint
     assert sc.mode(2) is HEATING
     assert sc.mode(3) is IDLE  # at StopTemp
     assert sc.hp
@@ -324,7 +324,7 @@ def test_a18_calling_zone_sensor_fails_mid_cycle() -> None:
 
 
 def test_a22_restart_during_wait_continues_the_wait() -> None:
-    """Core part of A22: the logic state survives persistence (the HA side is P5)."""
+    """Core part of A22: the logic state survives persistence (the HA side is an adapter test)."""
     sc = Scenario(3, temps={1: 21.8})
     sc.step()
     sc.advance_to("06:20")  # 10 min left
@@ -383,7 +383,7 @@ def test_a26_equal_deficits_go_to_yaml_order() -> None:
 
 
 def test_a29_heat_source_unavailable_counts_as_off() -> None:
-    """Core part of A29 (the mismatch alert is P3), with D-95: while unavailable the
+    """Core part of A29 (the mismatch alert is in test_alerts): while unavailable the
     heat source counts as OFF, min OFF counts from when it became unavailable, and the
     cycle is kept until the switch reports again."""
     sc = _started_by_zone_1(3)
@@ -396,7 +396,7 @@ def test_a29_heat_source_unavailable_counts_as_off() -> None:
     assert sc.mode(1) is HEATING
     assert sc.valve(1) is True
     assert sc.reason(1) == Reason.HEAT_SOURCE_UNAVAILABLE
-    assert sc.calling_zone == "zone_1"  # the cycle is kept while unknown (D-95)
+    assert sc.calling_zone == "zone_1"  # the cycle is kept while unknown
 
     sc.advance_to("06:50")
     sc.temp(2, 21.7)
@@ -414,7 +414,7 @@ def test_a30_first_start_without_persisted_state() -> None:
     sc = Scenario(3, temps={1: 21.8})
     sc.valves_actual["zone_1"] = OutputState.ON  # read back as found
     sc.step()
-    assert sc.state.hp_last_off_at is None  # D-78: no min OFF
+    assert sc.state.hp_last_off_at is None  # no min OFF
     assert sc.mode(1) is WAITING
     assert sc.valve(1) is False  # corrected to the desired state
     sc.advance_to("06:30")
@@ -423,7 +423,7 @@ def test_a30_first_start_without_persisted_state() -> None:
 
 
 def test_heat_source_wifi_glitch_no_off_after_it_returns_on() -> None:
-    """Owner requirement (D-95): a Wi-Fi glitch or router restart must not turn a
+    """A Wi-Fi glitch or router restart must not turn a
     working, running heat pump OFF. Back ON means it never stopped: min ON, the calling
     zone and the sync flag carry on."""
     sc = _started_by_zone_1(3, {2: 21.9})
@@ -447,7 +447,7 @@ def test_heat_source_wifi_glitch_no_off_after_it_returns_on() -> None:
 
 
 def test_heat_source_wifi_glitch_does_not_restart_min_on() -> None:
-    """Back ON within min ON and nothing needs heat: the D-20 spread ends at the
+    """Back ON within min ON and nothing needs heat: the min ON spread ends at the
     original min ON (07:30), not 60 min after the glitch."""
     sc = _started_by_zone_1(2, {2: 22.2})
     sc.advance_to("07:10")
@@ -466,7 +466,7 @@ def test_heat_source_wifi_glitch_does_not_restart_min_on() -> None:
 
 
 def test_heat_source_back_off_after_power_loss() -> None:
-    """D-95: back OFF after being ON means it really stopped (a Shelly restarts OFF),
+    """Back OFF after being ON means it really stopped (a Shelly restarts OFF),
     counted from when it became unavailable; the cycle has ended."""
     sc = _started_by_zone_1(3)
     sc.advance_to("06:45")
@@ -491,7 +491,7 @@ def test_heat_source_back_off_after_power_loss() -> None:
 
 def test_a20_season_off_mid_cycle_ignores_min_on() -> None:
     """A20 (season part): switched OFF 20 min into a cycle, the request goes OFF and
-    every valve closes at once, although min ON has not elapsed (D-68, D-97)."""
+    every valve closes at once, although min ON has not elapsed."""
     sc = _started_by_zone_1(3, {2: 21.8})
     sc.advance_to("06:50")
     assert sc.open_valves() == {"zone_1", "zone_2"}
@@ -517,14 +517,14 @@ def test_a20_no_demand_while_season_off() -> None:
     assert sc.open_valves() == set()
     assert sc.modes() == {"zone_1": IDLE, "zone_2": IDLE, "zone_3": IDLE}
 
-    sc.set_season(True)  # back ON: normal logic from IDLE, with WaitTime (rule 1)
+    sc.set_season(True)  # back ON: normal logic from IDLE, with WaitTime
     sc.step()
     assert sc.mode(1) is WAITING
     assert sc.mode(2) is WAITING
     assert not sc.hp
     sc.advance_to("12:30")
     assert sc.hp
-    assert sc.calling_zone == "zone_2"  # largest deficit (D-65)
+    assert sc.calling_zone == "zone_2"  # largest deficit
 
 
 def test_a17_sensor_fault_notified_and_reminded_next_day() -> None:
@@ -563,7 +563,7 @@ def test_a17_sensor_fault_notified_and_reminded_next_day() -> None:
 
 
 def test_a20_fault_notified_without_reminder() -> None:
-    """A20: outside the season a sensor fault is notified, with no daily reminder (D-75)."""
+    """A20: outside the season a sensor fault is notified, with no daily reminder."""
     sc = Scenario(2)
     sc.set_season(False)
     sc.step()
@@ -580,7 +580,7 @@ def test_a20_fault_notified_without_reminder() -> None:
 
 
 def test_a27_unavailable_valve_alerts_once_then_recovery() -> None:
-    """A27 (logic part): the retry backoff is the adapter's job (P5)."""
+    """A27 (logic part): the retry backoff is the adapter's job."""
     sc = Scenario(2)
     sc.step()
     sc.set_valve_actual(1, OutputState.UNAVAILABLE)
@@ -618,8 +618,8 @@ def test_a27_valve_ignoring_commands_alerts_once() -> None:
 
 
 def test_a29_heat_source_unavailable_alerts_mismatch() -> None:
-    """A29 (alert part): unavailable counts as a mismatch although the cycle is kept
-    (D-67, D-95); back ON is a recovery."""
+    """A29 (alert part): unavailable counts as a mismatch although the cycle is kept; back ON is a
+    recovery."""
     sc = _started_by_zone_1(3)
     sc.advance_to("06:45")
     sc.set_hp_actual(OutputState.UNAVAILABLE)
@@ -630,7 +630,7 @@ def test_a29_heat_source_unavailable_alerts_mismatch() -> None:
     assert alert.zone_id is None
     assert alert.data["output"] == "heat_source"
     assert alert.data["actual"] == "unavailable"
-    assert sc.calling_zone == "zone_1"  # the cycle is kept (D-95)
+    assert sc.calling_zone == "zone_1"  # the cycle is kept
 
     sc.set_hp_actual(OutputState.ON, follows=True)  # back ON: it never stopped
     sc.advance(1)
@@ -638,7 +638,7 @@ def test_a29_heat_source_unavailable_alerts_mismatch() -> None:
     assert len(sc.events_of(EventKind.OUTPUT_MISMATCH_RECOVERED)) == 1
 
 
-# ---------------------------------------------------------------- P9: schedules and holiday
+# ---------------------------------------------------------------- schedules and holiday
 
 
 def test_a10_auto_schedule_raise_starts_without_wait() -> None:
@@ -650,7 +650,7 @@ def test_a10_auto_schedule_raise_starts_without_wait() -> None:
     assert sc.setpoint(1) == 22.0
     sc.advance_to("13:00")
     assert sc.setpoint(1) == 23.0
-    assert sc.mode(1) is HEATING  # no WaitTime (D-26)
+    assert sc.mode(1) is HEATING  # no WaitTime
     assert sc.hp
     assert sc.calling_zone == "zone_1"
     assert sc.reason(1) == Reason.CALLING_ZONE
@@ -664,7 +664,7 @@ def test_a10_auto_schedule_raise_is_held_by_min_off() -> None:
     assert not sc.hp  # OFF at 12:30: min OFF until 13:30
     sc.advance_to("13:00")
     assert sc.mode(1) is HEATING
-    assert sc.valve(1) is True  # open while held (D-64)
+    assert sc.valve(1) is True  # open while held
     assert not sc.hp
     assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
     assert sc.until(1) == at("13:30")
@@ -684,7 +684,7 @@ def test_a11_auto_schedule_end_stops_the_zone() -> None:
     assert sc.hp
     sc.advance_to("17:00")
     assert sc.setpoint(1) == 22.0
-    assert sc.mode(1) is IDLE  # 22.5 >= StopTemp 22.2 (rule 6)
+    assert sc.mode(1) is IDLE  # 22.5 >= StopTemp 22.2
     assert not sc.hp  # min ON (from 13:00) has elapsed
 
 
@@ -732,10 +732,10 @@ def test_a13_manual_schedule_forces_the_zone() -> None:
     assert sc.modes() == {"zone_1": IDLE, "zone_2": FORCED, "zone_3": IDLE}
     assert sc.hp
     assert sc.open_valves() == {"zone_2"}
-    assert sc.calling_zone is None  # a forced zone never calls (D-44)
+    assert sc.calling_zone is None  # a forced zone never calls
     assert sc.reason(2) == Reason.FORCED
     assert sc.until(2) == at("06:00")
-    assert sc.setpoint(2) == 22.0  # the SetPoint below the manual schedule (D-130)
+    assert sc.setpoint(2) == 22.0  # the SetPoint below the manual schedule
     sc.advance_to("05:59")
     assert sc.hp
     assert sc.mode(2) is FORCED
@@ -751,8 +751,8 @@ def test_a14_zone_joining_a_manual_cycle_becomes_the_calling_zone() -> None:
     sc.advance_to("05:00")
     sc.temp(3, 21.8)
     sc.step()
-    assert sc.mode(3) is HEATING  # joins without wait (rule 3)
-    assert sc.calling_zone == "zone_3"  # D-44
+    assert sc.mode(3) is HEATING  # joins without wait
+    assert sc.calling_zone == "zone_3"
     assert not sc.sync_fired
     sc.advance_to("05:30")
     sc.temp(3, 22.0)  # reaches SetPoint
@@ -783,7 +783,7 @@ def test_a15_forced_zone_capped_at_manual_max_temp() -> None:
     sc.temp(1, 24.5)  # below ManualMaxTemp but not below the resume limit
     sc.step()
     assert sc.capped(1)
-    assert sc.valve(1) is False  # the cap wins over the spread (D-130)
+    assert sc.valve(1) is False  # the cap wins over the spread
     sc.advance_to("05:00")
     assert not sc.hp  # no demand once min ON has elapsed
     sc.temp(1, 24.0)
@@ -864,17 +864,17 @@ def test_a28_manual_schedule_does_not_force_a_faulty_zone() -> None:
     sc.advance_to("04:01")
     assert sc.mode(2) is FAULT
     sc.advance_to("04:30")
-    assert sc.mode(2) is FAULT  # D-70
+    assert sc.mode(2) is FAULT
     assert sc.reason(2) == Reason.SENSOR_FAULT
     assert not sc.hp  # no demand from it
     assert sc.valve(2) is False  # follows the house
 
 
-# ---------------------------------------------------------------- P11: failsafe, exercise
+# ---------------------------------------------------------------- failsafe, exercise
 
 
 def test_a19_every_sensor_silent_for_24_h_starts_the_failsafe() -> None:
-    """A19 (D-147, D-148): HA alive, heating season ON, every sensor silent since 06:00.
+    """A19: HA alive, heating season ON, every sensor silent since 06:00.
     From 06:00 the next day: failsafe, notified; every valve open and the heat source ON
     10:00-15:00 daily; the first valid reading ends it at once."""
     sc = Scenario(3, unvalved=(3,), start="05:00")
@@ -914,7 +914,7 @@ def test_a20_no_failsafe_heating_outside_the_season() -> None:
 
 
 def test_a20_valve_exercise_on_monday_0800() -> None:
-    """A20 (exercise part, D-149): outside the season, Monday 08:00, each valve opens
+    """A20 (exercise part): outside the season, Monday 08:00, each valve opens
     for 15 min, one after another; the heat source stays OFF."""
     sc = Scenario(3, start="07:30")
     sc.set_season(False)

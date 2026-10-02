@@ -72,8 +72,8 @@ class Sample:
     season: bool = True
     events: tuple[Event, ...] = ()  # emitted in this minute
     setpoints: dict[str, float] = field(default_factory=dict)  # effective SetPoints
-    source_status: str = ""  # the heat source sensor (D-141)
-    mode: str = ""  # the mode sensor: normal / holiday / failsafe (D-148)
+    source_status: str = ""  # the heat source sensor
+    mode: str = ""  # the mode sensor: normal / holiday / failsafe
 
 
 @dataclass

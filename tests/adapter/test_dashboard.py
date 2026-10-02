@@ -1,4 +1,4 @@
-"""The example dashboard (docs/design.md §5.7, D-140): it loads, uses built-in cards
+"""The example dashboard: it loads, uses built-in cards
 only, refers only to entities that exist with the example configuration, shows every
 entity of the integration, and explains every zone state and reason."""
 
@@ -104,7 +104,7 @@ def test_only_built_in_cards() -> None:
 
 def test_no_header_toggle() -> None:
     """A "toggle all" header switch would switch the season, Control active and holiday
-    with one tap (owner, 2026-10-01)."""
+    with one tap."""
     entities_cards = [c for c in _cards(_dashboard()) if c["type"] == "entities"]
     assert entities_cards
     for card in entities_cards:
@@ -112,7 +112,7 @@ def test_no_header_toggle() -> None:
 
 
 def test_badges_show_everything_at_a_glance() -> None:
-    """D-143: the daily view's badges, always shown (no visibility conditions)."""
+    """The daily view's badges, always shown (no visibility conditions)."""
     daily, _setup = _dashboard()["views"]
     badges = daily["badges"]
     assert all(badge["type"] == "entity" and "visibility" not in badge for badge in badges)
@@ -127,7 +127,7 @@ def test_badges_show_everything_at_a_glance() -> None:
         "switch.valve_living_room",
     ):
         assert entity_id in shown, entity_id
-    for entity_id in (  # removed by the owner (D-144): they are on the House card
+    for entity_id in (  # not badges: they are on the House card
         "sensor.floor_heating_mode",
         "switch.floor_heating_heating_season",
         "switch.floor_heating_control_active",
@@ -138,7 +138,7 @@ def test_badges_show_everything_at_a_glance() -> None:
 
 
 def test_zones_then_house_and_a_setup_view() -> None:
-    """D-145, D-146: the daily view has one section per zone, then the house (with the
+    """The daily view has one section per zone, then the house (with the
     always shown alerts) and the help card (3 columns, so the zones fill the rows); the
     Setup view has one card per parameter group, holiday and schedules."""
     daily, setup = _dashboard()["views"]

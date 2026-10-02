@@ -1,4 +1,4 @@
-"""Reading HA states into core inputs (docs/design.md §5.3, D-66, D-77, D-107).
+"""Reading HA states into core inputs.
 
 - Sensors: the numeric state converted from the sensor's own unit to °C, and the state's
   `last_reported` (it moves when a value repeats; `last_updated` does not).
@@ -53,7 +53,7 @@ class SensorReader:
 
 
 def read_switch(state: State | None) -> OutputState:
-    """Actual switch state; unavailable, unknown or missing is UNAVAILABLE (D-66)."""
+    """Actual switch state; unavailable, unknown or missing is UNAVAILABLE."""
     if state is not None and state.state == STATE_ON:
         return OutputState.ON
     if state is not None and state.state == STATE_OFF:

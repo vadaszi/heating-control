@@ -1,5 +1,5 @@
 # pre-commit hooks. Install once with `pre-commit install`.
-# gitleaks blocks commits that contain secrets (docs/design.md §0.1).
+# gitleaks blocks commits that contain secrets.
 repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

@@ -1,6 +1,6 @@
-"""Valve exercise outside the heating season (docs/design.md §3.7, D-149).
+"""Valve exercise outside the heating season.
 
-Weekly on the ValveExercise weekday and time (local, DST as D-134), the valves open one
+Weekly on the ValveExercise weekday and time (local, DST like the schedules), the valves open one
 after another in YAML order for the ValveExercise duration each; zones without a valve
 are skipped and the heat source stays OFF. The slots follow from the due time alone:
 a run missed while HA was down is skipped, and after a restart mid-run the remaining

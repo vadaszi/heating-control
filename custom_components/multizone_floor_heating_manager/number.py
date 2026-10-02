@@ -1,11 +1,11 @@
-"""Parameter number entities (docs/design.md §4, §5.3).
+"""Parameter number entities.
 
-Per zone: Hysteresis, WaitTime and HolidayTemp (D-133). Global: every §4 global
-parameter (D-114), including the ones whose features follow in v1.2. Ranges and steps
+Per zone: Hysteresis, WaitTime and HolidayTemp. Global: every global
+number parameter. Ranges and steps
 come from the core's `ParamSpec`s; HA rejects values outside the range (e.g. HpMinOnTime
-20 min, D-81).
+20 min).
 
-Units (D-77): absolute temperatures are °C and converted by HA; temperature differences
+Units: absolute temperatures are °C and converted by HA; temperature differences
 are shown in HA's unit system and converted here (HA converts only absolute ones);
 durations in minutes or hours.
 """
@@ -17,14 +17,14 @@ from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.config import GLOBAL_PARAM_SPECS, ZONE_PARAM_SPECS, ParamSpec, ParamUnit, ZoneConfig
 from .core.schedule import SCHEDULE_TEMPERATURE_SPEC
 from .core.units import TemperatureUnit, delta_from_celsius, delta_to_celsius
-from .entity import FloorheatEntity, FormEntity, async_apply
-from .runtime import FloorheatConfigEntry
+from .entity import FloorHeatingEntity, FormEntity, async_apply
+from .runtime import FloorHeatingConfigEntry
 
-# Parameter keys; the names are translations (translations/en.json, D-125).
+# Parameter keys; the names are translations (translations/en.json).
 GLOBAL_KEYS = (
     "hp_min_on_time",
     "hp_min_off_time",
@@ -42,7 +42,7 @@ _TIME_UNITS = {ParamUnit.MINUTES: UnitOfTime.MINUTES, ParamUnit.HOURS: UnitOfTim
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -58,15 +58,15 @@ async def async_setup_entry(
     async_add_entities([*entities, ScheduleTemperature(controller)])
 
 
-class ParamNumber(FloorheatEntity, NumberEntity):
-    """One §4 parameter; a setting (config category)."""
+class ParamNumber(FloorHeatingEntity, NumberEntity):
+    """One parameter; a setting (config category)."""
 
     _attr_mode = NumberMode.BOX
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
-        controller: FloorheatController,
+        controller: FloorHeatingController,
         spec: ParamSpec,
         unit: TemperatureUnit,
         zone: ZoneConfig | None,  # None: a global parameter
@@ -130,7 +130,7 @@ class ScheduleTemperature(FormEntity, NumberEntity):
     _attr_native_max_value = SCHEDULE_TEMPERATURE_SPEC.maximum
     _attr_native_step = SCHEDULE_TEMPERATURE_SPEC.step
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "schedule_temperature")
 
     @property

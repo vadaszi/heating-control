@@ -14,7 +14,7 @@ export const HEAT_SOURCE_SCRIPT = fileURLToPath(
 
 export const MINUTE = 60;
 export const HOUR = 3600;
-// Defaults from docs/design.md §4: HeartbeatTimeout 5 h; one check per minute.
+// Defaults: HeartbeatTimeout 5 h; one check per minute.
 export const TIMEOUT_S = 5 * HOUR;
 export const CHECK_S = 60;
 

@@ -1,4 +1,4 @@
-"""Schedule services (docs/design.md §5.3, A12, D-139)."""
+"""Schedule services."""
 
 from __future__ import annotations
 

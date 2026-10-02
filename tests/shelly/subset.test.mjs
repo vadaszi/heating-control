@@ -18,7 +18,7 @@ describe("device scripts", () => {
     });
 
     test(`${basename(file)} refers only to the user manual`, () => {
-      // The scripts are released; the development documents are not (owner, 2026-10-02).
+      // The scripts are released; they refer only to the user manual.
       const source = readFileSync(file, "utf8");
       for (const pattern of [/design\.md/, /implementation-plan/, /\bD-\d+/, /§/]) {
         assert.doesNotMatch(source, pattern);

@@ -1,13 +1,13 @@
-"""Logic state of the control core and its persistence format (docs/design.md §3.8).
+"""Logic state of the control core and its persistence format.
 
 The adapter stores `CoreState.to_dict()` with `helpers.storage.Store` and restores it
-with `load_state`. Format rules (D-87):
-- zones are keyed by the stable zone id (D-76);
+with `load_state`. Format rules:
+- zones are keyed by the stable zone id;
 - datetimes are ISO 8601 in UTC, dates ISO 8601;
 - new fields get a default when missing, so adding one needs no version bump;
 - a breaking change bumps `SCHEMA_VERSION` and adds a migration in `from_dict`;
 - data from a newer version, or corrupt data, is discarded and the core starts as on a
-  first start (D-78).
+  first start.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class StateFormatError(ValueError):
 
 
 class ZoneMode(StrEnum):
-    """Zone state (§3.2)."""
+    """Zone state."""
 
     IDLE = "idle"
     WAITING = "waiting"
@@ -42,7 +42,7 @@ class ZoneMode(StrEnum):
 @dataclass(frozen=True)
 class OutputTracking:
     """Consecutive reconcile ticks an output did not follow its command, whether that
-    was notified, and the desired state at the last tick (D-67, D-99)."""
+    was notified, and the desired state at the last tick."""
 
     mismatch_count: int = 0
     alerted: bool = False
@@ -54,32 +54,32 @@ class ZoneState:
     """Per-zone logic state."""
 
     mode: ZoneMode = ZoneMode.IDLE
-    wait_started_at: datetime | None = None  # WaitTime start (§3.3 rule 1)
+    wait_started_at: datetime | None = None  # WaitTime start
     last_valid_value: float | None = None  # raw reading, °C, before the offset
-    last_valid_at: datetime | None = None  # `last_reported` of that reading (§3.6)
-    fault_since: datetime | None = None  # SENSOR_FAULT start (§3.6)
-    forced_capped: bool = False  # FORCED zone at or above ManualMaxTemp (§3.4)
+    last_valid_at: datetime | None = None  # `last_reported` of that reading
+    fault_since: datetime | None = None  # SENSOR_FAULT start
+    forced_capped: bool = False  # FORCED zone at or above ManualMaxTemp
     valve_output: OutputTracking = OutputTracking()
-    last_setpoint: float | None = None  # effective SetPoint of the last step (rule 4)
-    awaiting_reading_since: datetime | None = None  # no valid reading ever yet (D-93)
+    last_setpoint: float | None = None  # effective SetPoint of the last step
+    awaiting_reading_since: datetime | None = None  # no valid reading ever yet
 
 
 @dataclass(frozen=True)
 class CoreState:
-    """Global logic state (§3.8). Alerts are derived from these fields."""
+    """Global logic state. Alerts are derived from these fields."""
 
     zones: dict[str, ZoneState] = field(default_factory=dict)
     hp_actual_on: bool | None = None  # last known actual switch state; None = never seen
-    hp_last_on_at: datetime | None = None  # actual transitions (D-66)
-    hp_last_off_at: datetime | None = None  # None: first start, no min OFF (D-78)
-    hp_unavailable_since: datetime | None = None  # switch unavailable since (D-95)
+    hp_last_on_at: datetime | None = None  # actual transitions
+    hp_last_off_at: datetime | None = None  # None: first start, no min OFF
+    hp_unavailable_since: datetime | None = None  # switch unavailable since
     calling_zone: str | None = None
     sync_fired: bool = False
     heat_source_output: OutputTracking = OutputTracking()
     last_fault_reminder_on: date | None = None  # local date of the last daily reminder
-    reconcile_tick_at: datetime | None = None  # `now` of the last counted tick (D-99)
-    failsafe_active: bool = False  # failsafe case 1 (D-147, D-148)
-    long_run_alerted: bool = False  # the long run alarm was sent (D-150)
+    reconcile_tick_at: datetime | None = None  # `now` of the last counted tick
+    failsafe_active: bool = False  # failsafe case 1
+    long_run_alerted: bool = False  # the long run alarm was sent
 
     @classmethod
     def initial(cls, config: CoreConfig) -> CoreState:
@@ -143,7 +143,7 @@ def load_state(data: object, config: CoreConfig) -> tuple[CoreState, list[str]]:
     """Restore persisted state for `config`; returns the state and warnings to log.
 
     `data` is None when nothing was stored (a real first start). Unusable data falls
-    back to a first start (D-87). Zones no longer configured are dropped, new zones
+    back to a first start. Zones no longer configured are dropped, new zones
     start `IDLE`.
     """
     initial = CoreState.initial(config)

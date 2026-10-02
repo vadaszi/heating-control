@@ -1,4 +1,4 @@
-"""Architecture guard for the control core (docs/design.md §5.3).
+"""Architecture guard for the control core.
 
 The core must not import Home Assistant and must never read the system clock.
 """

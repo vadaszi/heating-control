@@ -1,4 +1,4 @@
-"""Config and parameter validation (docs/design.md §4, §5.6, D-76, D-80, D-81, D-84…D-86)."""
+"""Config and parameter validation."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _build(spec: ParamSpec, number: float) -> object:
     return _zone(**changes)
 
 
-# ---------------------------------------------------------------- §4 defaults
+# ---------------------------------------------------------------- defaults
 
 
 def test_defaults_match_spec_section_4() -> None:
@@ -57,7 +57,7 @@ def test_defaults_match_spec_section_4() -> None:
     assert glob.sensor_fault_reminder == time(8, 0)
     assert glob.manual_max_temp == 25.0
     assert glob.manual_resume_delta == 1.0
-    assert not hasattr(glob, "holiday_temp")  # per zone since D-133
+    assert not hasattr(glob, "holiday_temp")  # per zone
     assert zone.holiday_temp == 18.0
     assert glob.failsafe_trigger == timedelta(hours=24)
     assert (glob.failsafe_window_start, glob.failsafe_window_end) == (time(10), time(15))
@@ -125,7 +125,7 @@ def test_param_specs_cover_every_ranged_field() -> None:
     assert set(PARAM_SPECS) == set(ZONE_PARAM_SPECS) | set(GLOBAL_PARAM_SPECS) | {"sensor_offset"}
 
 
-# ---------------------------------------------------------------- range boundaries (D-86)
+# ---------------------------------------------------------------- range boundaries
 
 _SPECS = sorted(PARAM_SPECS.values(), key=lambda s: s.key)
 
@@ -156,14 +156,14 @@ def test_non_finite_temperatures_rejected(spec: ParamSpec, bad: float) -> None:
 
 @pytest.mark.parametrize("key", ["hp_min_on_time", "hp_min_off_time"])
 def test_hp_min_times_never_below_30_minutes(key: str) -> None:
-    """D-81: 29 min is rejected, 30 min is accepted."""
+    """29 min is rejected, 30 min is accepted."""
     with pytest.raises(ConfigError, match=key):
         GlobalParams(**{key: timedelta(minutes=29)})  # type: ignore[arg-type]
     assert getattr(GlobalParams(**{key: timedelta(minutes=30)}), key) == timedelta(minutes=30)  # type: ignore[arg-type]
 
 
 def test_off_step_values_accepted() -> None:
-    """D-86: the §4 step is UI granularity only; the core checks the range."""
+    """The step is UI granularity only; the core checks the range."""
     assert GlobalParams(hp_min_on_time=timedelta(minutes=32)).hp_min_on_time.seconds == 32 * 60
     assert ZoneParams(hysteresis=0.15).hysteresis == 0.15
 
@@ -204,7 +204,7 @@ def test_times_of_day_are_local_times(key: str) -> None:
 
 
 def test_failsafe_window_may_cross_midnight_but_not_be_empty() -> None:
-    """D-147: start = end is rejected; an end before the start crosses midnight."""
+    """Start = end is rejected; an end before the start crosses midnight."""
     GlobalParams(failsafe_window_start=time(22), failsafe_window_end=time(3))
     with pytest.raises(ConfigError, match="failsafe window: start and end must differ"):
         GlobalParams(failsafe_window_start=time(10), failsafe_window_end=time(10))
@@ -257,7 +257,7 @@ def test_spec_number_conversion(key: str, number: float, value: float | timedelt
     assert spec.to_number(value) == number
 
 
-# ---------------------------------------------------------------- zones (D-76, D-84, D-85)
+# ---------------------------------------------------------------- zones
 
 
 @pytest.mark.parametrize("zone_id", ["a", "living_room", "zone_1", "z2_upstairs_"])
@@ -330,7 +330,7 @@ def test_duplicate_zone_name_is_case_insensitive_and_trimmed() -> None:
 
 
 def test_zone_order_is_kept() -> None:
-    """YAML order is the D-65 tie-break, so the config must keep it."""
+    """YAML order is the calling-zone tie-break, so the config must keep it."""
     config = CoreConfig(zones=(_zone("b", "B"), _zone("a", "A"), _zone("c", "C")))
     assert config.zone_ids == ("b", "a", "c")
 
@@ -358,7 +358,7 @@ def test_all_config_errors_reported_together() -> None:
     assert str(err.value).startswith("Invalid Multizone Floor Heating Manager configuration:\n- ")
 
 
-# ---------------------------------------------------------------- D-80 warning
+# ---------------------------------------------------------------- warning
 
 
 def test_warning_when_every_zone_has_a_valve() -> None:

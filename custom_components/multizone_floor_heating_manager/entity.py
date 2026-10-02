@@ -1,10 +1,10 @@
-"""Base class of the integration's entities (docs/design.md §5.3, docs/configuration.md).
+"""Base class of the integration's entities.
 
-Entities are views of the controller (D-106): they show its state after every reconcile
-run and change its settings. They follow HA's naming conventions (D-125): each belongs
+Entities are views of the controller: they show its state after every reconcile
+run and change its settings. They follow HA's naming conventions: each belongs
 to a zone device ("<zone name> floor heating") or to the "Floor heating" device, its
 name (a translation) names only the value, and HA generates the entity id from device
-name + entity name. Unique ids are built from the zone id and the key (D-76).
+name + entity name. Unique ids are built from the zone id and the key.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 from .const import DOMAIN, GLOBAL_DEVICE, SHORT_NAME, ZONE_DEVICE_SUFFIX
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.config import ConfigError, ZoneConfig
 
 
@@ -35,14 +35,14 @@ def device_info(zone: ZoneConfig | None) -> DeviceInfo:
     )
 
 
-class FloorheatEntity(Entity):
+class FloorHeatingEntity(Entity):
     """Updated by the controller after every reconcile run; never polled."""
 
     _attr_should_poll = False
     _attr_has_entity_name = True
 
     def __init__(
-        self, controller: FloorheatController, key: str, zone: ZoneConfig | None = None
+        self, controller: FloorHeatingController, key: str, zone: ZoneConfig | None = None
     ) -> None:
         """`key` names the value (also the translation key); `zone` None: a global one."""
         self.controller = controller
@@ -60,7 +60,7 @@ class FloorheatEntity(Entity):
         self.async_on_remove(self.controller.async_add_listener(self.async_write_ha_state))
 
 
-class FormEntity(FloorheatEntity):
+class FormEntity(FloorHeatingEntity):
     """A setting or part of the schedule form: usable before the first run."""
 
     @property

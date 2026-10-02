@@ -1,5 +1,5 @@
-"""Notification events of the core: sensor fault start / reminder / recovery (§3.6,
-D-75, D-98) and the output mismatch alert (§3.9, D-67, D-99)."""
+"""Notification events of the core: sensor fault start / reminder / recovery and the output
+mismatch alert."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ BERLIN = ZoneInfo("Europe/Berlin")
 
 
 def _faulty_from_0701(zones: int = 2, **kwargs: object) -> Scenario:
-    """Zone 1 never reports: SENSOR_FAULT at 07:01 on DAY (D-93)."""
+    """Zone 1 never reports: SENSOR_FAULT at 07:01 on DAY."""
     sc = Scenario(zones, temps={1: None}, **kwargs)  # type: ignore[arg-type]
     sc.step()
     sc.advance_to("07:01")
@@ -96,7 +96,7 @@ def test_fault_that_began_while_ha_was_down_is_notified() -> None:
 
 
 def test_fault_events_in_shadow_mode() -> None:
-    """Only the mismatch alert is inactive in shadow mode (D-67, D-98)."""
+    """Only the mismatch alert is inactive in shadow mode."""
     sc = Scenario(2, temps={1: None})
     sc.control_active = False
     sc.step()
@@ -110,7 +110,7 @@ def test_fault_events_in_shadow_mode() -> None:
 def test_reminder_next_day_at_reminder_time_once() -> None:
     sc = _faulty_from_0701()
     sc.advance_to("23:59")
-    assert sc.events_of(REMINDER) == []  # the fault started today (D-98)
+    assert sc.events_of(REMINDER) == []  # the fault started today
     sc.advance_to("07:59", NEXT_DAY)
     assert sc.events_of(REMINDER) == []
     sc.advance_to("08:00", NEXT_DAY)
@@ -159,7 +159,7 @@ def test_no_reminder_after_recovery() -> None:
 
 
 def test_stored_fault_without_start_time_counts_as_an_earlier_day() -> None:
-    """Defensive: a stored fault without `fault_since` is reminded (D-98)."""
+    """Defensive: a stored fault without `fault_since` is reminded."""
     stale = ZoneState(mode=ZoneMode.SENSOR_FAULT, last_valid_value=21.0, last_valid_at=at("04:00"))
     state = CoreState(zones={"zone_1": stale, "zone_2": ZoneState()})
     sc = Scenario(2, start="08:00", state=state)
@@ -186,13 +186,13 @@ def test_season_off_at_reminder_time_then_on_catches_up() -> None:
     sc.advance_to("07:00", NEXT_DAY)
     sc.set_season(False)
     sc.advance_to("10:00", NEXT_DAY)
-    assert sc.events_of(REMINDER) == []  # no reminder outside the season (D-75)
+    assert sc.events_of(REMINDER) == []  # no reminder outside the season
     sc.set_season(True)
     sc.step()
     assert len(sc.events_of(REMINDER)) == 1
 
 
-# ---------------------------------------------------------------- time zone and DST (D-96)
+# ---------------------------------------------------------------- time zone and DST
 
 
 def test_reminder_uses_local_time() -> None:
@@ -259,7 +259,7 @@ def test_now_in_any_time_zone_gives_the_same_result() -> None:
     assert [e.kind for e in in_utc[2]] == [REMINDER]
 
 
-# ---------------------------------------------------------------- output mismatch (D-67, D-99)
+# ---------------------------------------------------------------- output mismatch
 
 MISMATCH = EventKind.OUTPUT_MISMATCH
 MISMATCH_RECOVERED = EventKind.OUTPUT_MISMATCH_RECOVERED
@@ -416,7 +416,7 @@ def test_active_alerts_ignore_state_of_unknown_zones() -> None:
     assert active_alerts(config, CoreState()) == []
 
 
-# ---------------------------------------------------------------- long run alarm (D-150)
+# ---------------------------------------------------------------- long run alarm
 
 
 def _long_run(**kwargs: object) -> Scenario:
@@ -457,7 +457,7 @@ def test_long_run_alarm_uses_its_setting_and_local_time() -> None:
 
 
 def test_long_run_alarm_survives_an_unavailable_spell() -> None:
-    """D-95: unavailable while ON ends nothing; back ON, it never stopped; back OFF, the
+    """Unavailable while ON ends nothing; back ON, it never stopped; back OFF, the
     run is over."""
     sc = _long_run()
     sc.advance_to("18:31")

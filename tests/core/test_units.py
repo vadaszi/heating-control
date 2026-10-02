@@ -1,4 +1,4 @@
-"""Temperature unit helpers for the adapter (docs/design.md §0.2, D-77)."""
+"""Temperature unit helpers for the adapter."""
 
 from __future__ import annotations
 

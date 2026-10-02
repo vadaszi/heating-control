@@ -1,4 +1,4 @@
-"""Core state model and persistence format (docs/design.md §3.8, D-76, D-78, D-87)."""
+"""Core state model and persistence format."""
 
 from __future__ import annotations
 
@@ -110,13 +110,13 @@ def test_to_dict_carries_schema_version_and_uses_utc() -> None:
 
 
 def test_persisted_zones_are_keyed_by_zone_id() -> None:
-    """D-76: state is keyed by the stable zone id, not the display name."""
+    """State is keyed by the stable zone id, not the display name."""
     data = CoreState.initial(CONFIG).to_dict()
     assert set(data["zones"]) == {"living_room", "bathroom"}
 
 
 def test_missing_optional_keys_get_defaults() -> None:
-    """Additive fields may be missing in older data of the same schema version (D-87)."""
+    """Additive fields may be missing in older data of the same schema version."""
     state = CoreState.from_dict({"schema_version": 1, "zones": {"a": {}}})
     assert state == CoreState(zones={"a": ZoneState()})
 
@@ -191,7 +191,7 @@ def test_invalid_data_raises_state_format_error(data: object, match: str) -> Non
         CoreState.from_dict(data)
 
 
-# ---------------------------------------------------------------- load_state (D-78, D-87)
+# ---------------------------------------------------------------- load_state
 
 
 def test_initial_state_is_a_first_start() -> None:
@@ -199,7 +199,7 @@ def test_initial_state_is_a_first_start() -> None:
     assert state.zones == {"living_room": ZoneState(), "bathroom": ZoneState()}
     assert state.hp_actual_on is None
     assert state.hp_last_on_at is None
-    assert state.hp_last_off_at is None  # D-78: HpMinOffTime not applied
+    assert state.hp_last_off_at is None  # HpMinOffTime not applied
     assert state.calling_zone is None
     assert state.sync_fired is False
     assert state.zones["living_room"].mode is ZoneMode.IDLE

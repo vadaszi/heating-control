@@ -1,4 +1,4 @@
-"""Schedules and holiday (docs/design.md §3.4, D-16 to D-19, D-57, D-58, D-130 to D-136)."""
+"""Schedules and holiday."""
 
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ def test_every_problem_is_reported_at_once() -> None:
     assert all(error.startswith("schedule 'x': ") for error in err.value.errors)
 
 
-# ---------------------------------------------------------------- windows (D-132)
+# ---------------------------------------------------------------- windows
 
 
 def test_window_is_half_open() -> None:
@@ -199,7 +199,7 @@ def test_ended_schedules_lists_finished_one_shots() -> None:
     assert ended_schedules(schedules, local("09:00"), UTC) == ("done",)
 
 
-# ---------------------------------------------------------------- DST (D-96, D-134)
+# ---------------------------------------------------------------- DST
 
 SPRING = date(2026, 3, 29)  # 02:00 -> 03:00 in Europe/Berlin
 AUTUMN = date(2026, 10, 25)  # 03:00 -> 02:00 in Europe/Berlin
@@ -237,7 +237,7 @@ def test_night_window_across_dst_keeps_its_wall_clock_ends(day: date) -> None:
     assert end - start == timedelta(hours=4)
 
 
-# ---------------------------------------------------------------- targets (D-16)
+# ---------------------------------------------------------------- targets
 
 
 def _target(schedules: list[Schedule], now: datetime, *, holiday: bool = False) -> ZoneTarget:
@@ -272,7 +272,7 @@ def test_holiday_active_until_its_end() -> None:
 
 
 def test_holiday_without_end_is_active_until_switched_off() -> None:
-    """D-137: switched ON with no end, holiday runs until it is switched OFF."""
+    """Switched ON with no end, holiday runs until it is switched OFF."""
     assert holiday_active(True, None, local("15:00"))
     assert not holiday_active(False, None, local("15:00"))
     assert not holiday_active(False, local("15:00"), local("14:59"))
@@ -307,7 +307,7 @@ def test_endless_manual_chain_stops_searching() -> None:
     assert local("06:00") + timedelta(days=7) < until <= local("06:00") + timedelta(days=9)
 
 
-# ---------------------------------------------------------------- creation check (D-19)
+# ---------------------------------------------------------------- creation check
 
 
 def _check(new: Schedule, existing: list[Schedule], now: datetime | None = None) -> list[str]:
@@ -438,7 +438,7 @@ def test_overlap_matches_a_minute_scan(a: Schedule, b: Schedule) -> None:
     assert overlaps(b, a) == brute
 
 
-# ---------------------------------------------------------------- persistence (D-132)
+# ---------------------------------------------------------------- persistence
 
 
 @st.composite

@@ -1,4 +1,4 @@
-"""Unit tests per rule of the step function (docs/design.md §3.2 to §3.6)."""
+"""Unit tests per rule of the step function."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def test_waiting_without_start_time_restarts_the_wait() -> None:
 
 
 def test_join_needs_the_hp_actually_running() -> None:
-    """The request is ON, but the switch has not followed yet: no join (D-66)."""
+    """The request is ON, but the switch has not followed yet: no join."""
     sc = Scenario(3, temps={1: 21.8})
     sc.step()
     sc.set_hp_actual(OutputState.OFF)  # the switch ignores commands from now on
@@ -117,7 +117,7 @@ def test_setpoint_raise_while_waiting_skips_the_rest_of_the_wait() -> None:
 def test_setpoint_raise_is_still_held_by_min_off() -> None:
     sc = Scenario(2, start="07:00", hp_on=True)
     sc.step()
-    sc.advance_to("08:00")  # D-91 min ON from startup ends; HP OFF at 08:00
+    sc.advance_to("08:00")  # min ON from startup ends; HP OFF at 08:00
     assert not sc.hp
     sc.advance_to("08:30")
     sc.set_setpoint(1, 23.0)
@@ -151,7 +151,7 @@ def test_no_raise_detected_on_the_first_step() -> None:
 
 
 def test_setpoint_decrease_ends_the_wait() -> None:
-    """D-94: a lowered SetPoint that leaves RoomTemp above StartTemp ends the wait at once."""
+    """A lowered SetPoint that leaves RoomTemp above StartTemp ends the wait at once."""
     sc = Scenario(2, temps={1: 21.0})
     sc.step()
     sc.advance(5)
@@ -165,7 +165,7 @@ def test_setpoint_decrease_ends_the_wait() -> None:
 
 
 def test_small_setpoint_decrease_keeps_waiting() -> None:
-    """Still at or below the new StartTemp: the wait goes on (D-05 is about readings)."""
+    """Still at or below the new StartTemp: the wait goes on."""
     sc = Scenario(2, temps={1: 21.0})
     sc.step()
     sc.advance(5)
@@ -177,7 +177,7 @@ def test_small_setpoint_decrease_keeps_waiting() -> None:
 
 
 def test_rising_reading_during_the_wait_does_not_end_it() -> None:
-    """D-05 still holds: only a SetPoint change ends the wait early, not a reading."""
+    """Only a SetPoint change ends the wait early, not a reading."""
     sc = Scenario(2, temps={1: 21.8})
     sc.step()
     sc.advance(5)
@@ -207,7 +207,7 @@ def test_sync_skips_faulty_and_unread_zones() -> None:
     sc.advance_to("06:30")
     sc.advance_to("07:05")  # zone 3 silent since 06:00: SENSOR_FAULT at 07:01
     assert sc.mode(3) is FAULT
-    assert sc.mode(4) is FAULT  # never delivered a reading since 06:00 (D-93)
+    assert sc.mode(4) is FAULT  # never delivered a reading since 06:00
     sc.temp(1, 22.0)
     sc.step()
     assert sc.sync_fired
@@ -244,20 +244,20 @@ def test_waiting_zone_joins_by_sync() -> None:
     assert sc.mode(2) is HEATING
 
 
-# ---------------------------------------------------------------- calling zone (D-65, D-92)
+# ---------------------------------------------------------------- calling zone
 
 
 def test_first_start_with_hp_on_counts_min_on_from_startup() -> None:
-    """D-91: min ON counts from startup; a zone at StartTemp joins at once (rule 3)."""
+    """Min ON counts from startup; a zone at StartTemp joins at once."""
     sc = Scenario(2, start="07:00", hp_on=True, temps={1: 21.8})
     sc.step()
     assert sc.state.hp_last_on_at == sc.now
     assert sc.mode(1) is HEATING
-    assert sc.calling_zone == "zone_1"  # D-92
+    assert sc.calling_zone == "zone_1"
 
 
 def test_calling_zone_chosen_while_running_without_one() -> None:
-    """D-92: during the D-91 spread no zone calls; the first zone to heat becomes caller."""
+    """During the startup min ON spread no zone calls; the first zone to heat becomes caller."""
     sc = Scenario(3, start="07:00", hp_on=True, temps={3: 21.9})
     sc.step()
     assert sc.calling_zone is None
@@ -280,7 +280,7 @@ def test_calling_zone_kept_while_request_on() -> None:
     assert sc.calling_zone == "zone_1"
 
 
-# ---------------------------------------------------------------- §3.5 HP protection
+# ---------------------------------------------------------------- HP protection
 
 
 def test_spread_excludes_zones_at_manual_max_temp() -> None:
@@ -312,7 +312,7 @@ def test_unvalved_zone_never_shows_the_manual_max_exclusion() -> None:
     sc.advance_to("06:30")
     sc.temp(1, 22.2)
     sc.advance(1)
-    assert sc.hp  # D-20 spread
+    assert sc.hp  # min ON spread
     assert sc.reason(2) == Reason.TOO_WARM_FOR_SPREADING
     assert sc.reason(3) == Reason.SPREADING_HEAT
     assert sc.until(3) == at("07:30")
@@ -322,13 +322,13 @@ def test_unvalved_zone_never_shows_the_manual_max_exclusion() -> None:
 def test_zone_without_any_reading_stays_closed_during_spread() -> None:
     sc = Scenario(2, start="07:00", hp_on=True, temps={2: None})
     sc.step()
-    assert sc.hp  # D-91 spread
+    assert sc.hp  # startup min ON spread
     assert sc.open_valves() == {"zone_1"}
     assert sc.reason(2) == Reason.NO_READING_YET
 
 
 def test_request_on_immediately_without_last_off_time() -> None:
-    """D-78: nothing persisted → no min OFF."""
+    """Nothing persisted → no min OFF."""
     sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
     sc.step()
     assert sc.hp
@@ -348,13 +348,13 @@ def test_min_off_counts_from_the_actual_off_transition() -> None:
     assert sc.hp
 
 
-# ---------------------------------------------------------------- D-95 heat source unavailable
+# ---------------------------------------------------------------- heat source unavailable
 
 
 def test_heat_source_off_before_outage_stays_off_with_its_old_off_time() -> None:
     sc = Scenario(2, start="07:00", hp_on=True)
     sc.step()
-    sc.advance_to("08:00")  # OFF at 08:00 (D-91 min ON from startup)
+    sc.advance_to("08:00")  # OFF at 08:00 (min ON from startup)
     sc.advance_to("08:10")
     sc.set_hp_actual(OutputState.UNAVAILABLE)
     sc.advance(5)
@@ -376,7 +376,7 @@ def test_heat_source_off_before_outage_back_on_is_a_new_start() -> None:
 
 
 def test_heat_source_unavailable_at_first_start() -> None:
-    """Nothing known yet: no min OFF (D-78); back ON counts from then (D-91)."""
+    """Nothing known yet: no min OFF; back ON counts from then."""
     sc = Scenario(2, temps={1: 21.8}, zone_params=ZoneParams(wait_time=timedelta(0)))
     sc.set_hp_actual(OutputState.UNAVAILABLE)
     sc.step()
@@ -404,7 +404,7 @@ def test_restart_during_outage_keeps_the_outage() -> None:
     assert sc.state.hp_last_on_at == started  # never stopped
 
 
-# ---------------------------------------------------------------- §3.7 heating season (D-97)
+# ---------------------------------------------------------------- heating season
 
 
 def test_season_on_again_is_held_by_min_off_from_the_actual_off() -> None:
@@ -441,7 +441,7 @@ def test_season_off_closes_faulty_zones_while_the_hp_still_runs() -> None:
     sc.step()
     assert not sc.hp
     assert sc.valve(2) is False
-    assert sc.mode(2) is FAULT  # fault detection keeps running (D-75)
+    assert sc.mode(2) is FAULT  # fault detection keeps running
     assert sc.reason(2) == Reason.SENSOR_FAULT_SEASON_OFF
     assert sc.mode(1) is IDLE  # no join by rule 3 although the HP still runs
 
@@ -451,7 +451,7 @@ def test_season_off_ends_the_cycle_while_the_heat_source_is_unavailable() -> Non
     sc.step()
     sc.set_hp_actual(OutputState.UNAVAILABLE)
     sc.advance(5)
-    assert sc.calling_zone == "zone_1"  # kept while unknown (D-95)
+    assert sc.calling_zone == "zone_1"  # kept while unknown
     sc.set_season(False)
     sc.step()
     assert sc.calling_zone is None
@@ -460,7 +460,7 @@ def test_season_off_ends_the_cycle_while_the_heat_source_is_unavailable() -> Non
 
 
 def test_season_off_at_first_start_with_the_hp_on() -> None:
-    """No D-91 spread outside the season: the request is OFF at once."""
+    """No startup min ON spread outside the season: the request is OFF at once."""
     sc = Scenario(2, start="07:00", hp_on=True)
     sc.set_season(False)
     sc.step()
@@ -469,7 +469,7 @@ def test_season_off_at_first_start_with_the_hp_on() -> None:
 
 
 def test_setpoint_change_during_season_off_is_not_a_raise_later() -> None:
-    """SetPoint tracking continues while OFF, so switching ON is not a D-26 raise."""
+    """SetPoint tracking continues while OFF, so switching ON is not a SetPoint raise."""
     sc = Scenario(2, temps={1: 21.5})
     sc.set_season(False)
     sc.step()
@@ -480,7 +480,7 @@ def test_setpoint_change_during_season_off_is_not_a_raise_later() -> None:
     assert sc.mode(1) is WAITING
 
 
-# ---------------------------------------------------------------- §3.6 readings and fault
+# ---------------------------------------------------------------- readings and fault
 
 
 def test_implausible_raw_reading_is_ignored() -> None:
@@ -496,7 +496,7 @@ def test_implausible_raw_reading_is_ignored() -> None:
 
 
 def test_plausibility_uses_the_raw_reading_before_the_offset() -> None:
-    """D-88: raw 41 is implausible even though 41 - 2 = 39 would be inside 0 to 40."""
+    """Raw 41 is implausible even though 41 - 2 = 39 would be inside 0 to 40."""
     config = CoreConfig(zones=(ZoneConfig(id="zone_1", name="Zone 1", sensor_offset=-2.0),))
     sc = Scenario(config, temps={1: 41.0})
     sc.step()
@@ -516,7 +516,7 @@ def test_short_dropout_uses_the_last_valid_reading() -> None:
 
 
 def test_zone_without_any_reading_faults_after_timeout_from_startup() -> None:
-    """D-93: no valid reading since startup → SENSOR_FAULT after SensorFaultTimeout."""
+    """No valid reading since startup → SENSOR_FAULT after SensorFaultTimeout."""
     sc = Scenario(2, temps={1: None})
     sc.step()
     assert sc.mode(1) is IDLE
@@ -564,7 +564,7 @@ def test_reading_timestamps_are_used_as_reported() -> None:
     assert state.zones["zone_1"].last_valid_value == 21.0
 
 
-# ---------------------------------------------------------------- manual schedules (§3.4)
+# ---------------------------------------------------------------- manual schedules
 
 
 def _hp_off_at_0400(zones: int = 2, temps: dict[int | str, float] | None = None) -> Scenario:
@@ -582,7 +582,7 @@ def test_forced_zone_is_held_by_min_off_with_its_valve_open() -> None:
     sc.add_manual([1], "04:10", "06:00")
     sc.advance_to("04:10")
     assert sc.mode(1) is FORCED
-    assert sc.valve(1) is True  # like D-64
+    assert sc.valve(1) is True  # like a zone held by min OFF
     assert not sc.hp
     assert sc.reason(1) == Reason.HELD_BY_MIN_OFF
     assert sc.until(1) == at("05:00")
@@ -593,7 +593,7 @@ def test_forced_zone_is_held_by_min_off_with_its_valve_open() -> None:
 
 
 def test_calling_zone_forced_hands_the_role_over() -> None:
-    """D-131: a forced zone never calls; the heating zone with the largest deficit
+    """A forced zone never calls; the heating zone with the largest deficit
     takes over."""
     sc = Scenario(3, temps={1: 21.8})
     sc.add_manual([1], "06:40", "07:00")
@@ -623,11 +623,11 @@ def test_forced_calling_zone_passes_the_role_to_the_next_joining_zone() -> None:
     sc.advance_to("06:50")
     sc.temp(2, 21.8)
     sc.step()
-    assert sc.calling_zone == "zone_2"  # D-44
+    assert sc.calling_zone == "zone_2"
 
 
 def test_window_end_while_running_joins_without_wait() -> None:
-    """D-130: after the window the zone is IDLE and evaluated at once (rule 3)."""
+    """After the window the zone is IDLE and evaluated at once."""
     sc = Scenario(2, start="04:00")
     sc.add_manual([1], "04:00", "05:00")
     sc.step()
@@ -635,7 +635,7 @@ def test_window_end_while_running_joins_without_wait() -> None:
     sc.advance_to("05:00")
     assert sc.mode(1) is HEATING
     assert sc.hp
-    assert sc.calling_zone == "zone_1"  # D-92
+    assert sc.calling_zone == "zone_1"
 
 
 def test_window_end_while_the_hp_is_off_starts_the_wait() -> None:
@@ -650,7 +650,7 @@ def test_window_end_while_the_hp_is_off_starts_the_wait() -> None:
 
 
 def test_zone_without_a_reading_is_not_forced() -> None:
-    """D-130: like SENSOR_FAULT (D-70), the cap cannot be checked."""
+    """Like SENSOR_FAULT, the cap cannot be checked."""
     sc = Scenario(2, temps={1: None}, start="04:00")
     sc.add_manual([1], "04:00", "06:00")
     sc.step()
@@ -706,7 +706,7 @@ def test_forced_zone_outside_the_season() -> None:
     sc.advance_to("04:20")
     sc.set_season(False)
     sc.step()
-    assert sc.mode(1) is IDLE  # D-97
+    assert sc.mode(1) is IDLE
     assert sc.reason(1) == Reason.SEASON_OFF
     assert not sc.hp
     assert sc.valve(1) is False
@@ -737,7 +737,7 @@ def test_unvalved_forced_zone_creates_demand() -> None:
     sc.step()
     assert sc.mode(2) is FORCED
     assert sc.hp
-    assert sc.valve(2) is None  # no output (rule 8)
+    assert sc.valve(2) is None  # no output
 
 
 def test_forced_zone_is_left_alone_by_the_sync_rule() -> None:
@@ -757,7 +757,7 @@ def test_forced_zone_is_left_alone_by_the_sync_rule() -> None:
 
 
 def test_auto_schedule_end_ends_the_wait() -> None:
-    """D-94 for an auto schedule: its end lowers the SetPoint during the wait."""
+    """An ending auto schedule lowers the SetPoint during the wait."""
     sc = Scenario(2, temps={1: 22.5}, start="06:00")
     sc.add_auto([1], "05:00", "06:10", 23.0)
     sc.step()  # no previous SetPoint: rule 1, not a raise
@@ -781,7 +781,7 @@ def test_holiday_start_mid_cycle_switches_zones_off() -> None:
 
 
 def test_holiday_temperature_is_per_zone() -> None:
-    """D-133: each zone has its own holiday temperature, above or below its base."""
+    """Each zone has its own holiday temperature, above or below its base."""
     sc = Scenario(2, temps=20.0)
     sc.zone_params["zone_1"] = ZoneParams(base_setpoint=16.0, holiday_temp=15.0)
     sc.zone_params["zone_2"] = ZoneParams(holiday_temp=19.5)
@@ -793,11 +793,11 @@ def test_holiday_temperature_is_per_zone() -> None:
     sc.step()
     assert (sc.setpoint(1), sc.setpoint(2)) == (16.0, 22.0)
     assert not sc.holiday_active
-    assert sc.mode(2) is HEATING  # a raise: no wait (D-26)
+    assert sc.mode(2) is HEATING  # a raise: no wait
 
 
 def test_holiday_without_end_runs_until_switched_off() -> None:
-    """D-137: no end: active for days until switched OFF by hand."""
+    """No end: active for days until switched OFF by hand."""
     sc = Scenario(1, temps=20.0)
     sc.holiday_without_end()
     sc.step()
@@ -812,7 +812,7 @@ def test_holiday_without_end_runs_until_switched_off() -> None:
 
 
 def test_holiday_end_is_ignored_while_off() -> None:
-    """D-137: the end only counts while holiday is switched ON."""
+    """The end only counts while holiday is switched ON."""
     sc = Scenario(1, temps=20.0)
     sc.holiday_until = at("12:00", DAY + timedelta(days=1), sc.tz)  # set, but not switched ON
     sc.step()
@@ -870,7 +870,7 @@ def test_last_reported_must_be_timezone_aware() -> None:
 
 
 def test_time_zone_is_required() -> None:
-    """D-96: HA's time zone comes with the inputs."""
+    """HA's time zone comes with the inputs."""
     sc = Scenario(1)
     inputs = dataclasses.replace(sc.inputs(), time_zone=None)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="time_zone must be a tzinfo"):

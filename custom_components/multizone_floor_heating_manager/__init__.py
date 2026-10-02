@@ -1,8 +1,7 @@
 """Multizone Floor Heating Manager integration.
 
-Configured in YAML (docs/design.md §5.6, docs/configuration.md). The validated YAML is
-imported into a single config entry (D-124), which owns the devices and entities
-(D-125). The control logic lives in `core/` (no HA imports); this package is the thin
+Configured in YAML. The validated YAML is imported into a single config entry, which owns the
+devices and entities. The control logic lives in `core/` (no HA imports); this package is the thin
 HA adapter around it.
 """
 
@@ -20,15 +19,15 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import DATA_YAML, DOMAIN, GLOBAL_DEVICE
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.config import ConfigError, config_warnings
 from .core.units import TemperatureUnit
 from .heartbeat import HeartbeatClient
 from .notifications import Notifier
-from .runtime import FloorheatConfigEntry, FloorheatRuntime
-from .schema import CONFIG_SCHEMA, FloorheatConfig, build_config
+from .runtime import FloorHeatingConfigEntry, FloorHeatingRuntime
+from .schema import CONFIG_SCHEMA, FloorHeatingConfig, build_config
 from .services import async_register as async_register_services
-from .storage import FloorheatStore
+from .storage import FloorHeatingStore
 from .watchdog import WatchdogPing
 
 __all__ = ["CONFIG_SCHEMA", "DOMAIN", "async_setup", "async_setup_entry", "async_unload_entry"]
@@ -49,8 +48,7 @@ PLATFORMS = (
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the services; validate the YAML and import it into the config entry
-    (D-124)."""
+    """Register the services; validate the YAML and import it into the config entry."""
     async_register_services(hass)
     if DOMAIN not in config:
         return True
@@ -71,7 +69,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: FloorHeatingConfigEntry) -> bool:
     """Start the control for the YAML configuration."""
     config = hass.data.get(DATA_YAML)
     if config is None:  # the YAML section was removed; keep the entry and its data
@@ -79,7 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
             f"No `{DOMAIN}:` section in configuration.yaml. Add it again and restart, "
             "or delete this entry."
         )
-    store = FloorheatStore(hass)
+    store = FloorHeatingStore(hass)
     stored = await store.async_load(
         config.core,
         config.switches,
@@ -88,12 +86,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
     )
     for warning in stored.warnings:
         _LOGGER.warning("%s", warning)
-    controller = FloorheatController(hass, config, store, stored)
+    controller = FloorHeatingController(hass, config, store, stored)
     notifier = Notifier(hass, config.notify)
     entry.async_on_unload(controller.async_add_event_handler(notifier.async_handle))
     heartbeat = HeartbeatClient(hass, controller)
     watchdog = WatchdogPing(hass, controller)
-    entry.runtime_data = FloorheatRuntime(controller, heartbeat, watchdog)
+    entry.runtime_data = FloorHeatingRuntime(controller, heartbeat, watchdog)
     _async_remove_stale_devices(hass, entry, config)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -111,20 +109,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) ->
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: FloorheatConfigEntry) -> bool:
-    """Stop the control, then remove the entities. The stored data stays (D-124)."""
+async def async_unload_entry(hass: HomeAssistant, entry: FloorHeatingConfigEntry) -> bool:
+    """Stop the control, then remove the entities. The stored data stays."""
     await _async_shutdown(entry.runtime_data)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_shutdown(runtime: FloorheatRuntime) -> None:
+async def _async_shutdown(runtime: FloorHeatingRuntime) -> None:
     await runtime.heartbeat.async_stop()
     await runtime.watchdog.async_stop()
     await runtime.controller.async_stop()  # writes the stored data
 
 
 def _async_remove_stale_devices(
-    hass: HomeAssistant, entry: FloorheatConfigEntry, config: FloorheatConfig
+    hass: HomeAssistant, entry: FloorHeatingConfigEntry, config: FloorHeatingConfig
 ) -> None:
     """Remove the devices (and their entities) of zones no longer in the YAML."""
     registry = dr.async_get(hass)

@@ -1,11 +1,11 @@
-"""Output commands with backoff (docs/design.md §5.3, D-67, D-108).
+"""Output commands with backoff.
 
 The reconcile loop calls `apply` after every `step`, with the desired states computed
-from the current actual states, so no stale command is ever sent (review E, D-95).
+from the current actual states, so no stale command is ever sent.
 Per switch:
 - actual equals desired: nothing is sent and the retry count resets;
 - unavailable: nothing is sent or queued; the first command after it returns goes out
-  at once (the core counts the unavailability for the alert, D-67);
+  at once (the core counts the unavailability for the alert);
 - a new desired state: the command goes out at once;
 - still not following: retries after 1, 2, 4 and 8 min, then every 15 min.
 

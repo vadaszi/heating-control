@@ -1,12 +1,12 @@
-"""How schedules are shown and entered in HA (docs/design.md §5.3, D-138, D-139).
+"""How schedules are shown and entered in HA.
 
-- `schedule_label`: the generated text of a schedule (no name field, D-138), e.g.
+- `schedule_label`: the generated text of a schedule (no name field), e.g.
   `#3 Auto · Living room · Every day 13:00-17:00 · 23.0 °C`, with an en dash;
 - `schedule_view`: the dict of one schedule in the Schedules sensor's attribute and the
   `list_schedules` response;
-- `DAY_OPTIONS`: the schedule form's "Days" choices (D-138).
+- `DAY_OPTIONS`: the schedule form's "Days" choices.
 
-Temperatures are shown in HA's unit system (D-77).
+Temperatures are shown in HA's unit system.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ _DASH = "\u2013"  # en dash between the times and in "Monday-Friday"
 WORKDAYS = frozenset(range(5))
 WEEKEND = frozenset({5, 6})
 
-# The form's "Days" select: option key -> weekdays; "once" uses the form's date (D-138).
+# The form's "Days" select: option key -> weekdays; "once" uses the form's date.
 ONCE = "once"
 DAY_OPTIONS: dict[str, frozenset[int]] = {
     ONCE: frozenset(),

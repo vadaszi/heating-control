@@ -1,8 +1,8 @@
-"""Heating season, Control active and Holiday switches (docs/design.md §3.7, §5.5, §3.4).
+"""Heating season, Control active and Holiday switches.
 
-Their state is the controller's setting (D-106); switching Control active OFF sends the
-final safe command set (D-69, D-110). Holiday: switching it on with an end in the past
-is refused; switching it off clears the end (D-137).
+Their state is the controller's setting; switching Control active OFF sends the
+final safe command set. Holiday: switching it on with an end in the past
+is refused; switching it off clears the end.
 """
 
 from __future__ import annotations
@@ -14,14 +14,14 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
-from .entity import FloorheatEntity, async_apply
-from .runtime import FloorheatConfigEntry
+from .controller import FloorHeatingController
+from .entity import FloorHeatingEntity, async_apply
+from .runtime import FloorHeatingConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -49,10 +49,10 @@ async def async_setup_entry(
     )
 
 
-class SettingSwitch(FloorheatEntity, SwitchEntity):
+class SettingSwitch(FloorHeatingEntity, SwitchEntity):
     def __init__(
         self,
-        controller: FloorheatController,
+        controller: FloorHeatingController,
         key: str,
         get: Callable[[], bool],
         set_: Callable[[bool], Awaitable[None]],

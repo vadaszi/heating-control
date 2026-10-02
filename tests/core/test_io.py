@@ -1,4 +1,4 @@
-"""Inputs/outputs/events of the step function (docs/design.md §5.3, D-66, D-67)."""
+"""Inputs/outputs/events of the step function."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ T0 = datetime(2026, 9, 27, 6, 0, tzinfo=UTC)
     [(OutputState.ON, True), (OutputState.OFF, False), (OutputState.UNAVAILABLE, False)],
 )
 def test_unavailable_output_counts_as_off(state: OutputState, is_on: bool) -> None:
-    """D-66: an unavailable switch counts as OFF, but stays distinguishable for D-67."""
+    """An unavailable switch counts as OFF, but stays distinguishable for the mismatch alert."""
     assert state.is_on is is_on
 
 

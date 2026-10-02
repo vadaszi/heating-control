@@ -1,7 +1,6 @@
-"""Time entities (local times): the time-of-day parameters of §4 — SensorFaultReminder
-(§3.6), the failsafe operation start and stop (FailsafeWindow, D-147, D-152) and the
-valve exercise time (D-149); the schedule form's start and end (§5.3, D-74); the holiday
-end time (§3.4, D-142)."""
+"""Time entities (local times): the time-of-day parameters (SensorFaultReminder, the failsafe
+operation start and stop, i.e. FailsafeWindow, and the valve exercise time); the schedule form's
+start and end; the holiday end time."""
 
 from __future__ import annotations
 
@@ -12,15 +11,15 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.config import TIME_OF_DAY_PARAMS
-from .entity import FloorheatEntity, FormEntity, async_apply
-from .runtime import FloorheatConfigEntry
+from .entity import FloorHeatingEntity, FormEntity, async_apply
+from .runtime import FloorHeatingConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -34,12 +33,12 @@ async def async_setup_entry(
     )
 
 
-class ParamTime(FloorheatEntity, TimeEntity):
+class ParamTime(FloorHeatingEntity, TimeEntity):
     """A global time-of-day parameter; a setting (config category)."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(self, controller: FloorheatController, key: str) -> None:
+    def __init__(self, controller: FloorHeatingController, key: str) -> None:
         super().__init__(controller, key)
         self._key = key
 
@@ -61,7 +60,7 @@ class ParamTime(FloorheatEntity, TimeEntity):
 class ScheduleTime(FormEntity, TimeEntity):
     """Start or end of the next schedule's window (local time)."""
 
-    def __init__(self, controller: FloorheatController, key: str) -> None:
+    def __init__(self, controller: FloorHeatingController, key: str) -> None:
         super().__init__(controller, key)
         self._field = key.removeprefix("schedule_")  # "start" / "end"
 
@@ -76,10 +75,10 @@ class ScheduleTime(FormEntity, TimeEntity):
 
 
 class HolidayEndTime(FormEntity, TimeEntity):
-    """With the holiday end date, the end of holiday (local time, D-142). Never empty; it
+    """With the holiday end date, the end of holiday (local time). Never empty; it
     keeps its value when holiday ends."""
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "holiday_end_time")
 
     @property

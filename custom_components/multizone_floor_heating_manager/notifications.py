@@ -1,4 +1,4 @@
-"""Core events → notifications (docs/design.md §3.6 table, D-23, D-98, D-117).
+"""Core events → notifications.
 
 Each event goes to every configured target `notify.<name>`: the legacy notify service of
 that name if it exists (e.g. the companion app, SMTP), otherwise the notify entity with
@@ -58,7 +58,7 @@ class Notifier:
 
     @callback
     def async_check_targets(self) -> None:
-        """Report targets that do not exist (once HA has started, D-107)."""
+        """Report targets that do not exist (once HA has started)."""
         missing = [target for target in self._targets if not self._exists(target)]
         if not missing:
             persistent_notification.async_dismiss(self._hass, MISSING_TARGETS_NOTIFICATION)

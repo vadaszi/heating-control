@@ -1,4 +1,4 @@
-"""Heartbeat client (docs/design.md §5.4; D-61, D-73, D-120 to D-122; S6, S7, A21)."""
+"""Heartbeat client."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ async def test_heartbeat_is_sent_in_shadow_mode(
 ) -> None:
     serve(aioclient_mock)
     world.setup_entities()
-    assert await world.setup(conf(), live=False)  # shadow mode (D-56)
+    assert await world.setup(conf(), live=False)  # shadow mode
     # First call after the start: status (GET), then the heartbeat (POST).
     assert calls(aioclient_mock, VALVE_URL) == [("GET", None), ("POST", {"v": 1})]
     assert calls(aioclient_mock, HEAT_URL) == [("GET", None), ("POST", {"v": 1, "season": True})]
@@ -132,7 +132,7 @@ async def test_season_change_reaches_the_heat_source_at_once(
 async def test_season_change_during_a_slow_heartbeat_follows_right_after_it(
     world: World, hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """Gemini P7 review, finding 1: the change is not left for the next interval."""
+    """A season change during a running call: the change is not left for the next interval."""
     serve(aioclient_mock)
     world.setup_entities()
     assert await world.setup(conf())
@@ -343,7 +343,7 @@ async def test_timed_out_watchdog_and_restart_are_only_logged(
     serve(aioclient_mock, valves={"json": status(uptime_s=20)})
     await world.advance(5)
     assert "Shelly Valves has restarted (uptime 0 min)" in caplog.text
-    assert phone == []  # owner decision: logged only
+    assert phone == []  # logged only
 
 
 async def test_failsafe_operation_is_only_logged(
@@ -373,7 +373,7 @@ async def test_no_heartbeat_while_the_reconcile_loop_is_broken(
     world.setup_entities()
     assert await world.setup(conf())
     sent = aioclient_mock.call_count
-    with patch.object(world.controller, "_run"):  # runs no longer complete (D-122)
+    with patch.object(world.controller, "_run"):  # runs no longer complete
         await world.advance(10)
     # last completed run 06:00: at 06:05 it is more than 3 intervals old
     assert aioclient_mock.call_count == sent

@@ -1,4 +1,4 @@
-"""Holiday and schedule form entities (docs/design.md §5.3, D-74, D-79, D-137, D-138)."""
+"""Holiday and schedule form entities."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ async def test_form_entities_exist_on_the_global_device(world: World) -> None:
     )
     assert world.state(DATE) == START.date().isoformat()
     assert world.state(EXISTING) == "unknown"  # no schedules yet
-    assert world.state(HOLIDAY_DATE) == "unknown"  # empty until set: no end (D-142)
+    assert world.state(HOLIDAY_DATE) == "unknown"  # empty until set: no end
     assert world.state(HOLIDAY_TIME) == "12:00:00"  # never empty
 
 
@@ -131,7 +131,7 @@ async def test_add_and_delete_through_the_form(world: World) -> None:
     assert (
         world.state(EXISTING) == f"#1 Auto · Zone 1 · Monday{DASH}Friday 13:00{DASH}17:00 · 23.0 °C"
     )
-    assert world.state(DAYS) == "monday_to_friday"  # the draft stays (D-138)
+    assert world.state(DAYS) == "monday_to_friday"  # the draft stays
 
     await _fill(hass, kind="manual", zone="All zones", days="once", day="2026-01-13")
     await _press(hass, ADD)
@@ -156,7 +156,7 @@ async def test_add_and_delete_through_the_form(world: World) -> None:
 
 
 async def test_form_errors_become_a_persistent_notification(world: World) -> None:
-    """D-74: an overlap (A12) from the form is a notification; nothing is stored."""
+    """An overlap from the form is a notification; nothing is stored."""
     world.setup_entities()
     assert await world.setup()
     hass = world.hass
@@ -209,7 +209,7 @@ async def _set_end(hass: HomeAssistant, day: str, at: str) -> None:
 
 
 async def test_holiday_through_the_entities(world: World) -> None:
-    """D-137, D-142: on without an end date; the end moves it; off clears the date."""
+    """On without an end date; the end moves it; off clears the date."""
     world.setup_entities()
     assert await world.setup()
     hass = world.hass

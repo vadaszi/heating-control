@@ -1,4 +1,4 @@
-"""Persistence and restart (docs/design.md §3.8; A22; D-87, D-106, D-110)."""
+"""Persistence and restart."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ async def test_a22_restart_during_wait_continues_the_wait(world: World) -> None:
 
     async with restarted(world, downtime=3, prepare=prepare) as new:
         assert await new.setup(make_conf(), live=False)
-        assert new.controller.settings.control_active  # restored (D-106)
+        assert new.controller.settings.control_active  # restored
         assert new.mode(1) == "waiting"
         assert new.reason(1) == "waiting"
         await new.advance(6)
@@ -118,7 +118,7 @@ async def test_first_install_defaults(world: World) -> None:
     assert await world.setup(live=False)
     settings = world.controller.settings
     assert settings.heating_season
-    assert not settings.control_active  # shadow mode (§5.5)
+    assert not settings.control_active  # shadow mode
 
 
 async def test_final_off_survives_a_restart(world: World) -> None:
@@ -208,7 +208,7 @@ async def test_unusable_stored_data_falls_back_to_defaults(
 async def test_global_holiday_temperature_becomes_every_zones_value(
     world: World, hass_storage: dict[str, Any]
 ) -> None:
-    """D-133: a stored global HolidayTemp (up to 0.7) is copied into every zone."""
+    """A stored global HolidayTemp (older versions) is copied into every zone."""
     _preload(
         hass_storage,
         {"settings": {"global": {"holiday_temp": 16.5}, "zones": {"zone_2": {"holiday_temp": 20}}}},

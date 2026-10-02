@@ -1,4 +1,4 @@
-"""Heartbeat evaluation (docs/design.md §5.4; D-61, D-73, D-121; scenarios S6, S7)."""
+"""Heartbeat evaluation."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def test_unusable_status_is_rejected(body: object, reason: str) -> None:
         parse_status(body, ShellyRole.VALVE)
 
 
-# ---------------------------------------------------------------- parameters (D-73)
+# ---------------------------------------------------------------- parameters
 
 
 def test_only_expected_params_are_compared() -> None:
@@ -103,7 +103,7 @@ def test_param_differences_are_described() -> None:
 
 def test_s07_alert_after_three_failures_then_recovery() -> None:
     tracking = HeartbeatTracking()
-    for _ in range(2):  # a Wi-Fi hiccup never alerts (D-61)
+    for _ in range(2):  # a Wi-Fi hiccup never alerts
         tracking, events = record_failure(
             tracking, "Valves 1", FailureKind.UNREACHABLE, "timeout", 3
         )
@@ -191,7 +191,7 @@ def test_params_alert_once_and_clear_silently() -> None:
     assert alert.kind is EventKind.WATCHDOG_PARAMS_MISMATCH
 
     tracking, events = record_success(tracking, "X", [])
-    assert events == []  # no recovery notification (§3.6 table)
+    assert events == []  # no recovery notification
     assert heartbeat_alerts("X", tracking) == []
 
 

@@ -1,11 +1,11 @@
-"""External watchdog ping, e.g. healthchecks.io (docs/design.md §5.3, §5.11, D-62, D-155).
+"""External watchdog ping, e.g. healthchecks.io.
 
 Every WatchdogPingInterval the integration calls the configured URL with `GET`. The
 external service alerts when the pings stop: HA or the integration is dead. Like the
-Shelly heartbeat, a ping goes out only while the reconcile loop works (D-122), so a
-broken integration triggers the alert too; also in shadow mode (D-56).
+Shelly heartbeat, a ping goes out only while the reconcile loop works, so a
+broken integration triggers the alert too; also in shadow mode.
 
-A failed ping is only logged (owner, 2026-10-02): a warning at the first failure and an
+A failed ping is only logged: a warning at the first failure and an
 info line when it works again; the external service alerts by itself when pings stop.
 The URL is a secret and never appears in a log line.
 """
@@ -22,7 +22,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, WATCHDOG_PING_TIMEOUT
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 class WatchdogPing:
     """Pings the external watchdog URL while the integration works."""
 
-    def __init__(self, hass: HomeAssistant, controller: FloorheatController) -> None:
+    def __init__(self, hass: HomeAssistant, controller: FloorHeatingController) -> None:
         self._hass = hass
         self._controller = controller
         self._url = controller.config.watchdog_ping_url

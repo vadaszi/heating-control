@@ -1,5 +1,5 @@
 // Valve watchdog script (shelly_scripts/valve_watchdog.js), simulated time.
-// docs/design.md §3.6 case 2, §5.4, D-100…D-104; docs/heartbeat-protocol.md.
+// See docs/heartbeat-protocol.md.
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -21,7 +21,7 @@ function valve(options) {
 }
 
 describe("valve watchdog: timeout (S1)", () => {
-  test("the file carries the §4 defaults", () => {
+  test("the file carries the default parameters", () => {
     assert.deepEqual(status(valve()).params, {
       heartbeat_timeout_s: 5 * HOUR,
       check_interval_s: 60,
@@ -85,7 +85,7 @@ describe("valve watchdog: timeout (S1)", () => {
   });
 });
 
-describe("valve watchdog: timed out (D-103)", () => {
+describe("valve watchdog: timed out", () => {
   test("keeps the valves open: an external OFF is re-asserted at the next check", () => {
     const d = valve();
     d.advanceSeconds(TIMEOUT_S);
@@ -232,7 +232,7 @@ describe("valve watchdog: status (S6)", () => {
   });
 });
 
-describe("valve watchdog: channels (D-104)", () => {
+describe("valve watchdog: channels", () => {
   test("default: every switch component of the device", () => {
     for (const n of [1, 2, 4]) {
       const d = valve({ switches: n });
@@ -264,7 +264,7 @@ describe("valve watchdog: channels (D-104)", () => {
   });
 });
 
-describe("valve watchdog: start (D-102)", () => {
+describe("valve watchdog: start", () => {
   test("after a reboot the valves stay at the power-on default until the timeout", () => {
     const d = valve();
     d.advanceSeconds(TIMEOUT_S + HOUR);

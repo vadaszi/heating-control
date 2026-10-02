@@ -1,19 +1,19 @@
-"""Multi-day simulations of the core against a thermal model (implementation plan, P2).
+"""Multi-day simulations of the core against a thermal model.
 
 Invariants checked on every run:
 - the actual HP request never changes within HpMinOnTime / HpMinOffTime, except that
-  switching the heating season OFF ends an ON period at once (D-68);
+  switching the heating season OFF ends an ON period at once;
 - the request is never ON while the heating season is OFF;
 - after warm-up, every valved zone stays within StartTemp - lower .. StopTemp + upper of
   its effective SetPoint, with the bounds derived from the house model (see `bounds`);
   an unvalved zone gets heat whenever the HP runs, so only its lower bound is checked.
   After a SetPoint change or a manual window a zone is first allowed to settle; a
-  forced zone stays below ManualMaxTemp (P9);
+  forced zone stays below ManualMaxTemp;
 - no zone waits longer than WaitTime;
 - at most one sync per cycle; the calling zone is never forced and changes within a
-  cycle only when it becomes forced (D-44, D-131);
+  cycle only when it becomes forced;
 - notifications: no output mismatch with a perfect reconcile loop, sensor fault start
-  and recovery alternate per zone, no reminder outside the season (P3);
+  and recovery alternate per zone, no reminder outside the season;
 - `step` is idempotent (checked by the harness on every step).
 """
 
@@ -63,8 +63,8 @@ def bounds(model: ZoneModel, setpoint: float = ZONE.base_setpoint) -> tuple[floa
     """Allowed temperature range of a zone, from its model.
 
     - Below StartTemp: after calling, a zone stays unheated for at most
-      max(WaitTime, HpMinOffTime), since both run in parallel (D-39).
-    - Above StopTemp: the D-20 spread heats satisfied zones for at most HpMinOnTime.
+      max(WaitTime, HpMinOffTime), since both run in parallel.
+    - Above StopTemp: the min ON spread heats satisfied zones for at most HpMinOnTime.
     """
     start, stop = setpoint - ZONE.hysteresis, setpoint + ZONE.hysteresis
     unheated = max(ZONE.wait_time, PARAMS.hp_min_off_time) / timedelta(hours=1)
@@ -100,16 +100,16 @@ def check_invariants(
             season_off = not runs[index + 1][1][0].season
             short = duration(run) < PARAMS.hp_min_on_time
             assert season_off or not short, f"short ON period at {run[0].now}"
-        elif index > 0:  # the first OFF period has no known start (D-78)
+        elif index > 0:  # the first OFF period has no known start
             assert duration(run) >= PARAMS.hp_min_off_time, f"short OFF period at {run[0].now}"
 
-    # Nothing heats outside the season (D-24, D-68).
+    # Nothing heats outside the season.
     for sample in samples:
         if not sample.season:
             assert not sample.request, f"request ON at {sample.now}"
             assert not sample.hp_running, f"heat pump running at {sample.now}"
 
-    # The heat source sensor agrees with the request (D-141; the switch is always there).
+    # The heat source sensor agrees with the request (the switch is always there).
     requesting = {
         HeatSourceStatus.HEATING,
         HeatSourceStatus.SPREADING_HEAT,
@@ -121,7 +121,7 @@ def check_invariants(
         else:
             assert sample.request == (sample.source_status in requesting), sample.now
 
-    # Temperature bounds after warm-up, against the effective SetPoint (P9).
+    # Temperature bounds after warm-up, against the effective SetPoint.
     has_valve = {z.id: z.has_valve for z in sc.config.zones}
     settling: dict[str, datetime | None] = dict.fromkeys(house)
     for minute, sample in enumerate(samples):
@@ -163,7 +163,7 @@ def check_invariants(
             assert waiting <= ZONE.wait_time / timedelta(minutes=1), f"{zone} waits too long"
 
     # One calling zone and one sync per cycle (a cycle = the request ON). The calling
-    # zone is never forced; it changes only when it becomes forced (D-44, D-131).
+    # zone is never forced; it changes only when it becomes forced.
     for request, run in periods(samples, "request"):
         if not request:
             assert all(s.calling_zone is None and not s.sync_fired for s in run)
@@ -288,7 +288,7 @@ RECOVERY = 8 * 60  # minutes after the season is back ON before the bounds apply
 def test_season_changes() -> None:
     """Season OFF blocks, several of them in the middle of a cycle, keep the invariants.
     A sensor faulty since day 1 is not reminded during the OFF morning of day 2; the
-    reminder is caught up when the season is switched ON again (D-98)."""
+    reminder is caught up when the season is switched ON again."""
     offs = [
         SeasonOff(start=10 * 60 + 7, minutes=6 * 60),
         SeasonOff(start=27 * 60 + 13, minutes=12 * 60),  # day 2, 03:13 to 15:13
@@ -324,7 +324,7 @@ def test_season_changes() -> None:
 
 
 def test_week_with_schedules_and_holiday() -> None:
-    """P9: a week of recurring and one-shot auto and manual schedules and a holiday keeps
+    """A week of recurring and one-shot auto and manual schedules and a holiday keeps
     the invariants; the schedules are checked as the adapter would before storing them."""
     sc = Scenario(5, unvalved=[5], start="00:00")
     daily = range(7)
@@ -358,7 +358,7 @@ def test_week_with_schedules_and_holiday() -> None:
 
 
 def test_every_sensor_dead_for_34_hours() -> None:
-    """Failsafe case 1 (A19, D-147): every sensor reports for the last time at 05:59 on
+    """Failsafe case 1: every sensor reports for the last time at 05:59 on
     day 1 and again at 16:00 on day 2. The failsafe starts 24 h after the last reading
     (06:00 on day 2), heats only in its 10:00-15:00 window and ends with the first
     reading."""

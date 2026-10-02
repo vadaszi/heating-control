@@ -1,11 +1,11 @@
-"""Failsafe case 1: HA alive, every sensor dead (docs/design.md §3.6, D-147, D-148).
+"""Failsafe case 1: HA alive, every sensor dead.
 
 - Active in the heating season while no zone has a RoomTemp (each is in sensor fault or
   has had no reading yet) and the newest valid reading of any sensor is older than
   FailsafeTrigger. A zone without any reading counts from when it started waiting for
-  one (D-93). The first valid reading ends it.
-- Inside the daily FailsafeWindow (local time, may cross midnight, DST as D-134) every
-  zone has demand, so HpMinOffTime / HpMinOnTime apply as usual (§3.5); every valve
+  one. The first valid reading ends it.
+- Inside the daily FailsafeWindow (local time, may cross midnight, DST like the schedules) every
+  zone has demand, so HpMinOffTime / HpMinOnTime apply as usual; every valve
   follows the heat source.
 """
 

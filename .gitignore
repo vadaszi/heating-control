@@ -1,4 +1,4 @@
-# --- Secrets (§0.1 of docs/design.md): never commit these ---
+# --- Secrets: never commit these ---
 secrets.yaml
 secrets.yml
 .env

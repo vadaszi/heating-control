@@ -1,4 +1,4 @@
-"""Valve exercise outside the heating season (docs/design.md §3.7, D-149)."""
+"""Valve exercise outside the heating season."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def test_a_faulty_zone_is_exercised_too() -> None:
 
 
 def test_a_valve_that_does_not_open_alerts_as_usual() -> None:
-    """D-67: the exercise command counts like any other."""
+    """The exercise command counts like any other."""
     sc = _off_season()
     sc.set_valve_actual(1, OutputState.OFF)  # ignores commands
     sc.advance_to("08:02")
@@ -123,7 +123,7 @@ def test_a_valve_that_does_not_open_alerts_as_usual() -> None:
 
 
 def test_spring_dst_gap() -> None:
-    """D-134: 02:30 on the spring change day is shifted to 03:30 local."""
+    """DST: 02:30 on the spring change day is shifted to 03:30 local."""
     tz = ZoneInfo("Europe/Budapest")
     sunday = date(2026, 3, 29)
     params = GlobalParams(valve_exercise_weekday=6, valve_exercise_time=time(2, 30))

@@ -1,9 +1,9 @@
-"""Schedule services (docs/design.md §5.3, D-139): add, delete and list schedules.
+"""Schedule services: add, delete and list schedules.
 
 They act on the loaded config entry and use the same validated controller methods as
-the schedule form (D-74). A rejected schedule raises a `ServiceValidationError` naming
-the problem, and nothing is stored (D-19, A12). Zones are given by their YAML ids, or
-`all` (D-139); temperatures are in HA's unit system (D-77).
+the schedule form. A rejected schedule raises a `ServiceValidationError` naming
+the problem, and nothing is stored. Zones are given by their YAML ids, or
+`all`; temperatures are in HA's unit system.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.schedule import ScheduleKind
 from .core.units import TemperatureUnit, to_celsius
 from .entity import async_apply
-from .runtime import FloorheatConfigEntry
+from .runtime import FloorHeatingConfigEntry
 from .schedules import WEEKDAY_KEYS, schedule_view
 
 SERVICE_ADD = "add_schedule"
@@ -88,8 +88,8 @@ def async_register(hass: HomeAssistant) -> None:
     )
 
 
-def _controller(hass: HomeAssistant) -> FloorheatController:
-    entries: list[FloorheatConfigEntry] = hass.config_entries.async_loaded_entries(DOMAIN)
+def _controller(hass: HomeAssistant) -> FloorHeatingController:
+    entries: list[FloorHeatingConfigEntry] = hass.config_entries.async_loaded_entries(DOMAIN)
     if not entries:
         raise ServiceValidationError("Multizone Floor Heating Manager is not loaded")
     return entries[0].runtime_data.controller

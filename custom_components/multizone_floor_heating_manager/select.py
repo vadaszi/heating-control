@@ -1,6 +1,5 @@
-"""Selects (docs/design.md §5.3): the valve exercise day (§4, D-149); the schedule form
-(D-74, D-138): type, zone and days of the next schedule, and the existing schedule that
-"Delete schedule" deletes."""
+"""Selects: the valve exercise day; the schedule form: type, zone and days of the next schedule,
+and the existing schedule that "Delete schedule" deletes."""
 
 from __future__ import annotations
 
@@ -9,18 +8,18 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.schedule import ScheduleKind
 from .core.units import TemperatureUnit
 from .entity import FormEntity, async_apply
 from .form import ALL_ZONES, selected_schedule
-from .runtime import FloorheatConfigEntry
+from .runtime import FloorHeatingConfigEntry
 from .schedules import DAY_OPTIONS, WEEKDAY_OPTIONS, schedule_label
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -37,12 +36,12 @@ async def async_setup_entry(
 
 
 class ValveExerciseDaySelect(FormEntity, SelectEntity):
-    """The weekday of the off-season valve exercise (D-149); a setting."""
+    """The weekday of the off-season valve exercise; a setting."""
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_options = list(WEEKDAY_OPTIONS)  # noqa: RUF012 - HA's attribute convention
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "valve_exercise_day")
 
     @property
@@ -58,7 +57,7 @@ class ValveExerciseDaySelect(FormEntity, SelectEntity):
 class KindSelect(FormEntity, SelectEntity):
     _attr_options = [kind.value for kind in ScheduleKind]  # noqa: RUF012 - HA's attribute convention
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "schedule_kind")
 
     @property
@@ -71,9 +70,9 @@ class KindSelect(FormEntity, SelectEntity):
 
 
 class ZoneSelect(FormEntity, SelectEntity):
-    """`All zones` or one zone by name; several zones only through the service (D-138)."""
+    """`All zones` or one zone by name; several zones only through the service."""
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "schedule_zone")
         self._attr_options = [ALL_ZONES, *(zone.name for zone in controller.config.core.zones)]
 
@@ -92,7 +91,7 @@ class DaysSelect(FormEntity, SelectEntity):
 
     _attr_options = list(DAY_OPTIONS)  # noqa: RUF012 - HA's attribute convention
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "schedule_days")
 
     @property
@@ -107,7 +106,7 @@ class DaysSelect(FormEntity, SelectEntity):
 class ExistingScheduleSelect(FormEntity, SelectEntity):
     """The schedules by label; the chosen one is deleted by "Delete schedule"."""
 
-    def __init__(self, controller: FloorheatController, unit: TemperatureUnit) -> None:
+    def __init__(self, controller: FloorHeatingController, unit: TemperatureUnit) -> None:
         super().__init__(controller, "existing_schedule")
         self._unit = unit
 

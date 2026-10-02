@@ -1,5 +1,5 @@
-"""Date entities: the schedule form's day of a one-shot schedule (docs/design.md §5.3,
-D-74) and the holiday end date (§3.4, D-142; empty = no end, cleared when holiday ends)."""
+"""Date entities: the schedule form's day of a one-shot schedule and the holiday end date (empty =
+no end, cleared when holiday ends)."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from homeassistant.components.date import DateEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .entity import FormEntity, async_apply
-from .runtime import FloorheatConfigEntry
+from .runtime import FloorHeatingConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: FloorheatConfigEntry,
+    entry: FloorHeatingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     controller = entry.runtime_data.controller
@@ -24,7 +24,7 @@ async def async_setup_entry(
 
 
 class ScheduleDate(FormEntity, DateEntity):
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "schedule_date")
 
     @property
@@ -37,10 +37,10 @@ class ScheduleDate(FormEntity, DateEntity):
 
 
 class HolidayEndDate(FormEntity, DateEntity):
-    """With the holiday end time, the end of holiday; empty (unknown) = no end (D-142).
-    Not checked when set: switching holiday on checks the end (D-137)."""
+    """With the holiday end time, the end of holiday; empty (unknown) = no end.
+    Not checked when set: switching holiday on checks the end."""
 
-    def __init__(self, controller: FloorheatController) -> None:
+    def __init__(self, controller: FloorHeatingController) -> None:
         super().__init__(controller, "holiday_end_date")
 
     @property

@@ -1,21 +1,21 @@
-"""Heartbeat client for the Shelly watchdog scripts (docs/design.md §5.4, D-120 to D-122).
+"""Heartbeat client for the Shelly watchdog scripts.
 
 Every HeartbeatInterval each Shelly listed under `shellys` gets a protocol v1 heartbeat
-(docs/heartbeat-protocol.md): `POST http://<host>/script/<id>/heartbeat` with `{"v": 1}`,
-or `{"v": 1, "season": <heating season>}` for the heat source script. Also in shadow mode
-(D-56). The answer is the script's status; `core.heartbeat` decides what it means:
+(docs/heartbeat-protocol.md): `POST http://<host>/script/<id>/heartbeat` with `{"v": 1}`, or
+`{"v": 1, "season": <heating season>}` for the heat source script. Also in shadow mode. The answer
+is the script's status; `core.heartbeat` decides what it means:
 - a failed call (no connection, timeout, HTTP error, no usable status, wrong role or
   protocol version) counts; after HeartbeatFailAlert failures in a row one alert names
-  the cause, and the next good answer is a recovery (D-61);
-- the script parameters are compared with the expected values (D-73).
+  the cause, and the next good answer is a recovery;
+- the script parameters are compared with the expected values.
 
-Only logged, never notified (owner, 2026-09-29): a watchdog that had timed out or was
+Only logged, never notified: a watchdog that had timed out or was
 running the failsafe operation, and a Shelly that restarted. The POST answer always shows
 the state after the heartbeat, so on the first call after HA starts and after a failed
 call the status is read with `GET` first (it does not count as a heartbeat).
 
 Heartbeats go out only while the reconcile loop works: the last completed run is at most
-3 ReconcileIntervals old (D-122). A broken loop therefore leads to the Shelly failsafe.
+3 ReconcileIntervals old. A broken loop therefore leads to the Shelly failsafe.
 
 The heat source Shelly gets a heartbeat at once when the heating season changes, so the
 season flag on the device follows without waiting for the next interval. A change while a
@@ -35,7 +35,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, HEARTBEAT_CALL_TIMEOUT, SHELLY_USERNAME
-from .controller import FloorheatController
+from .controller import FloorHeatingController
 from .core.heartbeat import (
     PROTOCOL_VERSION,
     FailureKind,
@@ -67,7 +67,7 @@ def _duration(seconds: int) -> str:
 class HeartbeatClient:
     """Sends the heartbeats and hands the results to the controller."""
 
-    def __init__(self, hass: HomeAssistant, controller: FloorheatController) -> None:
+    def __init__(self, hass: HomeAssistant, controller: FloorHeatingController) -> None:
         self._hass = hass
         self._controller = controller
         self._config = controller.config
@@ -127,7 +127,7 @@ class HeartbeatClient:
             self._send([s for s in self._config.shellys if s.role is ShellyRole.HEAT_SOURCE])
 
     def _alive(self) -> bool:
-        """The reconcile loop has completed a run recently (D-122)."""
+        """The reconcile loop has completed a run recently."""
         alive = self._controller.loop_alive()
         last = self._controller.last_run_ok_at
         if not alive and not self._stalled:

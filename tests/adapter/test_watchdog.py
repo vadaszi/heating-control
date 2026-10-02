@@ -1,4 +1,4 @@
-"""External watchdog ping (docs/design.md §5.3, §5.11; D-56, D-62, D-122, D-155)."""
+"""External watchdog ping."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ async def test_ping_on_schedule_also_in_shadow_mode(
 ) -> None:
     answer(aioclient_mock)
     world.setup_entities()
-    assert await world.setup(conf(), live=False)  # shadow mode (D-56)
+    assert await world.setup(conf(), live=False)  # shadow mode
     assert pings(aioclient_mock) == 1  # at start
     assert aioclient_mock.mock_calls[0][0].upper() == "GET"
     await world.advance(4)
@@ -103,7 +103,7 @@ async def test_failure_is_logged_once_without_the_url_and_recovery(
     answer(aioclient_mock, exc=ClientError(f"Cannot connect to host {URL}"))
     await world.advance(5)
     assert "Watchdog ping failed: ClientError" in caplog.text
-    assert URL not in caplog.text  # a secret (D-155)
+    assert URL not in caplog.text  # a secret
     assert "hc-ping" not in caplog.text
 
 
@@ -136,7 +136,7 @@ async def test_no_ping_while_the_reconcile_loop_is_broken(
     answer(aioclient_mock)
     world.setup_entities()
     assert await world.setup(conf())
-    with patch.object(world.controller, "_run"):  # runs no longer complete (D-122)
+    with patch.object(world.controller, "_run"):  # runs no longer complete
         await world.advance(10)
     # only the one at the start: at 06:05 the last completed run (06:00) is too old
     assert pings(aioclient_mock) == 1

@@ -1,14 +1,14 @@
-"""Persistence of the logic state and the UI settings (docs/design.md §3.8, D-87, D-106).
+"""Persistence of the logic state and the UI settings.
 
 One `helpers.storage.Store` file holds:
 - `core`: `CoreState.to_dict()`, restored with `load_state` (versioned by the core);
 - `settings`: the values changed from the UI (zone and global parameters, heating
   season, control active, schedules, holiday); the adapter owns them and the entities
-  and services only show and change them (D-106, D-136);
+  and services only show and change them;
 - `pending_off`: switches that still have to confirm the final OFF after Control active
-  was switched OFF (D-110);
+  was switched OFF;
 - `heartbeat`: per Shelly (`ShellyWiring.key`), failed heartbeat calls in a row and the
-  alerts sent (D-121), so a restart neither repeats an alert nor loses a recovery.
+  alerts sent, so a restart neither repeats an alert nor loses a recovery.
 
 Saves are delayed and coalesced (at most one write per `SAVE_DELAY`); a pending save is
 written when HA stops.
@@ -44,21 +44,21 @@ from .core.state import CoreState, load_state
 
 _LOGGER = logging.getLogger(__name__)
 
-HOLIDAY_END_TIME = time(12, 0)  # the holiday end time on a first install (D-142)
+HOLIDAY_END_TIME = time(12, 0)  # the holiday end time on a first install
 
 
 @dataclass(frozen=True)
 class Settings:
-    """Values changed from the UI (§4); defaults on a first install (§4, §5.5)."""
+    """Values changed from the UI; defaults on a first install."""
 
     zone_params: Mapping[str, ZoneParams]
     global_params: GlobalParams = field(default_factory=GlobalParams)
     heating_season: bool = True
-    control_active: bool = False  # shadow mode on first install (§5.5)
+    control_active: bool = False  # shadow mode on first install
     schedules: tuple[Schedule, ...] = ()
     schedule_counter: int = 0  # the last schedule number handed out; never reused
     holiday_on: bool = False
-    holiday_end_date: date | None = None  # None: no end (D-137, D-142)
+    holiday_end_date: date | None = None  # None: no end
     holiday_end_time: time = HOLIDAY_END_TIME  # local; never empty, kept when holiday ends
 
     @classmethod
@@ -93,7 +93,7 @@ class Settings:
     ) -> tuple[Settings, list[str]]:
         """Parse `to_dict` output; unusable parts fall back to their defaults.
 
-        `time_zone` (HA's) turns a 0.8.0 holiday end into a local date and time (D-142).
+        `time_zone` (HA's) turns a 0.8.0 holiday end into a local date and time.
         """
         defaults = cls.defaults(config)
         if data is None:
@@ -143,7 +143,7 @@ def _counter(value: object, schedules: tuple[Schedule, ...]) -> int:
 def _holiday(
     data: Mapping[str, Any], warnings: list[str], time_zone: tzinfo
 ) -> tuple[bool, date | None, time]:
-    """Holiday on, its end date and its end time (D-142)."""
+    """Holiday on, its end date and its end time."""
     on = data.get("holiday_on", False)
     try:
         end_date, end_time = _holiday_end(data, time_zone)
@@ -202,7 +202,7 @@ def _params_from[P: (ZoneParams, GlobalParams)](
 def _migrate_holiday_temp(
     zone_params: dict[str, ZoneParams], global_data: object
 ) -> dict[str, ZoneParams]:
-    """Up to 0.7 HolidayTemp was global; it becomes every zone's value (D-133). The next
+    """Up to 0.7 HolidayTemp was global; it becomes every zone's value. The next
     save no longer holds the global key."""
     value = global_data.get("holiday_temp") if isinstance(global_data, Mapping) else None
     spec = ZONE_PARAM_SPECS["holiday_temp"]
@@ -244,7 +244,7 @@ class StoredData:
     heartbeat: Mapping[str, HeartbeatTracking] = field(default_factory=dict)
 
 
-class FloorheatStore:
+class FloorHeatingStore:
     """The integration's storage file."""
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -265,7 +265,7 @@ class FloorheatStore:
         """
         try:
             data: object = await self._store.async_load()
-        except Exception as err:  # corrupt file: start fresh (D-87)
+        except Exception as err:  # corrupt file: start fresh
             data = {}
             warnings = [f"Stored data is unreadable ({err}); starting fresh."]
         else:

@@ -1,17 +1,16 @@
-"""Notification events of the step function (docs/design.md §3.6, §3.9).
+"""Notification events of the step function.
 
 - Sensor fault started / recovered: on a mode change between the incoming and the new
-  state, in and outside the heating season and in shadow mode (D-75, D-98). A fault
+  state, in and outside the heating season and in shadow mode. A fault
   already in the stored state is therefore not notified again after a restart.
 - Daily reminder: one event per local day while a zone is faulty since an earlier local
-  day, from SensorFaultReminder until midnight, only in the heating season (D-75, D-98).
+  day, from SensorFaultReminder until midnight, only in the heating season.
 - Output mismatch: counted on reconcile ticks only, at most once per `now`; alert once
-  after `output_mismatch_alert` ticks, then a recovery event; inactive in shadow mode
-  (D-67, D-99).
+  after `output_mismatch_alert` ticks, then a recovery event; inactive in shadow mode.
 - Failsafe started / ended: on the change of `failsafe_active`, so a failsafe already in
-  the stored state is not notified again after a restart; also in shadow mode (D-148).
+  the stored state is not notified again after a restart; also in shadow mode.
 - Long run alarm: once when the heat source has been ON for longer than LongRunAlarm,
-  then once when it is OFF again; an unavailable switch ends nothing (D-95, D-150).
+  then once when it is OFF again; an unavailable switch ends nothing.
 - Active alerts (the alerts sensor): derived from the state, not stored (`active_alerts`).
 """
 
@@ -98,7 +97,7 @@ def failsafe_events(
     season: bool,
     params: GlobalParams,
 ) -> list[Event]:
-    """Failsafe started / ended (D-148)."""
+    """Failsafe started / ended."""
     if active == was_active:
         return []
     if active:
@@ -131,7 +130,7 @@ def long_run_events(
     now: datetime,
     time_zone: tzinfo,
 ) -> tuple[bool, list[Event]]:
-    """The long run alarm (D-150); returns whether it is alerted and the events."""
+    """The long run alarm; returns whether it is alerted and the events."""
     if running and last_on is not None and not alerted and now - last_on > params.long_run_alarm:
         hours = math.ceil(params.long_run_alarm / timedelta(hours=1))
         since = last_on.astimezone(time_zone)
@@ -210,7 +209,7 @@ def active_alerts(config: CoreConfig, state: CoreState) -> list[Event]:
 def track_outputs(
     config: CoreConfig, state: CoreState, inputs: Inputs, outputs: Outputs, now: datetime
 ) -> tuple[OutputTracking, dict[str, OutputTracking], datetime | None, list[Event]]:
-    """Mismatch tracking of the heat source and every valve (D-67, D-99).
+    """Mismatch tracking of the heat source and every valve.
 
     Returns the heat source tracking, the valve tracking per valved zone, the time of
     the last counted tick and the events.

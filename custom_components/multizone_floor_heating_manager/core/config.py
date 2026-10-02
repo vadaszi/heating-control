@@ -1,14 +1,14 @@
-"""Configuration and parameter models with §4 defaults and ranges (docs/design.md §4, §5.6).
+"""Configuration and parameter models with their defaults and ranges.
 
 - `ZoneConfig` / `CoreConfig`: the wiring from YAML (zones, *config* values).
 - `ZoneParams` / `GlobalParams`: the values the user changes from the UI; they reach
   `step` through `Inputs`.
-- `PARAM_SPECS`: every §4 default, range and step. The adapter builds its YAML schema
+- `PARAM_SPECS`: every parameter's default, range and step. The adapter builds its YAML schema
   and number entities from it; tests keep the dataclass defaults equal to it.
 
 Every model validates itself on construction and reports all problems at once, so an
 invalid configuration never reaches the control logic. Only the inclusive range is
-checked; the §4 step is UI granularity (D-86).
+checked; the step is UI granularity.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class ConfigError(ValueError):
 
 
 class ParamUnit(StrEnum):
-    """Unit of a §4 parameter as shown to the user (°C, before adapter conversion, D-77)."""
+    """Unit of a parameter as shown to the user (°C, before adapter conversion)."""
 
     CELSIUS = "celsius"
     CELSIUS_DELTA = "celsius_delta"
@@ -68,7 +68,7 @@ _DURATION_UNITS = {ParamUnit.MINUTES: timedelta(minutes=1), ParamUnit.HOURS: tim
 
 @dataclass(frozen=True)
 class ParamSpec:
-    """Default, range and step of one §4 parameter, in the units of `unit`.
+    """Default, range and step of one parameter, in the units of `unit`.
 
     Temperatures are held as `float` °C; durations as `timedelta`.
     """
@@ -126,11 +126,11 @@ ZONE_PARAM_SPECS = _specs(
     ParamSpec("base_setpoint", 22.0, 10, 30, 0.1, _C),
     ParamSpec("hysteresis", 0.2, 0.1, 1.0, 0.1, _DELTA),
     ParamSpec("wait_time", 30, 0, 120, 5, _MIN),
-    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # per zone (D-133)
+    ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # per zone
 )
 GLOBAL_PARAM_SPECS = _specs(
-    ParamSpec("hp_min_on_time", 60, 30, 180, 5, _MIN),  # never below 30 min (D-81)
-    ParamSpec("hp_min_off_time", 60, 30, 180, 5, _MIN),  # never below 30 min (D-81)
+    ParamSpec("hp_min_on_time", 60, 30, 180, 5, _MIN),  # never below 30 min
+    ParamSpec("hp_min_off_time", 60, 30, 180, 5, _MIN),  # never below 30 min
     ParamSpec("sensor_fault_timeout", 60, 15, 240, 5, _MIN),
     ParamSpec("manual_max_temp", 25.0, 18, 30, 0.5, _C),
     ParamSpec("manual_resume_delta", 1.0, 0.2, 3.0, 0.1, _DELTA),
@@ -148,19 +148,19 @@ def _param_errors(obj: object, specs: Mapping[str, ParamSpec]) -> list[str]:
 
 @dataclass(frozen=True)
 class ZoneParams:
-    """Per-zone values changed from the UI (§4). Defaults equal `ZONE_PARAM_SPECS`."""
+    """Per-zone values changed from the UI. Defaults equal `ZONE_PARAM_SPECS`."""
 
     base_setpoint: float = 22.0
     hysteresis: float = 0.2
     wait_time: timedelta = timedelta(minutes=30)
-    holiday_temp: float = 18.0  # effective SetPoint while holiday is active (D-133)
+    holiday_temp: float = 18.0  # effective SetPoint while holiday is active
 
     def __post_init__(self) -> None:
         if errors := _param_errors(self, ZONE_PARAM_SPECS):
             raise ConfigError(errors)
 
 
-# Global parameters that are a local time of day (§4), not a number.
+# Global parameters that are a local time of day, not a number.
 TIME_OF_DAY_PARAMS = (
     "sensor_fault_reminder",
     "failsafe_window_start",
@@ -171,12 +171,12 @@ TIME_OF_DAY_PARAMS = (
 
 @dataclass(frozen=True)
 class GlobalParams:
-    """Global values changed from the UI (§4). HolidayTemp is per zone since D-133
+    """Global values changed from the UI. HolidayTemp is per zone
     (`ZoneParams`).
 
     Times of day are local wall-clock times (`TIME_OF_DAY_PARAMS`). The failsafe window
-    may cross midnight; start = end is rejected (D-147). `valve_exercise_weekday` is
-    Monday = 0, as `date.weekday()` (D-149).
+    may cross midnight; start = end is rejected. `valve_exercise_weekday` is
+    Monday = 0, as `date.weekday()`.
     """
 
     hp_min_on_time: timedelta = timedelta(minutes=60)
@@ -235,10 +235,10 @@ def _zone_id_error(value: object) -> str | None:
 
 @dataclass(frozen=True)
 class ZoneConfig:
-    """One zone as wired in YAML (§5.6).
+    """One zone as wired in YAML.
 
-    `id` is the stable key for persisted state, schedules and entity unique IDs (D-76):
-    an HA-style slug (D-84). `name` is for display only.
+    `id` is the stable key for persisted state, schedules and entity unique IDs:
+    an HA-style slug. `name` is for display only.
     """
 
     id: str
@@ -267,15 +267,15 @@ class ZoneConfig:
 
 @dataclass(frozen=True)
 class CoreConfig:
-    """Static configuration passed to `step` (§5.3).
+    """Static configuration passed to `step`.
 
-    `zones` keeps the YAML order, which breaks calling-zone ties (D-65).
+    `zones` keeps the YAML order, which breaks calling-zone ties.
     """
 
     zones: tuple[ZoneConfig, ...]
-    plausible_min: float = 0.0  # plausibility range of readings, °C (D-77)
+    plausible_min: float = 0.0  # plausibility range of readings, °C
     plausible_max: float = 40.0
-    output_mismatch_alert: int = 3  # consecutive reconcile intervals (D-67)
+    output_mismatch_alert: int = 3  # consecutive reconcile intervals
 
     def __post_init__(self) -> None:
         errors = self._zone_errors()
@@ -308,7 +308,7 @@ class CoreConfig:
             if zone.id in ids:
                 errors.append(f"duplicate zone id {zone.id!r}")
             ids.add(zone.id)
-            folded = zone.name.strip().casefold()  # D-85
+            folded = zone.name.strip().casefold()
             if folded in names:
                 errors.append(
                     f"duplicate zone name {zone.name!r} (zones {names[folded]!r} and {zone.id!r})"
@@ -326,7 +326,7 @@ def config_warnings(config: CoreConfig) -> list[str]:
     """Non-fatal problems for the adapter to log at startup."""
     warnings: list[str] = []
     if all(zone.has_valve for zone in config.zones):
-        warnings.append(  # D-80
+        warnings.append(
             "Every zone has a valve. The integration assumes a flow path whenever the heat "
             "source request is ON (an unvalved zone, a bypass or a buffer/hydraulic separator). "
             "Make sure your installation has one."

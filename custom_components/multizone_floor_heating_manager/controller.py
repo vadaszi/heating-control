@@ -1,29 +1,28 @@
-"""The reconcile loop (docs/design.md §5.3, §5.5, §3.8).
+"""The reconcile loop.
 
 A run reads the HA states, calls `step`, stores the new state and commands the outputs
 that differ from the desired state. Runs are serialised by a lock and start:
-- every ReconcileInterval (the only runs that are reconcile ticks, D-99);
+- every ReconcileInterval (the only runs that are reconcile ticks);
 - when a mapped sensor or switch changes state;
 - when a setting changes.
 
-Shadow mode (Control active OFF, §5.5):
-- no commands; the core gets the commanded states as feedback (D-66). When the desired
-  state changes, `step` runs again at once, as if the switches had followed (D-109);
+Shadow mode (Control active OFF):
+- no commands; the core gets the commanded states as feedback. When the desired
+  state changes, `step` runs again at once, as if the switches had followed;
 - Control active ON → OFF: every switch not reporting OFF gets OFF, retried with backoff
-  until it has reported OFF once, also across a restart; then nothing more is sent
-  (D-69, D-110).
+  until it has reported OFF once, also across a restart; then nothing more is sent.
 
 The loop starts once HA has started, so entities that are still loading neither get
-commands nor count as mismatches (D-109).
+commands nor count as mismatches.
 
-Schedules and holiday are settings too (D-136): the controller validates new schedules,
+Schedules and holiday are settings too: the controller validates new schedules,
 passes them to `step`, deletes the one-shot schedules that are over and ends a holiday
-whose end has passed (D-137). The holiday end is stored as a local date and time; an
-empty date means no end (D-142).
+whose end has passed. The holiday end is stored as a local date and time; an
+empty date means no end.
 
-The controller also keeps the heartbeat alert state of every Shelly (D-121; the calls
+The controller also keeps the heartbeat alert state of every Shelly (the calls
 are made by `heartbeat.HeartbeatClient`) and the time of the last completed run, which
-the heartbeat client checks before it sends (D-122).
+the heartbeat client checks before it sends.
 """
 
 from __future__ import annotations
@@ -53,8 +52,8 @@ from .core.state import CoreState
 from .form import ScheduleForm
 from .inputs import SensorReader, read_switch
 from .outputs import OutputCommander
-from .schema import FloorheatConfig
-from .storage import FloorheatStore, Settings, StoredData
+from .schema import FloorHeatingConfig
+from .storage import FloorHeatingStore, Settings, StoredData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,14 +73,14 @@ _ALERT_KINDS = frozenset(
 MISSING_ENTITIES_NOTIFICATION = f"{DOMAIN}_missing_entities"
 
 
-class FloorheatController:
+class FloorHeatingController:
     """Owns the logic state and the settings, and runs the reconcile loop."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        config: FloorheatConfig,
-        store: FloorheatStore,
+        config: FloorHeatingConfig,
+        store: FloorHeatingStore,
         stored: StoredData,
     ) -> None:
         self.hass = hass
@@ -95,12 +94,12 @@ class FloorheatController:
             for shelly in config.shellys
         }
         self._last_run_ok_at: datetime | None = None
-        self.form = ScheduleForm()  # the dashboard's schedule draft; not stored (D-138)
+        self.form = ScheduleForm()  # the dashboard's schedule draft; not stored
         self._outputs: Outputs | None = None
         self._commander = OutputCommander(hass)
         self._sensors = SensorReader()
-        # Commanded states: the core's feedback in shadow mode (D-66). The heat source
-        # starts from the last known actual state (D-109), the valves OFF.
+        # Commanded states: the core's feedback in shadow mode. The heat source
+        # starts from the last known actual state, the valves OFF.
         self._commanded: dict[str, bool] = dict.fromkeys(config.switches, False)
         self._commanded[config.heat_source] = self._state.hp_actual_on is True
         self._lock = asyncio.Lock()
@@ -133,14 +132,14 @@ class FloorheatController:
 
     @property
     def last_run_ok_at(self) -> datetime | None:
-        """When a reconcile run last completed; None before the first (D-122)."""
+        """When a reconcile run last completed; None before the first."""
         return self._last_run_ok_at
 
     def loop_alive(self) -> bool:
-        """The reconcile loop completed a run within the last 3 ReconcileIntervals (D-122).
+        """The reconcile loop completed a run within the last 3 ReconcileIntervals.
 
         Heartbeats and the watchdog ping go out only then, so a broken integration lets the
-        Shelly watchdogs and the external watchdog act (§5.11).
+        Shelly watchdogs and the external watchdog act.
         """
         last = self._last_run_ok_at
         limit = HEARTBEAT_LIVENESS_TICKS * self.config.reconcile_interval
@@ -148,7 +147,7 @@ class FloorheatController:
 
     @property
     def heartbeat(self) -> Mapping[str, HeartbeatTracking]:
-        """Heartbeat state per Shelly key (D-121)."""
+        """Heartbeat state per Shelly key."""
         return self._heartbeat
 
     @property
@@ -161,7 +160,7 @@ class FloorheatController:
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
-        """Call `listener` after every run (entities, P6)."""
+        """Call `listener` after every run (entities)."""
         self._listeners.append(listener)
         return lambda: self._listeners.remove(listener)
 
@@ -173,7 +172,7 @@ class FloorheatController:
 
     @callback
     def async_add_event_handler(self, handler: Callable[[CoreEvent], None]) -> CALLBACK_TYPE:
-        """Call `handler` for every core event (notifications, P6)."""
+        """Call `handler` for every core event (notifications)."""
         self._event_handlers.append(handler)
         return lambda: self._event_handlers.remove(handler)
 
@@ -181,7 +180,7 @@ class FloorheatController:
     def async_update_heartbeat(
         self, key: str, tracking: HeartbeatTracking, events: list[CoreEvent]
     ) -> None:
-        """Store a Shelly's heartbeat state and publish its events (D-121)."""
+        """Store a Shelly's heartbeat state and publish its events."""
         changed = tracking != self._heartbeat[key]
         self._heartbeat[key] = tracking
         self._publish(events)
@@ -189,7 +188,7 @@ class FloorheatController:
             self._schedule_save()
             self.async_update_listeners()
 
-    # ------------------------------------------------------------ settings (D-106)
+    # ------------------------------------------------------------ settings
 
     async def async_set_control_active(self, active: bool) -> None:
         if active == self._settings.control_active:
@@ -197,7 +196,7 @@ class FloorheatController:
         self._commander.reset()
         if active:
             self._pending_off.clear()
-        else:  # D-69, D-110: final safe command set, then no commands
+        else:  # final safe command set, then no commands
             self._pending_off = set(self.config.switches)
             self._commanded = dict.fromkeys(self.config.switches, False)
         _LOGGER.info("Control active %s", "ON" if active else "OFF (shadow mode)")
@@ -231,8 +230,8 @@ class FloorheatController:
         weekdays: frozenset[int] = frozenset(),
         temperature: float | None = None,
     ) -> Schedule:
-        """Store a new schedule (§3.4); raises `ConfigError` if it is rejected, and then
-        nothing is stored (D-19, D-132)."""
+        """Store a new schedule; raises `ConfigError` if it is rejected, and then
+        nothing is stored."""
         number = self._settings.schedule_counter + 1
         schedule_id = str(number)
         try:
@@ -267,8 +266,8 @@ class FloorheatController:
 
     @property
     def holiday_end(self) -> datetime | None:
-        """The holiday end: its local date and time in HA's time zone (D-142); None
-        without a date (no end, D-137)."""
+        """The holiday end: its local date and time in HA's time zone; None
+        without a date (no end)."""
         end_date = self._settings.holiday_end_date
         if end_date is None:
             return None
@@ -277,8 +276,8 @@ class FloorheatController:
         )
 
     async def async_set_holiday(self, on: bool) -> None:
-        """Switch holiday on or off (D-137): on is refused with an end in the past; off
-        clears the end date (D-142)."""
+        """Switch holiday on or off: on is refused with an end in the past; off
+        clears the end date."""
         if on == self._settings.holiday_on:
             return
         if not on:
@@ -291,7 +290,7 @@ class FloorheatController:
 
     async def async_set_holiday_end_date(self, end_date: date) -> None:
         """Set the holiday end date. Not checked: only switching holiday on checks the end;
-        while holiday runs, an end in the past ends it at the next run (D-137)."""
+        while holiday runs, an end in the past ends it at the next run."""
         await self._async_update_settings(holiday_end_date=end_date)
 
     async def async_set_holiday_end_time(self, end_time: time) -> None:
@@ -342,7 +341,7 @@ class FloorheatController:
         await self._store.async_save_now(self._data())
 
     def _check_entities(self) -> None:
-        """Report mapped entities that HA does not know (D-107); they count as unavailable."""
+        """Report mapped entities that HA does not know; they count as unavailable."""
         registry = er.async_get(self.hass)
         missing = [
             entity_id
@@ -405,7 +404,7 @@ class FloorheatController:
             if control or desired == self._commanded:
                 break
             self._commanded = desired
-            tick = False  # the same `now` is one reconcile tick (D-99)
+            tick = False  # the same `now` is one reconcile tick
         if control:
             self._commander.apply(desired, actual, now)
         else:
@@ -425,7 +424,7 @@ class FloorheatController:
 
     def _settle(self, outputs: Outputs) -> None:
         """Delete the one-shot schedules that are over and end a holiday whose end has
-        passed (D-136); an ended holiday clears its end (D-137)."""
+        passed; an ended holiday clears its end."""
         settings = self._settings
         changes: dict[str, Any] = {}
         if outputs.ended_schedules:
@@ -464,7 +463,7 @@ class FloorheatController:
             global_params=settings.global_params,
             heating_season=settings.heating_season,
             control_active=settings.control_active,
-            time_zone=dt_util.get_default_time_zone(),  # follows HA's setting (D-96)
+            time_zone=dt_util.get_default_time_zone(),  # follows HA's setting
             reconcile_tick=tick,
             schedules=settings.schedules,
             holiday_on=settings.holiday_on,
@@ -484,7 +483,7 @@ class FloorheatController:
         return desired
 
     def _final_off(self, actual: dict[str, OutputState], now: datetime) -> None:
-        """Shadow mode: deliver the final OFF until each switch has reported OFF (D-110)."""
+        """Shadow mode: deliver the final OFF until each switch has reported OFF."""
         confirmed = {e for e in self._pending_off if actual[e] is OutputState.OFF}
         if confirmed:
             self._pending_off -= confirmed
@@ -494,7 +493,7 @@ class FloorheatController:
     # ------------------------------------------------------------ events and storage
 
     def _log_exercise(self, outputs: Outputs) -> None:
-        """The valve exercise is only logged, never notified (D-149)."""
+        """The valve exercise is only logged, never notified."""
         previous = None if self._outputs is None else self._outputs.valve_exercise
         zone_id = outputs.valve_exercise
         if zone_id == previous:

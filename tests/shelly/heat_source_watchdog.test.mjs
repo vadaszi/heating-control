@@ -1,5 +1,5 @@
 // Heat source watchdog script (shelly_scripts/heat_source_watchdog.js), simulated time.
-// docs/design.md §3.6 case 2, §5.4, D-72, D-100…D-105, D-153; docs/heartbeat-protocol.md.
+// See docs/heartbeat-protocol.md.
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -17,7 +17,7 @@ import {
 import { Device, ERR_NOT_FOUND } from "./shelly_mock.mjs";
 
 const KEY = "multizone_floor_heating_manager_season";
-// Failsafe defaults (§4): FailsafeTrigger 24 h, window 10:00–15:00, 5 h ON / 19 h OFF.
+// Failsafe defaults: FailsafeTrigger 24 h, window 10:00–15:00, 5 h ON / 19 h OFF.
 const TRIGGER_S = 24 * HOUR;
 const DEFAULT_PARAMS = {
   heartbeat_timeout_s: 5 * HOUR,
@@ -41,7 +41,7 @@ function beat(device, season = true) {
 }
 
 describe("heat source watchdog: timeout", () => {
-  test("the file carries the §4 defaults", () => {
+  test("the file carries the default parameters", () => {
     assert.deepEqual(status(heatSource()).params, DEFAULT_PARAMS);
   });
 
@@ -76,7 +76,7 @@ describe("heat source watchdog: timeout", () => {
     assert.equal(d.calls("Switch.Set").length, 0);
   });
 
-  test("stays OFF: an external ON is re-asserted at the next check (D-103)", () => {
+  test("stays OFF: an external ON is re-asserted at the next check", () => {
     const d = heatSource();
     d.advanceSeconds(TIMEOUT_S);
     d.setOutput(0, true);
@@ -141,7 +141,7 @@ describe("heat source watchdog: season flag", () => {
     assert.equal(beat(d, false).json().season, false);
   });
 
-  test("never set: reported as null (treated as OFF, D-105)", () => {
+  test("never set: reported as null (treated as OFF)", () => {
     const d = heatSource();
     d.advanceSeconds(HOUR);
     assert.equal(status(d).season, null);
@@ -327,7 +327,7 @@ describe("heat source watchdog: requests", () => {
   });
 });
 
-describe("heat source watchdog: start (D-72, D-102)", () => {
+describe("heat source watchdog: start", () => {
   test("after a reboot the output stays OFF and the timeout counts from boot", () => {
     const d = heatSource();
     beat(d, true);
@@ -425,7 +425,7 @@ describe("heat source watchdog: configuration", () => {
   });
 });
 
-// ------------------------------------------------------------------ failsafe (v1.2)
+// ------------------------------------------------------------------ failsafe
 
 // A device whose last heartbeat (season ON) was at `hhmm` local time; the relay is ON.
 function lastBeatAt(hhmm, { season = true, clock = true, config = {} } = {}) {
@@ -502,7 +502,7 @@ describe("heat source watchdog: failsafe operation by the clock (S2)", () => {
     assert.equal(d.outputs[0], false);
   });
 
-  test("re-asserted at every check while it lasts (D-103)", () => {
+  test("re-asserted at every check while it lasts", () => {
     const d = lastBeatAt("09:00");
     d.advanceSeconds(TRIGGER_S + 2 * HOUR); // 11:00, heating
     assert.equal(d.outputs[0], true);

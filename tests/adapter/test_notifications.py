@@ -1,4 +1,4 @@
-"""Notifications and the alerts sensor (docs/design.md §3.6, §3.9; D-98, D-117)."""
+"""Notifications and the alerts sensor."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ async def test_sensor_fault_is_notified(world: World, hass: HomeAssistant) -> No
     email = async_mock_service(hass, "notify", "email")
     world.setup_entities()
     assert await world.setup(_conf("notify.mobile_app_phone", "notify.email"), live=False)
-    await _fault_zone_1(world)  # shadow mode notifies sensor faults too (D-98)
+    await _fault_zone_1(world)  # shadow mode notifies sensor faults too
     [call] = phone
     assert call.data["title"] == "Floor heating: sensor fault"
     assert call.data["message"].startswith("Sensor fault in Zone 1")

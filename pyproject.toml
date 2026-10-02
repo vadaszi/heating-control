@@ -1,6 +1,6 @@
 [project]
 name = "multizone-floor-heating-manager"
-version = "0.0.0"
+version = "0.10.0"
 description = "Home Assistant custom integration for room-by-room underfloor heating zone control"
 readme = "README.md"
 license = "MIT"
@@ -23,7 +23,7 @@ select = [
     "SIM",     # simplify
     "RUF",     # ruff-specific
     "DTZ",     # no naive datetimes
-    "ASYNC",   # async pitfalls (never block HA's event loop, §5.3)
+    "ASYNC",   # async pitfalls (never block HA's event loop)
     "PT",      # pytest style
 ]
 
@@ -45,7 +45,7 @@ module = ["pytest_homeassistant_custom_component.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# The control core is strictly typed (docs/implementation-plan.md, test strategy).
+# The control core is strictly typed.
 module = ["custom_components.multizone_floor_heating_manager.core.*"]
 strict = true
 
