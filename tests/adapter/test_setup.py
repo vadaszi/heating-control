@@ -296,13 +296,73 @@ async def test_invalid_shelly_config_is_rejected(
     assert message in caplog.text
 
 
-def test_the_example_configuration_is_valid() -> None:
-    """`examples/configuration.example.yaml` passes the schema and the wiring checks."""
-    example = Path(__file__).parents[2] / "examples" / "configuration.example.yaml"
-    text = re.sub(r"!secret (\S+)", r'"https://secret.invalid/\1"', example.read_text())
+_ROOT = Path(__file__).parents[2]
+_EXAMPLE = _ROOT / "examples" / "configuration.example.yaml"
+
+
+def _example_config(text: str) -> Any:
+    text = re.sub(r"!secret (\S+)", r'"https://secret.invalid/\1"', text)
     conf = parse_yaml(text)
     assert isinstance(conf, dict)
-    config = build_config(CONFIG_SCHEMA(conf)[DOMAIN], TemperatureUnit.CELSIUS)
+    return build_config(CONFIG_SCHEMA(conf)[DOMAIN], TemperatureUnit.CELSIUS)
+
+
+def _uncomment(text: str, skip: str) -> str:
+    """Enable every commented-out key and its list items, except the key `skip`."""
+    lines = []
+    enabled = False
+    for line in text.splitlines():
+        match = re.fullmatch(r"(\s*)# (\s*)([a-z_]+:.*|- \S.*)", line)
+        if match is None:  # code or a comment in words
+            enabled = False
+        elif match[3].startswith("- "):  # a list item of the key above
+            if enabled:
+                line = match[1] + match[2] + match[3]
+        else:
+            enabled = not match[3].startswith(f"{skip}:")
+            if enabled:
+                line = match[1] + match[2] + match[3]
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def test_the_example_configuration_is_valid() -> None:
+    """`examples/configuration.example.yaml` passes the schema and the wiring checks."""
+    config = _example_config(_EXAMPLE.read_text())
     zones = [zone.id for zone in config.core.zones]
     assert zones == ["living_room", "kitchen", "bedroom", "bathroom"]
     assert len(config.shellys_with_watchdog) == 2
+    assert config.notify == ()
+    assert config.watchdog_ping_url is None
+    assert config.expected_params.check_interval_s is None
+
+
+def test_every_optional_key_of_the_example_is_valid() -> None:
+    """With every commented-out key enabled, the example is still valid.
+
+    `relays_without_watchdog` is left out: its switch has to be moved there from a Shelly.
+    """
+    text = _uncomment(_EXAMPLE.read_text(), skip="relays_without_watchdog")
+    config = _example_config(text)
+    assert config.notify == ("notify.mobile_app_phone", "notify.email")
+    assert config.watchdog_ping_url is not None
+    assert config.expected_params.check_interval_s == 60
+    assert [s.password for s in config.shellys_with_watchdog] == [
+        "https://secret.invalid/floor_heating_shelly_password",
+        None,
+    ]
+    moved = text.replace("        - switch.valve_bedroom\n", "", 1)
+    moved = moved.replace(
+        "  # relays_without_watchdog:\n  #   - switch.valve_bedroom",
+        "  relays_without_watchdog:\n    - switch.valve_bedroom",
+    )
+    assert "\n  relays_without_watchdog:\n" in moved
+    _example_config(moved)
+
+
+def test_the_configuration_reference_shows_the_example_file() -> None:
+    """The example at the top of docs/configuration.md is the example file, word for word."""
+    doc = (_ROOT / "docs" / "configuration.md").read_text()
+    match = re.search(r"## Example\n\n```yaml\n(.*?)```", doc, re.DOTALL)
+    assert match is not None
+    assert match[1] == _EXAMPLE.read_text()

@@ -1,49 +1,20 @@
-# Example configuration for Multizone Floor Heating Manager.
-# Copy the part you need into configuration.yaml and use your own entity ids.
-# Every key is described in docs/configuration.md. Values below the zones are the
-# defaults; leave them out unless you want to change them.
-
+# Multizone Floor Heating Manager: every key, each with a short comment.
+# Copy it into configuration.yaml, use your own entity ids and addresses, and delete what
+# you don't need. Active lines are required or show the default value; lines starting
+# with # are optional: remove the # to use them.
 multizone_floor_heating_manager:
-  # The switch that asks the heat source for heat (e.g. a relay on the heat pump's
-  # room thermostat terminals).
+  # The switch that asks the heat source for heat, e.g. a relay on the heat pump's room
+  # thermostat terminals. Required.
   heat_source_switch: switch.heat_pump_request
 
-  # Where notifications go (optional): companion app, email, or notify entities.
-  notify:
-    - notify.mobile_app_phone
-    - notify.email
-
-  # External watchdog ping (optional), e.g. a healthchecks.io check.
-  # The URL is a secret: keep it in secrets.yaml.
-  watchdog_ping_url: !secret floor_heating_watchdog_url
-
-  # Shelly relays that run the watchdog scripts (docs/shelly-scripts.md).
-  shellys_with_watchdog:
-    - name: Valves ground floor
-      host: 192.0.2.11 # the Shelly's address (documentation example)
-      script_id: 1
-      switches:
-        - switch.valve_living_room
-        - switch.valve_kitchen
-    - name: Heat pump
-      host: 192.0.2.12
-      script_id: 1
-      password: !secret floor_heating_shelly_password # only if authentication is on
-      switches:
-        - switch.heat_pump_request
-
-  # Relays without the watchdog script (any other relay).
-  relays_without_watchdog:
-    - switch.valve_bedroom
-
   # The zones, in priority order: on a tie, the first one becomes the calling zone.
-  # The id must never change once the zone is in use.
+  # Required, at least one.
   zones:
-    - id: living_room
-      name: Living room
-      sensor: sensor.living_room_temperature
-      valve: switch.valve_living_room
-      sensor_offset: -0.2 # the sensor reads 0.2 °C too high
+    - id: living_room                         # required; never change it once in use
+      name: Living room                       # required; display name, unique
+      sensor: sensor.living_room_temperature  # required; the zone's temperature sensor
+      valve: switch.valve_living_room         # required; the valve switch, or none
+      sensor_offset: 0                        # added to every reading; default 0 (±5 °C)
     - id: kitchen
       name: Kitchen
       sensor: sensor.kitchen_temperature
@@ -55,15 +26,50 @@ multizone_floor_heating_manager:
     - id: bathroom
       name: Bathroom
       sensor: sensor.bathroom_temperature
-      valve: none # no valve: always open, the flow path when every valve is closed
+      valve: none  # no valve: always open, the flow path when every valve is closed
 
-  # Defaults (optional):
-  # plausible_min: 0               # readings outside this range are ignored
+  # Shelly devices running the watchdog script (docs/shelly-scripts.md). Every switch
+  # above (the heat source and every valve) is in exactly one of the two lists: here, or
+  # under relays_without_watchdog. Default: none.
+  shellys_with_watchdog:
+    - name: Valves              # shown in notifications; default: the host
+      host: 192.0.2.11          # required; the Shelly's address, no http://
+      script_id: 1              # required; the watchdog script's id on the device
+      # password: !secret floor_heating_shelly_password  # only if authentication is on
+      switches:                 # required; the mapped switches on this Shelly
+        - switch.valve_living_room
+        - switch.valve_kitchen
+        - switch.valve_bedroom
+    - name: Heat pump           # the heat source switch needs a Shelly of its own
+      host: 192.0.2.12
+      script_id: 1
+      switches:
+        - switch.heat_pump_request
+
+  # Every other relay, without the watchdog script: one switch entity per entry (a
+  # multi-channel relay is one entry per channel). Move a switch here from the list
+  # above. Default: none.
+  # relays_without_watchdog:
+  #   - switch.valve_bedroom
+
+  # Where notifications go: notify services or notify entities. Default: none (log only).
+  # notify:
+  #   - notify.mobile_app_phone
+  #   - notify.email
+
+  # External watchdog: the ping URL, e.g. a healthchecks.io check; keep it in
+  # secrets.yaml. Default: none (no ping).
+  # watchdog_ping_url: !secret floor_heating_watchdog_url
+  watchdog_ping_interval: 300   # s (60–3600); how often the URL is pinged
+
+  # Readings outside this range are ignored. Default: 0 to 40 °C, in any unit system.
+  # If you set them, use your HA unit system: with °F e.g. 32 and 104.
+  # plausible_min: 0
   # plausible_max: 40
-  # reconcile_interval: 60         # s, 10–300
-  # output_mismatch_alert: 3       # reconcile intervals before "switch not following"
-  # heartbeat_interval: 300        # s, 60–3600
-  # heartbeat_fail_alert: 3        # failed heartbeats in a row before an alert
-  # heartbeat_timeout: 18000       # s, the scripts' heartbeat_timeout_s
-  # heartbeat_check_interval: 60   # s, compare the scripts' check_interval_s too
-  # watchdog_ping_interval: 300    # s, 60–3600
+
+  reconcile_interval: 60        # s (10–300); how often the outputs are checked
+  output_mismatch_alert: 3      # reconcile intervals before "switch not following command"
+  heartbeat_interval: 300       # s (60–3600); how often every Shelly gets a heartbeat
+  heartbeat_fail_alert: 3       # failed heartbeats in a row before an alert
+  heartbeat_timeout: 18000      # s; the scripts' heartbeat_timeout_s (5 h)
+  # heartbeat_check_interval: 60  # s; the scripts' check_interval_s. Default: not compared

@@ -7,40 +7,84 @@ For a first installation, see [Getting started](getting-started.md); for what th
 ## Example
 
 ```yaml
+# Multizone Floor Heating Manager: every key, each with a short comment.
+# Copy it into configuration.yaml, use your own entity ids and addresses, and delete what
+# you don't need. Active lines are required or show the default value; lines starting
+# with # are optional: remove the # to use them.
 multizone_floor_heating_manager:
+  # The switch that asks the heat source for heat, e.g. a relay on the heat pump's room
+  # thermostat terminals. Required.
   heat_source_switch: switch.heat_pump_request
-  watchdog_ping_url: !secret floor_heating_watchdog_url
-  notify:
-    - notify.mobile_app_phone
-    - notify.email
-  shellys_with_watchdog:
-    - name: Valves
-      host: 192.0.2.11
-      script_id: 1
-      switches:
-        - switch.valve_living_room
-        - switch.valve_kitchen
-    - name: Heat pump
-      host: 192.0.2.12
-      script_id: 1
-      switches: [switch.heat_pump_request]
+
+  # The zones, in priority order: on a tie, the first one becomes the calling zone.
+  # Required, at least one.
   zones:
-    - id: living_room
-      name: Living room
-      sensor: sensor.living_room_temperature
-      valve: switch.valve_living_room
-      sensor_offset: -0.2
+    - id: living_room                         # required; never change it once in use
+      name: Living room                       # required; display name, unique
+      sensor: sensor.living_room_temperature  # required; the zone's temperature sensor
+      valve: switch.valve_living_room         # required; the valve switch, or none
+      sensor_offset: 0                        # added to every reading; default 0 (±5 °C)
     - id: kitchen
       name: Kitchen
       sensor: sensor.kitchen_temperature
       valve: switch.valve_kitchen
+    - id: bedroom
+      name: Bedroom
+      sensor: sensor.bedroom_temperature
+      valve: switch.valve_bedroom
     - id: bathroom
       name: Bathroom
       sensor: sensor.bathroom_temperature
-      valve: none
+      valve: none  # no valve: always open, the flow path when every valve is closed
+
+  # Shelly devices running the watchdog script (docs/shelly-scripts.md). Every switch
+  # above (the heat source and every valve) is in exactly one of the two lists: here, or
+  # under relays_without_watchdog. Default: none.
+  shellys_with_watchdog:
+    - name: Valves              # shown in notifications; default: the host
+      host: 192.0.2.11          # required; the Shelly's address, no http://
+      script_id: 1              # required; the watchdog script's id on the device
+      # password: !secret floor_heating_shelly_password  # only if authentication is on
+      switches:                 # required; the mapped switches on this Shelly
+        - switch.valve_living_room
+        - switch.valve_kitchen
+        - switch.valve_bedroom
+    - name: Heat pump           # the heat source switch needs a Shelly of its own
+      host: 192.0.2.12
+      script_id: 1
+      switches:
+        - switch.heat_pump_request
+
+  # Every other relay, without the watchdog script: one switch entity per entry (a
+  # multi-channel relay is one entry per channel). Move a switch here from the list
+  # above. Default: none.
+  # relays_without_watchdog:
+  #   - switch.valve_bedroom
+
+  # Where notifications go: notify services or notify entities. Default: none (log only).
+  # notify:
+  #   - notify.mobile_app_phone
+  #   - notify.email
+
+  # External watchdog: the ping URL, e.g. a healthchecks.io check; keep it in
+  # secrets.yaml. Default: none (no ping).
+  # watchdog_ping_url: !secret floor_heating_watchdog_url
+  watchdog_ping_interval: 300   # s (60–3600); how often the URL is pinged
+
+  # Readings outside this range are ignored. Default: 0 to 40 °C, in any unit system.
+  # If you set them, use your HA unit system: with °F e.g. 32 and 104.
+  # plausible_min: 0
+  # plausible_max: 40
+
+  reconcile_interval: 60        # s (10–300); how often the outputs are checked
+  output_mismatch_alert: 3      # reconcile intervals before "switch not following command"
+  heartbeat_interval: 300       # s (60–3600); how often every Shelly gets a heartbeat
+  heartbeat_fail_alert: 3       # failed heartbeats in a row before an alert
+  heartbeat_timeout: 18000      # s; the scripts' heartbeat_timeout_s (5 h)
+  # heartbeat_check_interval: 60  # s; the scripts' check_interval_s. Default: not compared
 ```
 
-The entity ids and addresses are examples: use your own.
+The entity ids and addresses are examples: use your own. The same example is in [`examples/configuration.example.yaml`](../examples/configuration.example.yaml); the tables below describe every key.
 
 ## Config entry and devices
 
