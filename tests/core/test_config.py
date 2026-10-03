@@ -79,14 +79,14 @@ def test_defaults_match_spec_section_4() -> None:
     ("key", "minimum", "maximum", "step", "unit"),
     [
         ("base_setpoint", 10, 30, 0.1, ParamUnit.CELSIUS),
-        ("hysteresis", 0.1, 1.0, 0.1, ParamUnit.CELSIUS_DELTA),
+        ("hysteresis", 0.1, 2.0, 0.1, ParamUnit.CELSIUS_DELTA),
         ("wait_time", 0, 120, 5, ParamUnit.MINUTES),
         ("sensor_offset", -5, 5, 0.1, ParamUnit.CELSIUS_DELTA),
         ("hp_min_on_time", 30, 180, 5, ParamUnit.MINUTES),
         ("hp_min_off_time", 30, 180, 5, ParamUnit.MINUTES),
         ("sensor_fault_timeout", 15, 240, 5, ParamUnit.MINUTES),
         ("manual_max_temp", 18, 30, 0.5, ParamUnit.CELSIUS),
-        ("manual_resume_delta", 0.2, 3.0, 0.1, ParamUnit.CELSIUS_DELTA),
+        ("manual_resume_delta", 0.1, 10.0, 0.1, ParamUnit.CELSIUS_DELTA),
         ("holiday_temp", 10, 25, 0.5, ParamUnit.CELSIUS),
         ("failsafe_trigger", 1, 72, 1, ParamUnit.HOURS),
         ("valve_exercise_duration", 5, 30, 5, ParamUnit.MINUTES),
@@ -105,6 +105,25 @@ def test_spec_ranges_match_section_4(
         unit,
     )
     assert minimum <= spec.default <= maximum
+
+
+@pytest.mark.parametrize(
+    ("make", "valid"),
+    [
+        (lambda: ZoneParams(hysteresis=2.0), True),
+        (lambda: ZoneParams(hysteresis=2.1), False),
+        (lambda: GlobalParams(manual_resume_delta=0.1), True),
+        (lambda: GlobalParams(manual_resume_delta=10.0), True),
+        (lambda: GlobalParams(manual_resume_delta=0.05), False),
+        (lambda: GlobalParams(manual_resume_delta=10.1), False),
+    ],
+)
+def test_hysteresis_and_resume_difference_limits(make: Any, valid: bool) -> None:
+    if valid:
+        make()
+    else:
+        with pytest.raises(ConfigError, match="out of range"):
+            make()
 
 
 def test_model_defaults_equal_spec_defaults() -> None:

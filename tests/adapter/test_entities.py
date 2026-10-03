@@ -336,7 +336,7 @@ async def test_temperature_numbers_in_fahrenheit(world: World, hass: HomeAssista
     assert hysteresis.attributes["unit_of_measurement"] == "°F"
     assert float(hysteresis.state) == pytest.approx(0.36)
     assert hysteresis.attributes["min"] == pytest.approx(0.18)
-    assert hysteresis.attributes["max"] == pytest.approx(1.8)
+    assert hysteresis.attributes["max"] == pytest.approx(3.6)
     await _call(hass, "number", "set_value", "number.zone_1_floor_heating_hysteresis", value=0.9)
     assert world.controller.settings.zone_params["zone_1"].hysteresis == pytest.approx(0.5)
     holiday_id = "number.zone_1_floor_heating_holiday_temperature"

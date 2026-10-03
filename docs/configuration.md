@@ -263,7 +263,7 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 | `sensor.<zone>_floor_heating_state` (State) | `idle` (Idle), `waiting` (Waiting), `heating` (Heating), `forced` (Forced), `sensor_fault` (Sensor fault). |
 | `sensor.<zone>_floor_heating_reason` (Reason) | Why the zone is in its state; the table below. The state is a fixed key, shown as its text; it never counts down, so the state changes only when the reason does. While a timer runs (`waiting`, `held_by_minimum_off_time`, `spreading_heat`, `forced`, `failsafe_heating`, `failsafe_waiting`, `valve_exercise`), the attribute `until` holds its end time; otherwise there is no `until` attribute. |
 | `sensor.<zone>_floor_heating_effective_target_temperature` (Effective target temperature) | The set point in force: the zone's holiday temperature while holiday is on, otherwise the running auto schedule's temperature, otherwise the base set point. A manual schedule keeps the set point below it. |
-| `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–1.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
+| `number.<zone>_floor_heating_hysteresis` (Hysteresis) | 0.1–2.0 °C (default 0.2). StartTemp = set point − hysteresis, StopTemp = set point + hysteresis. |
 | `number.<zone>_floor_heating_wait_time` (Wait time) | 0–120 min (default 30). Open-window filter before the zone may start the heat source. |
 | `number.<zone>_floor_heating_holiday_temperature` (Holiday temperature) | 10–25 °C (default 18). The zone's target while holiday is on; it may be above or below the base set point. |
 
@@ -331,7 +331,7 @@ These entities are a form for adding and deleting schedules from the dashboard, 
 | `number.floor_heating_heat_source_minimum_off_time` (Heat source minimum off time) | 30–180 min (60) |
 | `number.floor_heating_sensor_fault_timeout` (Sensor fault timeout) | 15–240 min (60) |
 | `number.floor_heating_manual_max_temperature` (Manual max temperature) | 18–30 °C (25) |
-| `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.2–3.0 °C (1.0) |
+| `number.floor_heating_manual_resume_difference` (Manual resume difference) | 0.1–10.0 °C (1.0) |
 | `number.floor_heating_failsafe_operation_delay` (Failsafe operation delay) | 1–72 h (24) |
 | `time.floor_heating_failsafe_operation_start` (Failsafe operation start), `time.floor_heating_failsafe_operation_stop` (Failsafe operation stop) | local time (10:00–15:00) |
 | `select.floor_heating_off_season_valve_exercise_day` (Off-season valve exercise day) | Monday–Sunday (Monday) |

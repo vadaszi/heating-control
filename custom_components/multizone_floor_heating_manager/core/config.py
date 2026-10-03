@@ -124,7 +124,7 @@ _C, _DELTA, _MIN, _H = (
 
 ZONE_PARAM_SPECS = _specs(
     ParamSpec("base_setpoint", 22.0, 10, 30, 0.1, _C),
-    ParamSpec("hysteresis", 0.2, 0.1, 1.0, 0.1, _DELTA),
+    ParamSpec("hysteresis", 0.2, 0.1, 2.0, 0.1, _DELTA),
     ParamSpec("wait_time", 30, 0, 120, 5, _MIN),
     ParamSpec("holiday_temp", 18.0, 10, 25, 0.5, _C),  # per zone
 )
@@ -133,7 +133,7 @@ GLOBAL_PARAM_SPECS = _specs(
     ParamSpec("hp_min_off_time", 60, 30, 180, 5, _MIN),  # never below 30 min
     ParamSpec("sensor_fault_timeout", 60, 15, 240, 5, _MIN),
     ParamSpec("manual_max_temp", 25.0, 18, 30, 0.5, _C),
-    ParamSpec("manual_resume_delta", 1.0, 0.2, 3.0, 0.1, _DELTA),
+    ParamSpec("manual_resume_delta", 1.0, 0.1, 10.0, 0.1, _DELTA),
     ParamSpec("failsafe_trigger", 24, 1, 72, 1, _H),
     ParamSpec("valve_exercise_duration", 15, 5, 30, 5, _MIN),
     ParamSpec("long_run_alarm", 12, 2, 48, 1, _H),
