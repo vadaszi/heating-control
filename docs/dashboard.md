@@ -31,4 +31,4 @@ No card has a "toggle all" switch in its header, so one tap can never switch sev
    - replace `switch.heat_pump_request` (the heat pump relay badge) with your heat source switch.
 2. In Home Assistant: *Settings → Dashboards → Add dashboard → New dashboard from scratch*, open the new dashboard, then *pencil → three dots → Raw configuration editor*, paste the file and save.
 
-The ids of the global entities (`…floor_heating_…` without a zone) are the same in every installation, unless you renamed them.
+The ids of the global entities (`…floor_heating_…` without a zone) are the same in every installation, unless you renamed them. The example uses the ids without an area: an entity that an update adds to a device you placed in an area may get the area in its id ([Updating](configuration.md#updating)).

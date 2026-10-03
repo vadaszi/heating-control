@@ -99,7 +99,7 @@ There is no separate manual mode. To control the relays yourself (e.g. to heat o
 
 ## Entity ids look odd after an update
 
-A new entity added by an update to a zone device that is placed in an area gets the area name in its id (e.g. `number.bedroom_bedroom_floor_heating_holiday_temperature`). That is how Home Assistant names new entities; rename the id in the entity settings if you like. See [Updating](configuration.md#updating).
+A new entity added by an update to a device that is placed in an area gets the area name in its id (e.g. `switch.living_room_floor_heating_shadow_mode` instead of `switch.floor_heating_shadow_mode`), while the older entities keep their ids. That is how Home Assistant names new entities, following *Settings → System → Entity ID format*. Rename the id in the entity settings, or remove **Area** from that format so that future entities get ids without it. See [Updating](configuration.md#updating).
 
 ## Reporting a problem
 
