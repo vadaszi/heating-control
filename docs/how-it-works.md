@@ -45,7 +45,7 @@ A zone without a valve goes through the same states; it just has no valve to swi
 
 ### Calling zone and sync rule
 
-Many installations can't give full flow to every zone at once (in the house this was built for, the main pipe is too thin). So the zone that started the run gets the heat first, and the others are topped up at the end of the run:
+The zone that started the run gets the heat first, and the others are topped up at the end of the run:
 
 - The zone that starts the run is the **calling zone**. If several zones would start it at the same moment (e.g. their wait times end together), the one furthest below its start temperature wins; on a tie, the one listed first in the YAML.
 - When the calling zone reaches its target (not its stop temperature), every other zone that is below its stop temperature joins and heats until its own stop temperature. This **sync rule** fires once per run.
