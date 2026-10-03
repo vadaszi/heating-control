@@ -256,12 +256,12 @@ class FloorHeatingStore:
         self,
         config: CoreConfig,
         switches: tuple[str, ...],
-        shellys: tuple[str, ...] = (),
+        shelly_keys: tuple[str, ...] = (),
         time_zone: tzinfo = UTC,
     ) -> StoredData:
         """Restore the stored data for `config`; unusable parts start as on a first start.
 
-        `shellys` are the keys of the configured Shellys; others are dropped.
+        `shelly_keys` are the keys of the Shellys with a watchdog; others are dropped.
         """
         try:
             data: object = await self._store.async_load()
@@ -286,7 +286,9 @@ class FloorHeatingStore:
         stored_heartbeat = data.get("heartbeat")
         if not isinstance(stored_heartbeat, Mapping):
             stored_heartbeat = {}
-        heartbeat = {key: HeartbeatTracking.from_dict(stored_heartbeat.get(key)) for key in shellys}
+        heartbeat = {
+            key: HeartbeatTracking.from_dict(stored_heartbeat.get(key)) for key in shelly_keys
+        }
         return StoredData(
             core,
             settings,

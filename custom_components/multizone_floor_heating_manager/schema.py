@@ -9,7 +9,8 @@ Two stages:
 Entity existence is checked after HA has started, not here.
 
 Shelly watchdogs: every mapped switch is either on a Shelly listed under
-`shellys` (address, script id, the switches on it) or listed in `no_watchdog`. The Shelly
+`shellys_with_watchdog` (address, script id, the switches on it) or listed in
+`relays_without_watchdog`. The Shelly
 holding the heat source switch runs the heat source script and holds nothing else; every
 other Shelly runs the valve script.
 """
@@ -34,17 +35,17 @@ from .const import (
     CONF_HOST,
     CONF_ID,
     CONF_NAME,
-    CONF_NO_WATCHDOG,
     CONF_NOTIFY,
     CONF_OUTPUT_MISMATCH_ALERT,
     CONF_PASSWORD,
     CONF_PLAUSIBLE_MAX,
     CONF_PLAUSIBLE_MIN,
     CONF_RECONCILE_INTERVAL,
+    CONF_RELAYS_WITHOUT_WATCHDOG,
     CONF_SCRIPT_ID,
     CONF_SENSOR,
     CONF_SENSOR_OFFSET,
-    CONF_SHELLYS,
+    CONF_SHELLYS_WITH_WATCHDOG,
     CONF_SWITCHES,
     CONF_VALVE,
     CONF_WATCHDOG_PING_INTERVAL,
@@ -165,26 +166,30 @@ def _shelly_name(shelly: dict[str, Any]) -> str:
 
 
 def _check_watchdogs(conf: dict[str, Any], switches: list[str]) -> list[str]:
-    """Every mapped switch is on a listed Shelly or in `no_watchdog`."""
+    """Every mapped switch is on a listed Shelly or in `relays_without_watchdog`."""
     errors: list[str] = []
     mapped = set(switches)
     heat_source = conf[CONF_HEAT_SOURCE_SWITCH]
-    no_watchdog = set(conf[CONF_NO_WATCHDOG])
+    shellys = conf[CONF_SHELLYS_WITH_WATCHDOG]
+    without_watchdog = set(conf[CONF_RELAYS_WITHOUT_WATCHDOG])
     errors.extend(
-        f"no_watchdog: {entity_id} is not a mapped switch (heat_source_switch or a valve)"
-        for entity_id in dict.fromkeys(conf[CONF_NO_WATCHDOG])
+        f"relays_without_watchdog: {entity_id} is not a mapped switch "
+        "(heat_source_switch or a valve)"
+        for entity_id in dict.fromkeys(conf[CONF_RELAYS_WITHOUT_WATCHDOG])
         if entity_id not in mapped
     )
     on_shelly: set[str] = set()
-    for shelly in conf[CONF_SHELLYS]:
+    for shelly in shellys:
         name = _shelly_name(shelly)
         for entity_id in shelly[CONF_SWITCHES]:
             if entity_id not in mapped:
                 errors.append(f"shelly {name}: {entity_id} is not a mapped switch")
             elif entity_id in on_shelly:
                 errors.append(f"switch {entity_id} is listed on more than one Shelly")
-            elif entity_id in no_watchdog:
-                errors.append(f"switch {entity_id} is on Shelly {name} and in no_watchdog")
+            elif entity_id in without_watchdog:
+                errors.append(
+                    f"switch {entity_id} is on Shelly {name} and in relays_without_watchdog"
+                )
             on_shelly.add(entity_id)
         if heat_source in shelly[CONF_SWITCHES] and len(set(shelly[CONF_SWITCHES])) > 1:
             errors.append(
@@ -192,22 +197,21 @@ def _check_watchdogs(conf: dict[str, Any], switches: list[str]) -> list[str]:
                 "(no valves on the same device)"
             )
     errors.extend(
-        f"switch {entity_id} has no watchdog: add it to the switches of its Shelly under "
-        "shellys, or to no_watchdog if it is not a Shelly running the watchdog script"
+        f"switch {entity_id} is in neither list: add it to the switches of its Shelly under "
+        "shellys_with_watchdog, or to relays_without_watchdog if it is not a Shelly running "
+        "the watchdog script"
         for entity_id in dict.fromkeys(switches)
-        if entity_id not in on_shelly and entity_id not in no_watchdog
+        if entity_id not in on_shelly and entity_id not in without_watchdog
     )
-    addresses = Counter(
-        (shelly[CONF_HOST].lower(), shelly[CONF_SCRIPT_ID]) for shelly in conf[CONF_SHELLYS]
-    )
+    addresses = Counter((shelly[CONF_HOST].lower(), shelly[CONF_SCRIPT_ID]) for shelly in shellys)
     errors.extend(
-        f"shellys: {host} script {script_id} is listed more than once"
+        f"shellys_with_watchdog: {host} script {script_id} is listed more than once"
         for (host, script_id), count in addresses.items()
         if count > 1
     )
-    names = Counter(_shelly_name(shelly).strip().casefold() for shelly in conf[CONF_SHELLYS])
+    names = Counter(_shelly_name(shelly).strip().casefold() for shelly in shellys)
     errors.extend(
-        f"shellys: the name {name!r} is used more than once"
+        f"shellys_with_watchdog: the name {name!r} is used more than once"
         for name, count in names.items()
         if count > 1
     )
@@ -230,8 +234,10 @@ FLOOR_HEATING_SCHEMA = vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
             vol.Optional(CONF_NOTIFY, default=list): vol.All(cv.ensure_list, [_notify_target]),
-            vol.Optional(CONF_SHELLYS, default=list): vol.All(cv.ensure_list, [SHELLY_SCHEMA]),
-            vol.Optional(CONF_NO_WATCHDOG, default=list): vol.All(
+            vol.Optional(CONF_SHELLYS_WITH_WATCHDOG, default=list): vol.All(
+                cv.ensure_list, [SHELLY_SCHEMA]
+            ),
+            vol.Optional(CONF_RELAYS_WITHOUT_WATCHDOG, default=list): vol.All(
                 cv.ensure_list, [cv.entity_domain("switch")]
             ),
             vol.Optional(CONF_HEARTBEAT_INTERVAL, default=DEFAULT_HEARTBEAT_INTERVAL): vol.All(
@@ -296,7 +302,7 @@ class FloorHeatingConfig:
     zones: tuple[ZoneWiring, ...]
     reconcile_interval: timedelta
     notify: tuple[str, ...] = ()  # notify services or notify entities
-    shellys: tuple[ShellyWiring, ...] = ()
+    shellys_with_watchdog: tuple[ShellyWiring, ...] = ()
     heartbeat_interval: timedelta = timedelta(seconds=DEFAULT_HEARTBEAT_INTERVAL)
     heartbeat_fail_alert: int = DEFAULT_HEARTBEAT_FAIL_ALERT
     expected_params: ExpectedParams = field(default_factory=ExpectedParams)
@@ -369,7 +375,7 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorHeatingCon
         ),
         reconcile_interval=timedelta(seconds=conf[CONF_RECONCILE_INTERVAL]),
         notify=tuple(dict.fromkeys(conf[CONF_NOTIFY])),
-        shellys=tuple(
+        shellys_with_watchdog=tuple(
             ShellyWiring(
                 name=_shelly_name(shelly),
                 host=shelly[CONF_HOST],
@@ -382,7 +388,7 @@ def build_config(conf: dict[str, Any], unit: TemperatureUnit) -> FloorHeatingCon
                 ),
                 password=shelly.get(CONF_PASSWORD),
             )
-            for shelly in conf[CONF_SHELLYS]
+            for shelly in conf[CONF_SHELLYS_WITH_WATCHDOG]
         ),
         heartbeat_interval=timedelta(seconds=conf[CONF_HEARTBEAT_INTERVAL]),
         heartbeat_fail_alert=conf[CONF_HEARTBEAT_FAIL_ALERT],

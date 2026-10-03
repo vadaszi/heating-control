@@ -65,7 +65,7 @@ multizone_floor_heating_manager:
   heat_source_switch: switch.heat_pump_request
   notify:
     - notify.mobile_app_your_phone
-  no_watchdog:                 # relays without the watchdog script
+  relays_without_watchdog:     # relays without the watchdog script
     - switch.heat_pump_request
     - switch.valve_living_room
   zones:
@@ -81,9 +81,9 @@ multizone_floor_heating_manager:
 
 - **Zone `id`:** lowercase letters, digits and `_`. The stored state, schedules and entities belong to it, so choose it carefully: it must not change later. The `name` can change any time.
 - **Order of the zones:** if two zones are equally cold at the same moment, the first one listed becomes the calling zone ([How it works](how-it-works.md#calling-zone-and-sync-rule)).
-- **`no_watchdog`** lists every switch without the watchdog script. Every other switch must be on a Shelly listed under `shellys` (see [Shelly watchdogs](configuration.md#shelly-watchdogs)); a switch in neither place is a configuration error, so nothing is left unprotected by accident. With Shelly scripts installed, the example becomes:
+- **`relays_without_watchdog`** lists every switch without the watchdog script, one by one (a multi-channel relay is one entry per channel). Every other switch must be on a Shelly listed under `shellys_with_watchdog` (see [Shelly watchdogs](configuration.md#shelly-watchdogs)); a switch in neither list is a configuration error, so nothing is left unprotected by accident. With Shelly scripts installed, the example becomes:
   ```yaml
-    shellys:
+    shellys_with_watchdog:
       - name: Valves
         host: 192.0.2.11       # the Shelly's address
         script_id: 1
@@ -164,7 +164,7 @@ Other services with a push URL (e.g. an Uptime Kuma push monitor) work the same 
 
 To see how the logic behaves before any relay is installed, use template helpers as stand-ins. Leave Shadow mode ON, or switch it OFF: the integration then switches the stand-ins, so you can watch its commands safely.
 
-**Stand-in switches:** *Settings → Devices & services → Helpers → Create helper → Template → Template a switch*. Leave the value template and both actions empty; the switch then remembers what it was switched to. **Switch each one OFF once** after creating it: a new template switch has no state ("unknown"), and the integration sends no command to a switch in that state. List the stand-ins in `no_watchdog`.
+**Stand-in switches:** *Settings → Devices & services → Helpers → Create helper → Template → Template a switch*. Leave the value template and both actions empty; the switch then remembers what it was switched to. **Switch each one OFF once** after creating it: a new template switch has no state ("unknown"), and the integration sends no command to a switch in that state. List the stand-ins in `relays_without_watchdog`.
 
 **Stand-in sensors** (if a zone has no thermometer yet): a number helper (*Create helper → Number*, e.g. 15–30, step 0.1) to set the temperature by hand, and a template sensor that reports it every few minutes. The regular report matters: a template sensor that only changes when you move the slider looks dead after the sensor fault timeout. In `configuration.yaml`:
 
@@ -183,4 +183,4 @@ template:
         state: "{{ states('input_number.try_living_room') }}"
 ```
 
-When the real devices arrive, replace the entity ids in the YAML, update `no_watchdog` and `shellys`, and restart. Settings, schedules and the zone state are kept, because they belong to the zone ids. Then delete the stand-ins.
+When the real devices arrive, replace the entity ids in the YAML, update `relays_without_watchdog` and `shellys_with_watchdog`, and restart. Settings, schedules and the zone state are kept, because they belong to the zone ids. Then delete the stand-ins.

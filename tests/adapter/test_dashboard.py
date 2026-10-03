@@ -26,7 +26,7 @@ TRANSLATIONS = ROOT / "custom_components" / DOMAIN / "translations" / "en.json"
 EXAMPLE = {
     DOMAIN: {
         "heat_source_switch": "switch.heat_pump_request",
-        "no_watchdog": ["switch.heat_pump_request", "switch.valve_living_room"],
+        "relays_without_watchdog": ["switch.heat_pump_request", "switch.valve_living_room"],
         "zones": [
             {
                 "id": "living_room",

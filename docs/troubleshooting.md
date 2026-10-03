@@ -16,7 +16,7 @@
 
 ## The configuration is refused at startup
 
-Home Assistant shows "Invalid config" and the log names the problem: a missing or unknown key, a wrong entity domain, a duplicate zone id or name, an invalid zone id (a valid one is suggested), a value out of range, or a switch that is neither on a listed Shelly nor in `no_watchdog`. See [Checks at startup](configuration.md#checks-at-startup).
+Home Assistant shows "Invalid config" and the log names the problem: a missing or unknown key, a wrong entity domain, a duplicate zone id or name, an invalid zone id (a valid one is suggested), a value out of range, or a switch that is in neither `shellys_with_watchdog` nor `relays_without_watchdog`. See [Checks at startup](configuration.md#checks-at-startup).
 
 ## "Floor heating: unknown entities"
 
@@ -71,7 +71,7 @@ The integration's heartbeat to a Shelly failed several times in a row (default 3
 |---|---|
 | unreachable | The Shelly is offline, or `host` in the YAML is wrong. Try its web UI. |
 | script not running (404) | The script was stopped, or "Run on startup" is off and the device restarted, or `script_id` is wrong. |
-| authentication failed (401) | Authentication is on: set `password` in the `shellys` entry (`!secret`), or the password is wrong. |
+| authentication failed (401) | Authentication is on: set `password` in the device's `shellys_with_watchdog` entry (`!secret`), or the password is wrong. |
 | unusable answer | Another script answers at that id, the wrong script is on the device (valve script on the heat source Shelly or the other way round), or the script is older than the integration expects. |
 
 When it answers again, you get "Shelly watchdog answering again". More: [Shelly scripts → Troubleshooting](shelly-scripts.md#troubleshooting).

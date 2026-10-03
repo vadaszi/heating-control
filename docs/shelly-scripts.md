@@ -35,7 +35,7 @@ In the device web UI:
 2. Name it, e.g. `floor_heating_valve_watchdog` or `floor_heating_heat_source_watchdog`.
 3. Paste the **whole** content of the script file, unchanged except for the CONFIG block (see below). **Save**.
 4. Enable **Run on startup** and press **Start**.
-5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). The integration needs it with the device address in its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs)). The heartbeat endpoint is:
+5. Note the script's **id** (the number in the script list or in the URL of the script page, e.g. `1`). The integration needs it with the device address in its YAML (`shellys_with_watchdog`, [configuration](configuration.md#shelly-watchdogs)). The heartbeat endpoint is:
    ```
    http://<shelly-address>/script/<script-id>/heartbeat
    ```
@@ -108,7 +108,7 @@ The answer is a JSON status with `"running": true`, the watchdog `state`, `heart
 ## Bench tests (shortened timeouts)
 Run these before installing, on the bench or with the loads disconnected. You send the heartbeats yourself. **Do not** run them on a system that is heating.
 
-If the integration already sends heartbeats to the device, they keep the watchdog quiet and spoil the test. For the bench tests, remove the device from `shellys` in the integration's YAML, list its switches in `no_watchdog` instead and restart HA; undo it afterwards. With shortened timeouts the integration would also report "script parameters differ".
+If the integration already sends heartbeats to the device, they keep the watchdog quiet and spoil the test. For the bench tests, remove the device from `shellys_with_watchdog` in the integration's YAML, list its switches in `relays_without_watchdog` instead and restart HA; undo it afterwards. With shortened timeouts the integration would also report "script parameters differ".
 
 **Preparation:** in the CONFIG block set
 ```

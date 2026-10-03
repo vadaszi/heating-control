@@ -13,7 +13,7 @@ multizone_floor_heating_manager:
   notify:
     - notify.mobile_app_phone
     - notify.email
-  shellys:
+  shellys_with_watchdog:
     - name: Valves
       host: 192.0.2.11
       script_id: 1
@@ -66,8 +66,8 @@ Without a `multizone_floor_heating_manager:` section the entry fails to load wit
 | `reconcile_interval` | integer, seconds (10–300) | 60 | How often the outputs are checked and corrected. |
 | `output_mismatch_alert` | integer ≥ 1 | 3 | Alert after this many reconcile intervals in which a switch does not follow its command or is unavailable. |
 | `notify` | list of `notify.<name>` | none | Where notifications go: a notify service (e.g. `notify.mobile_app_phone` from the companion app, or an SMTP `notify.email`) or a notify entity. Without targets, events are only written to the log. |
-| `shellys` | list | none | The Shellys running a watchdog script; see [Shelly watchdogs](#shelly-watchdogs). |
-| `no_watchdog` | list of `switch` entities | none | Mapped switches that are **not** Shellys running the watchdog script: any other relay, or a template switch for a try-out. They get no heartbeat. |
+| `shellys_with_watchdog` | list | none | The Shelly devices running a watchdog script, each with its address and the switches on it; see [Shelly watchdogs](#shelly-watchdogs). |
+| `relays_without_watchdog` | list of `switch` entities | none | Every other mapped switch, one by one: any relay without the watchdog script, or a template switch for a try-out. A multi-channel relay (e.g. a Sonoff 4CH Pro) is one entry per channel; its address plays no role. They get no heartbeat. |
 | `heartbeat_interval` | integer, seconds (60–3600) | 300 | How often every Shelly gets a heartbeat. Must be shorter than `heartbeat_timeout`. |
 | `heartbeat_fail_alert` | integer ≥ 1 | 3 | Alert after this many failed heartbeats in a row (3 × 5 min ≈ 15 min). |
 | `heartbeat_timeout` | integer, seconds (1–604800) | 18000 (5 h) | The `heartbeat_timeout_s` you expect in the scripts' CONFIG block. The integration alerts if a script reports another value. |
@@ -92,7 +92,7 @@ Without a `multizone_floor_heating_manager:` section the entry fails to load wit
 
 ### Shelly watchdogs
 
-Each Shelly that switches valves or the heat source runs a watchdog script ([Shelly scripts](shelly-scripts.md)). It puts its outputs into a safe state if Home Assistant stops sending heartbeats. List every such Shelly under `shellys`:
+Each Shelly that switches valves or the heat source runs a watchdog script ([Shelly scripts](shelly-scripts.md)). It puts its outputs into a safe state if Home Assistant stops sending heartbeats. List every such Shelly under `shellys_with_watchdog`:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -103,11 +103,11 @@ Each Shelly that switches valves or the heat source runs a watchdog script ([She
 | `password` | string | none | Only if authentication is on for the device; use `!secret`, e.g. `password: !secret floor_heating_shelly_password`. The user name is always `admin`. |
 
 Rules:
-- **Every mapped switch** (the heat source and every valve) is either on exactly one Shelly under `shellys` or listed in `no_watchdog`. Anything else is a configuration error.
+- **Every mapped switch** (the heat source and every valve) is in exactly one of the two lists: on one Shelly under `shellys_with_watchdog`, or in `relays_without_watchdog`. Anything else is a configuration error.
 - The Shelly with the heat source switch runs the **heat source script** and must hold no valve; every other listed Shelly runs the **valve script**. The integration checks this with each answer.
 - The integration does not detect device types: it trusts this list.
 
-> ⚠️ **A switch in `no_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the [external watchdog](#external-watchdog) tells you that HA is down. With Shelly relays and the watchdog scripts the house goes into a safe state on its own ([Shelly scripts](shelly-scripts.md)).
+> ⚠️ **A switch in `relays_without_watchdog` has no device failsafe.** If Home Assistant stops, it stays as it was, e.g. a heat source request ON, until someone switches it. Only the [external watchdog](#external-watchdog) tells you that HA is down. With Shelly relays and the watchdog scripts the house goes into a safe state on its own ([Shelly scripts](shelly-scripts.md)).
 
 ### External watchdog
 
@@ -137,7 +137,7 @@ floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
   - an unknown switch counts as unavailable, which is OFF.
 - A sensor without a temperature unit is logged once as a warning; its readings are ignored.
 - A `notify` target that is neither a notify service nor a notify entity is logged as a warning and shown as a persistent notification once HA has started.
-- A mapped switch that is neither on a listed Shelly nor in `no_watchdog`, a switch listed twice, the same Shelly (`host` and `script_id`) listed twice, a heat source Shelly holding a valve, a `heartbeat_interval` not shorter than `heartbeat_timeout`, or a `plausible_min` not below `plausible_max` stops the setup.
+- A mapped switch that is in neither `shellys_with_watchdog` nor `relays_without_watchdog`, a switch listed twice, the same Shelly (`host` and `script_id`) listed twice, a heat source Shelly holding a valve, a `heartbeat_interval` not shorter than `heartbeat_timeout`, or a `plausible_min` not below `plausible_max` stops the setup.
 
 ## How it runs
 

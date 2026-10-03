@@ -16,7 +16,7 @@ Setup and bench tests: [`shelly-scripts.md`](shelly-scripts.md).
 ```
 http://<shelly-address>/script/<script-id>/heartbeat
 ```
-- `<script-id>` is the script's slot number on the device (shown in the device web UI). HA takes the address and the script id from its YAML (`shellys`, [configuration](configuration.md#shelly-watchdogs)); it does not look them up.
+- `<script-id>` is the script's slot number on the device (shown in the device web UI). HA takes the address and the script id from its YAML (`shellys_with_watchdog`, [configuration](configuration.md#shelly-watchdogs)); it does not look them up.
 - `heartbeat` is the default endpoint name (`CONFIG.endpoint`).
 - One endpoint, two methods:
 

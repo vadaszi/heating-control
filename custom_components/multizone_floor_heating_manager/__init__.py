@@ -83,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FloorHeatingConfigEntry)
     stored = await store.async_load(
         config.core,
         config.switches,
-        tuple(shelly.key for shelly in config.shellys),
+        tuple(shelly.key for shelly in config.shellys_with_watchdog),
         dt_util.get_default_time_zone(),
     )
     for warning in stored.warnings:

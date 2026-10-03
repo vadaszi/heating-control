@@ -92,7 +92,7 @@ class FloorHeatingController:
         self._pending_off: set[str] = set(stored.pending_off)
         self._heartbeat: dict[str, HeartbeatTracking] = {
             shelly.key: stored.heartbeat.get(shelly.key, HeartbeatTracking())
-            for shelly in config.shellys
+            for shelly in config.shellys_with_watchdog
         }
         self._last_run_ok_at: datetime | None = None
         self.form = ScheduleForm()  # the dashboard's schedule draft; not stored
@@ -156,7 +156,7 @@ class FloorHeatingController:
     def alerts(self) -> list[CoreEvent]:
         """Alerts active now (the alerts sensor), derived from the state."""
         alerts = active_alerts(self.config.core, self._state)
-        for shelly in self.config.shellys:
+        for shelly in self.config.shellys_with_watchdog:
             alerts += heartbeat_alerts(shelly.name, self._heartbeat[shelly.key])
         return alerts
 

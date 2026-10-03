@@ -18,14 +18,14 @@ from custom_components.multizone_floor_heating_manager.const import DOMAIN
 from custom_components.multizone_floor_heating_manager.core.units import TemperatureUnit
 from custom_components.multizone_floor_heating_manager.schema import CONFIG_SCHEMA, build_config
 
-from .conftest import PKG, World, make_conf, no_watchdog_for_all, zone_conf
+from .conftest import PKG, World, make_conf, without_watchdog_for_all, zone_conf
 
 
 def _conf(**changes: Any) -> dict[str, Any]:
     conf = make_conf(2)
     conf[DOMAIN].update(changes)
-    if "no_watchdog" not in changes and "shellys" not in changes:
-        no_watchdog_for_all(conf[DOMAIN])
+    if "relays_without_watchdog" not in changes and "shellys_with_watchdog" not in changes:
+        without_watchdog_for_all(conf[DOMAIN])
     return conf
 
 
@@ -59,7 +59,7 @@ async def test_optional_keys(world: World) -> None:
     conf[DOMAIN].update(
         plausible_min=5, plausible_max=35, reconcile_interval=30, output_mismatch_alert=5
     )
-    no_watchdog_for_all(conf[DOMAIN])
+    without_watchdog_for_all(conf[DOMAIN])
     assert await world.setup(conf, live=False)
     config = world.controller.config
     assert config.core.zones[0].sensor_offset == -0.4
@@ -183,7 +183,7 @@ _HEAT = {"name": "Heat", "host": "192.0.2.12", "script_id": 1, "switches": ["swi
 
 
 def _shellys(*shellys: dict[str, Any], **extra: Any) -> dict[str, Any]:
-    return make_conf(2, shellys=list(shellys), **extra)
+    return make_conf(2, shellys_with_watchdog=list(shellys), **extra)
 
 
 async def test_shelly_wiring(world: World) -> None:
@@ -194,12 +194,12 @@ async def test_shelly_wiring(world: World) -> None:
         heartbeat_fail_alert=2,
         heartbeat_timeout=3600,
         heartbeat_check_interval=30,
-        no_watchdog=["switch.heat_source"],
+        relays_without_watchdog=["switch.heat_source"],
     )
     with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
         assert await world.setup(conf, live=False)  # no calls: only the wiring is tested
     config = world.controller.config
-    [shelly] = config.shellys
+    [shelly] = config.shellys_with_watchdog
     assert shelly.name == "192.0.2.11"  # defaults to the host
     assert shelly.role.value == "valve"
     assert shelly.switches == ("switch.valve_1", "switch.valve_2")
@@ -220,7 +220,7 @@ async def test_heat_source_shelly_role(world: World) -> None:
     world.setup_entities()
     with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
         assert await world.setup(_shellys(_VALVES, _HEAT), live=False)
-    roles = {s.name: s.role.value for s in world.controller.config.shellys}
+    roles = {s.name: s.role.value for s in world.controller.config.shellys_with_watchdog}
     assert roles == {"192.0.2.11": "valve", "Heat": "heat_source"}
     assert world.controller.config.expected_params.check_interval_s is None
 
@@ -229,21 +229,27 @@ async def test_heat_source_shelly_role(world: World) -> None:
     ("conf", "message"),
     [
         (
-            make_conf(2, no_watchdog=["switch.heat_source"]),
-            "switch switch.valve_1 has no watchdog: add it to the switches of its Shelly",
+            make_conf(2, relays_without_watchdog=["switch.heat_source"]),
+            "switch switch.valve_1 is in neither list: add it to the switches of its Shelly under "
+            "shellys_with_watchdog, or to relays_without_watchdog",
         ),
         (
             make_conf(
                 2,
-                no_watchdog=["switch.heat_source", "switch.valve_1", "switch.valve_2", "switch.x"],
+                relays_without_watchdog=[
+                    "switch.heat_source",
+                    "switch.valve_1",
+                    "switch.valve_2",
+                    "switch.x",
+                ],
             ),
-            "no_watchdog: switch.x is not a mapped switch",
+            "relays_without_watchdog: switch.x is not a mapped switch",
         ),
         (
             _shellys(
                 {**_VALVES, "switches": ["switch.valve_1", "switch.x"]},
                 _HEAT,
-                no_watchdog=["switch.valve_2"],
+                relays_without_watchdog=["switch.valve_2"],
             ),
             "shelly 192.0.2.11: switch.x is not a mapped switch",
         ),
@@ -251,13 +257,13 @@ async def test_heat_source_shelly_role(world: World) -> None:
             _shellys(
                 _VALVES,
                 {**_HEAT, "switches": ["switch.valve_1"]},
-                no_watchdog=["switch.heat_source"],
+                relays_without_watchdog=["switch.heat_source"],
             ),
             "switch switch.valve_1 is listed on more than one Shelly",
         ),
         (
-            _shellys(_VALVES, _HEAT, no_watchdog=["switch.valve_2"]),
-            "switch switch.valve_2 is on Shelly 192.0.2.11 and in no_watchdog",
+            _shellys(_VALVES, _HEAT, relays_without_watchdog=["switch.valve_2"]),
+            "switch switch.valve_2 is on Shelly 192.0.2.11 and in relays_without_watchdog",
         ),
         (
             _shellys(
@@ -267,11 +273,11 @@ async def test_heat_source_shelly_role(world: World) -> None:
         ),
         (
             _shellys(_VALVES, {**_HEAT, "host": "192.0.2.11"}),
-            "shellys: 192.0.2.11 script 1 is listed more than once",
+            "shellys_with_watchdog: 192.0.2.11 script 1 is listed more than once",
         ),
         (
             _shellys({**_VALVES, "name": "heat "}, _HEAT),
-            "shellys: the name 'heat' is used more than once",
+            "shellys_with_watchdog: the name 'heat' is used more than once",
         ),
         (
             _shellys(_VALVES, _HEAT, heartbeat_interval=600, heartbeat_timeout=600),
@@ -299,4 +305,4 @@ def test_the_example_configuration_is_valid() -> None:
     config = build_config(CONFIG_SCHEMA(conf)[DOMAIN], TemperatureUnit.CELSIUS)
     zones = [zone.id for zone in config.core.zones]
     assert zones == ["living_room", "kitchen", "bedroom", "bathroom"]
-    assert len(config.shellys) == 2
+    assert len(config.shellys_with_watchdog) == 2

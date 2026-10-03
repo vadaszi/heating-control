@@ -18,7 +18,7 @@ multizone_floor_heating_manager:
   watchdog_ping_url: !secret floor_heating_watchdog_url
 
   # Shelly relays that run the watchdog scripts (docs/shelly-scripts.md).
-  shellys:
+  shellys_with_watchdog:
     - name: Valves ground floor
       host: 192.0.2.11 # the Shelly's address (documentation example)
       script_id: 1
@@ -33,7 +33,7 @@ multizone_floor_heating_manager:
         - switch.heat_pump_request
 
   # Relays without the watchdog script (any other relay).
-  no_watchdog:
+  relays_without_watchdog:
     - switch.valve_bedroom
 
   # The zones, in priority order: on a tie, the first one becomes the calling zone.

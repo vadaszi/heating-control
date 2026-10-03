@@ -240,7 +240,7 @@ The owner's open checks in one list (2026-10-02). Results go into design.md §8.
 
 **P12 (0.10.0):**
 - [x] **Update the heat source script:** *(done 2026-10-02: 1.1.0 runs, state normal, season kept, the device time is right, default params.)*
-- [ ] **Bench S2, S5, S3** with shortened values, steps in [`shelly-scripts.md`](../docs/shelly-scripts.md#bench-tests-shortened-timeouts) ("Heat source Shelly: failsafe operation"). Take the Shelly out of `shellys` for the test as described there. S3 needs a start without a valid time (unreachable time server, or the router offline): note whether `"time"` really is `null` after the power cut.
+- [ ] **Bench S2, S5, S3** with shortened values, steps in [`shelly-scripts.md`](../docs/shelly-scripts.md#bench-tests-shortened-timeouts) ("Heat source Shelly: failsafe operation"). Take the Shelly out of `shellys_with_watchdog` for the test as described there. S3 needs a start without a valid time (unreachable time server, or the router offline): note whether `"time"` really is `null` after the power cut.
 - [ ] **External watchdog:** healthchecks.io check (period 5 min, grace 30 min), `watchdog_ping_url` in the YAML, restart; the check shows pings *(done 2026-10-02)*. Still open: stop HA for longer than the grace time → "down" email; start it → "up" email.
 
 **P8 (0.11.0):**

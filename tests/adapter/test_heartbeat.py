@@ -34,7 +34,7 @@ HEAT_URL = "http://192.0.2.12/script/2/heartbeat"
 
 
 def conf(**extra: Any) -> dict[str, Any]:
-    return make_conf(2, shellys=[VALVES, HEAT], notify=["notify.phone"], **extra)
+    return make_conf(2, shellys_with_watchdog=[VALVES, HEAT], notify=["notify.phone"], **extra)
 
 
 def status(role: str = "valve", **changes: Any) -> dict[str, Any]:
@@ -387,7 +387,9 @@ async def test_password_uses_digest_auth(world: World, aioclient_mock: AiohttpCl
     serve(aioclient_mock)
     world.setup_entities()
     with patch(f"{PKG}.heartbeat.DigestAuthMiddleware") as digest:
-        assert await world.setup(make_conf(2, shellys=[{**VALVES, "password": "pw"}, HEAT]))
+        assert await world.setup(
+            make_conf(2, shellys_with_watchdog=[{**VALVES, "password": "pw"}, HEAT])
+        )
     digest.assert_called_once_with("admin", "pw")  # the valve Shelly only
 
 

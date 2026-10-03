@@ -1,9 +1,9 @@
 """Heartbeat client for the Shelly watchdog scripts.
 
-Every HeartbeatInterval each Shelly listed under `shellys` gets a protocol v1 heartbeat
-(docs/heartbeat-protocol.md): `POST http://<host>/script/<id>/heartbeat` with `{"v": 1}`, or
-`{"v": 1, "season": <heating season>}` for the heat source script. Also in shadow mode. The answer
-is the script's status; `core.heartbeat` decides what it means:
+Every HeartbeatInterval each Shelly listed under `shellys_with_watchdog` gets a protocol v1
+heartbeat (docs/heartbeat-protocol.md): `POST http://<host>/script/<id>/heartbeat` with
+`{"v": 1}`, or `{"v": 1, "season": <heating season>}` for the heat source script. Also in shadow
+mode. The answer is the script's status; `core.heartbeat` decides what it means:
 - a failed call (no connection, timeout, HTTP error, no usable status, wrong role or
   protocol version) counts; after HeartbeatFailAlert failures in a row one alert names
   the cause, and the next good answer is a recovery;
@@ -72,13 +72,14 @@ class HeartbeatClient:
         self._controller = controller
         self._config = controller.config
         self._busy: set[str] = set()  # Shellys with a call in progress
-        self._check_first = {shelly.key for shelly in self._config.shellys}  # GET first
+        # GET first
+        self._check_first = {shelly.key for shelly in self._config.shellys_with_watchdog}
         self._uptime: dict[str, int] = {}
         # One digest auth middleware per Shelly with a password, so it can reuse the
         # device's nonce instead of a 401 round trip on every call.
         self._auth = {
             shelly.key: DigestAuthMiddleware(SHELLY_USERNAME, shelly.password)
-            for shelly in self._config.shellys
+            for shelly in self._config.shellys_with_watchdog
             if shelly.password is not None
         }
         self._season_requested: bool | None = None  # last season sent to the heat source
@@ -90,7 +91,7 @@ class HeartbeatClient:
     @callback
     def async_start(self) -> None:
         """Send the first heartbeats and start the timer (once HA has started)."""
-        if self._stopped or not self._config.shellys:
+        if self._stopped or not self._config.shellys_with_watchdog:
             return
         self._unsubs.append(
             async_track_time_interval(
@@ -102,7 +103,7 @@ class HeartbeatClient:
             )
         )
         self._unsubs.append(self._controller.async_add_listener(self._on_update))
-        self._send(self._config.shellys)
+        self._send(self._config.shellys_with_watchdog)
 
     async def async_stop(self) -> None:
         self._stopped = True
@@ -117,14 +118,15 @@ class HeartbeatClient:
 
     @callback
     def _on_tick(self, _now: datetime) -> None:
-        self._send(self._config.shellys)
+        self._send(self._config.shellys_with_watchdog)
 
     @callback
     def _on_update(self) -> None:
         """After every run: a changed heating season goes to the heat source at once."""
         season = self._controller.settings.heating_season
         if self._season_requested is not None and season != self._season_requested:
-            self._send([s for s in self._config.shellys if s.role is ShellyRole.HEAT_SOURCE])
+            shellys = self._config.shellys_with_watchdog
+            self._send([s for s in shellys if s.role is ShellyRole.HEAT_SOURCE])
 
     def _alive(self) -> bool:
         """The reconcile loop has completed a run recently."""

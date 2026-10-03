@@ -452,7 +452,7 @@ async def test_real_template_switches_as_stand_ins(world: World, hass: HomeAssis
     conf[DOMAIN]["heat_source_switch"] = "switch.stand_in_heat_source"
     for n, zone in enumerate(conf[DOMAIN]["zones"], start=1):
         zone["valve"] = f"switch.stand_in_valve_{n}"
-    conf[DOMAIN]["no_watchdog"] = [f"switch.{name}" for name in names]
+    conf[DOMAIN]["relays_without_watchdog"] = [f"switch.{name}" for name in names]
     assert await world.setup(conf)
     world.temp(1, 21.0)
     await world.advance(40)
