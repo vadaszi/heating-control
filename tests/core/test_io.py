@@ -38,7 +38,7 @@ def test_inputs_carry_everything_step_needs() -> None:
         zone_params={"living_room": ZoneParams(), "bathroom": ZoneParams(base_setpoint=23.0)},
         global_params=GlobalParams(),
         heating_season=True,
-        control_active=False,
+        shadow_mode=True,
         time_zone=UTC,
         reconcile_tick=False,
     )

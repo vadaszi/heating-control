@@ -46,7 +46,7 @@ The minimum set; each has a test named after it. Defaults apply unless stated (t
 | A18 | The calling zone's sensor fails mid-run | counts as having reached its target → the sync rule fires; the zone goes into sensor fault |
 | A19 | Every sensor silent for 24 h, HA running, heating season ON | failsafe: every valve open + HP ON 10:00–15:00 daily; notification; ends with the first valid reading |
 | A20 | Heating season OFF (also switched OFF 20 min into a run) | HP OFF and valves closed immediately, min ON ignored; no demand; no failsafe heating; valve exercise on Monday 08:00; sensor fault notified without daily reminder |
-| A21 | Shadow mode | decisions and entities update with the commanded states as feedback; no switch commands; heartbeat still sent; Control active ON → OFF sends one final HP OFF + valves OFF, then nothing |
+| A21 | Shadow mode | decisions and entities update with the commanded states as feedback; no switch commands; heartbeat still sent; Shadow mode OFF → ON sends one final HP OFF + valves OFF, then nothing |
 | A22 | HA restart while waiting (10 min left) and HP ON for 20 min | after the restart the wait continues with ~10 min left; min ON counts from the original start |
 | A23 | A zone without a valve drops to its start temperature | behaves like A1 (can start the HP); no output command |
 | A24 | Schedule window 22:00–02:00 across a DST change | correct local start and end times |

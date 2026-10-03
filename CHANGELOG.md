@@ -10,7 +10,7 @@ First public release.
 - Per-zone thermostat with hysteresis and an open-window wait time; any number of zones, zones without a valve.
 - Calling zone and sync rule: the zone that starts a run gets the heat first, the others are topped up at its end.
 - Heat source protection: minimum on and off time (30–180 min), heat spread over the house during the minimum on time, demand held with the valve open during the minimum off time.
-- Heating season switch; shadow mode (Control active OFF) that decides but switches nothing.
+- Heating season switch; a Shadow mode switch (ON after the installation): the integration decides but switches nothing.
 
 **Schedules and holiday**
 - Auto schedules (a target for a time window) and manual schedules (force a zone to heat, with a temperature cap), one-shot or recurring, across midnight and daylight saving time.

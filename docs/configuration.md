@@ -1,6 +1,6 @@
 # Configuration reference
 
-Multizone Floor Heating Manager is set up in `configuration.yaml`. The YAML holds only the **wiring**: which sensor and which switches belong to which zone. Every value you change in daily use (set points, parameters, heating season, Control active) is changed from the HA UI and stored by the integration.
+Multizone Floor Heating Manager is set up in `configuration.yaml`. The YAML holds only the **wiring**: which sensor and which switches belong to which zone. Every value you change in daily use (set points, parameters, heating season, shadow mode) is changed from the HA UI and stored by the integration.
 
 For a first installation, see [Getting started](getting-started.md); for what the settings do, see [How it works](how-it-works.md).
 
@@ -47,7 +47,7 @@ The entity ids and addresses are examples: use your own.
 The integration reads only the YAML. At startup it imports it into a single entry under *Settings → Devices & services* ("Multizone Floor Heating Manager"), so it can create devices:
 
 - one device per zone, named "<zone name> floor heating" (e.g. "Living room floor heating");
-- one device "Floor heating" for the global entities (heat request, heating season, Control active, parameters, alerts).
+- one device "Floor heating" for the global entities (heat request, heating season, shadow mode, parameters, alerts).
 
 You can assign each zone device to its area in the device's settings; nothing in the YAML is needed for that. When you change the YAML and restart, the entry and devices follow: a new zone gets a device, a removed zone's device and entities are removed, a renamed zone's device gets the new name. *Add integration* in the UI only points to the YAML.
 
@@ -154,10 +154,10 @@ floor_heating_watchdog_url: https://hc-ping.com/<your-check-uuid>
 
 ## Shadow mode
 
-After the first installation **Control active is OFF** (shadow mode). The integration then reads everything and makes its decisions, but it sends **no** switch commands. It treats its own decisions as if the switches had followed, so the decisions stay consistent. Use it to check the integration's decisions before it takes over; the steps are in [Getting started](getting-started.md#7-shadow-run).
+After the first installation the **Shadow mode** switch is **ON**. The integration then reads everything and makes its decisions, but it sends **no** switch commands. It treats its own decisions as if the switches had followed, so the decisions stay consistent. Use it to check the integration's decisions before it takes over; the steps are in [Getting started](getting-started.md#7-shadow-run).
 
-- **Switching Control active OFF** (live → shadow) sends one final safe set: heat source OFF, all valves OFF. A switch that is unavailable at that moment, or does not follow, gets the OFF again (with the retries above) until it has reported OFF once, also across a restart. After that, nothing more is sent.
-- **Switching Control active ON** (shadow → live) sets every output to the desired state at the next run.
+- **Switching Shadow mode ON** (live → shadow) sends one final safe set: heat source OFF, all valves OFF. A switch that is unavailable at that moment, or does not follow, gets the OFF again (with the retries above) until it has reported OFF once, also across a restart. After that, nothing more is sent.
+- **Switching Shadow mode OFF** (shadow → live) sets every output to the desired state at the next run.
 - **Going live after shadow mode:** from then on the real switch states count. If shadow mode believed the heat source was running, the real switch reads OFF. That counts as a stop, so the minimum OFF time (default 60 min) runs before the heat source is first requested. The zones that need heat already open their valves.
 
 ## Schedules and holiday
@@ -297,11 +297,11 @@ Settings (the parameter numbers, the times of day and the valve exercise day) ha
 |---|---|
 | `binary_sensor.floor_heating_heat_request` (Heat request) | The heat source request the integration wants (in shadow mode: the simulated one). While the heat source runs: attributes `on_since` and `on_duration` (minutes; not kept in the history). Both are left out while it is not running. |
 | `sensor.floor_heating_heat_source` (Heat source) | What the heat source does and why: `heating` (Heating), `idle` (Off, no heat demand), `held_by_minimum_off_time` (Waiting for minimum off time: a zone wants heat, but the heat source stopped less than its minimum off time ago), `spreading_heat` (Running for minimum on time (spreading heat): no zone needs heat, but the minimum on time has not passed), `season_off` (Heating season off), `unavailable` (Switch unavailable), `failsafe_heating` (Failsafe heating), `failsafe_waiting` (Failsafe, waiting for operation start). If several apply, the first in this order wins: unavailable, season off, waiting, spreading, failsafe heating, failsafe waiting, heating, off. While waiting or spreading, the attribute `until` holds the end of that timer, in the failsafe the operation stop or the next operation start; otherwise there is no `until`. In shadow mode it shows the simulated heat source. |
-| `sensor.floor_heating_mode` (Mode) | `normal`; `holiday` while holiday is on; `failsafe` from when no sensor has sent a valid reading for longer than the failsafe operation delay until the first one reports again (heating season only; failsafe wins over holiday). Attribute `shadow`: true while Control active is OFF. |
+| `sensor.floor_heating_mode` (Mode) | `normal`; `holiday` while holiday is on; `failsafe` from when no sensor has sent a valid reading for longer than the failsafe operation delay until the first one reports again (heating season only; failsafe wins over holiday). Attribute `shadow`: true while Shadow mode is ON. |
 | `sensor.floor_heating_schedules` (Schedules) | Number of schedules; attribute `schedules` lists them, each with `id`, `label` (e.g. `#3 Auto · Living room · Every day 13:00–17:00 · 23.0 °C`), `kind`, `zones` (zone ids or `all`), `date` (one-shot) or `weekdays` (`mon` … `sun`), `start`, `end`, `temperature` (auto, in your unit system). See [Schedules and holiday](#schedules-and-holiday). |
 | `sensor.floor_heating_alerts` (Alerts) | Number of active alerts; attribute `alerts` lists them (`kind`, `zone_id`, `message`): sensor faults (`sensor_fault_started`), switches not following (`output_mismatch`), Shellys not answering (`watchdog_failed`), Shelly script parameters differing (`watchdog_params_mismatch`), the failsafe (`failsafe_started`) and a long run (`long_run`). |
 | `switch.floor_heating_heating_season` (Heating season) | Heating season (default ON). OFF: no heating demand, heat source OFF and valves closed at once. |
-| `switch.floor_heating_control_active` (Control active) | OFF = shadow mode (default after the first installation). See [Shadow mode](#shadow-mode). |
+| `switch.floor_heating_shadow_mode` (Shadow mode) | ON = shadow mode: decisions only, no switch commands (default after the first installation). OFF = the integration switches the relays. See [Shadow mode](#shadow-mode). |
 | `time.floor_heating_sensor_fault_reminder_time` (Sensor fault reminder time) | Time of the daily sensor fault reminder (default 08:00). Configuration category. |
 | `switch.floor_heating_holiday` (Holiday) | Holiday on/off; see [Holiday](#holiday). Switching it on with an end in the past is refused; it turns off by itself at the end. |
 | `date.floor_heating_holiday_end_date` (Holiday end date) | The day holiday ends. Empty (unknown) = no end. Cleared when holiday ends. |

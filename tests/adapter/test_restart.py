@@ -60,7 +60,7 @@ async def test_a22_restart_during_wait_continues_the_wait(world: World) -> None:
 
     async with restarted(world, downtime=3, prepare=prepare) as new:
         assert await new.setup(make_conf(), live=False)
-        assert new.controller.settings.control_active  # restored
+        assert not new.controller.settings.shadow_mode  # restored
         assert new.mode(1) == "waiting"
         assert new.reason(1) == "waiting"
         await new.advance(6)
@@ -106,7 +106,7 @@ async def test_settings_survive_a_restart(world: World) -> None:
     async with restarted(world, prepare=lambda new: new.setup_entities()) as new:
         assert await new.setup(make_conf(), live=False)
         settings = new.controller.settings
-        assert settings.control_active
+        assert not settings.shadow_mode
         assert not settings.heating_season
         assert settings.zone_params["zone_2"].base_setpoint == 20.5
         assert settings.zone_params["zone_1"].base_setpoint == 22.0
@@ -118,7 +118,7 @@ async def test_first_install_defaults(world: World) -> None:
     assert await world.setup(live=False)
     settings = world.controller.settings
     assert settings.heating_season
-    assert not settings.control_active  # shadow mode
+    assert settings.shadow_mode
 
 
 async def test_final_off_survives_a_restart(world: World) -> None:
@@ -126,7 +126,7 @@ async def test_final_off_survives_a_restart(world: World) -> None:
     assert await world.setup()
     world.switch(HEAT_SOURCE, "unavailable")
     await world.hass.async_block_till_done()
-    await world.controller.async_set_control_active(False)
+    await world.controller.async_set_shadow_mode(True)
     await world.hass.async_block_till_done()
     assert world.controller.pending_off == {HEAT_SOURCE}
 
@@ -146,7 +146,7 @@ async def test_saves_are_delayed(world: World, hass_storage: dict[str, Any]) -> 
     world.freezer.tick(timedelta(seconds=SAVE_DELAY))
     await world.advance(1)
     stored = _stored(hass_storage)
-    assert stored["settings"]["control_active"] is False
+    assert stored["settings"]["shadow_mode"] is True
     assert stored["core"]["schema_version"] == 1
     assert stored["pending_off"] == []
 
@@ -165,12 +165,30 @@ async def test_newer_state_is_discarded(
 ) -> None:
     _preload(
         hass_storage,
-        {"core": {"schema_version": 99}, "settings": {"control_active": True}},
+        {"core": {"schema_version": 99}, "settings": {"shadow_mode": False}},
     )
     world.setup_entities()
     assert await world.setup(live=False)
     assert "starting as on a first start" in caplog.text
-    assert world.controller.settings.control_active  # settings are separate
+    assert not world.controller.settings.shadow_mode  # settings are separate
+
+
+async def test_stored_data_without_shadow_mode_starts_in_shadow_mode(
+    world: World, hass_storage: dict[str, Any]
+) -> None:
+    """Only `shadow_mode` is read: an older `control_active` key is ignored, so the
+    integration starts in shadow mode and switches nothing."""
+    _preload(hass_storage, {"settings": {"control_active": True}})
+    world.setup_entities(hp="on")
+    assert await world.setup(live=False)
+    world.temp(1, 21.8)
+    world.temp(2, 23.0)
+    await world.advance_to("06:30")
+    assert world.controller.settings.shadow_mode
+    assert world.state("switch.floor_heating_shadow_mode") == "on"
+    assert world.mode(1) == "heating"
+    assert world.calls == []
+    assert world.state(HEAT_SOURCE) == "on"  # left as it was
 
 
 @pytest.mark.parametrize(
@@ -182,7 +200,7 @@ async def test_newer_state_is_discarded(
             {"settings": {"zones": {"zone_1": {"base_setpoint": 99}}}},
             "Stored parameters are unusable",
         ),
-        ({"settings": {"control_active": "yes"}}, "control active are unusable"),
+        ({"settings": {"shadow_mode": "yes"}}, "shadow mode are unusable"),
         (
             {"settings": {"global": {"sensor_fault_reminder": "8 o'clock", "manual_max_temp": 5}}},
             "Stored parameters are unusable",
@@ -201,7 +219,7 @@ async def test_unusable_stored_data_falls_back_to_defaults(
     assert await world.setup(live=False)
     assert warning in caplog.text
     settings = world.controller.settings
-    assert not settings.control_active
+    assert settings.shadow_mode
     assert settings.zone_params["zone_1"].base_setpoint == 22.0
 
 

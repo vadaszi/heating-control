@@ -138,7 +138,7 @@ async def test_no_run_before_ha_has_started(world: World, hass: HomeAssistant) -
     hass.set_state(CoreState.starting)
     world.setup_entities(hp="on")
     assert await world.setup(live=False)
-    await world.controller.async_set_control_active(True)
+    await world.controller.async_set_shadow_mode(False)
     await world.advance(3)
     assert world.controller.outputs is None
     assert world.calls == []

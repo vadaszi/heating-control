@@ -216,7 +216,7 @@ def track_outputs(
     """
     valved = [zone for zone in config.zones if zone.has_valve]
     old_valves = {zone.id: state.zones.get(zone.id, ZoneState()).valve_output for zone in valved}
-    if not inputs.control_active:  # shadow mode: inactive, reset without events
+    if inputs.shadow_mode:  # inactive, reset without events
         return OutputTracking(), dict.fromkeys(old_valves, OutputTracking()), None, []
     last_tick = state.reconcile_tick_at
     if not inputs.reconcile_tick or (last_tick is not None and now <= last_tick):

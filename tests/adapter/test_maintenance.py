@@ -124,7 +124,7 @@ def _dead_since(hours: int) -> dict[str, Any]:
     zone = {"mode": "sensor_fault", "last_valid_value": 22.0, "last_valid_at": last}
     return {
         "core": {"schema_version": 1, "zones": {"zone_1": zone, "zone_2": zone}},
-        "settings": {"control_active": True},
+        "settings": {"shadow_mode": False},
     }
 
 

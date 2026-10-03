@@ -98,7 +98,7 @@ def test_fault_that_began_while_ha_was_down_is_notified() -> None:
 def test_fault_events_in_shadow_mode() -> None:
     """Only the mismatch alert is inactive in shadow mode."""
     sc = Scenario(2, temps={1: None})
-    sc.control_active = False
+    sc.shadow_mode = True
     sc.step()
     sc.advance_to("07:01")
     assert len(sc.events_of(STARTED)) == 1
@@ -336,14 +336,14 @@ def test_inactive_in_shadow_mode() -> None:
     sc.set_valve_actual(1, OutputState.UNAVAILABLE)
     sc.advance(3)
     assert len(sc.events_of(MISMATCH)) == 1
-    sc.control_active = False
+    sc.shadow_mode = True
     sc.advance(10)
     assert sc.state.zones["zone_1"].valve_output == OutputTracking()  # reset silently
     assert sc.state.heat_source_output == OutputTracking()
     assert sc.events_of(MISMATCH_RECOVERED) == []
     assert len(sc.events_of(MISMATCH)) == 1
 
-    sc.control_active = True  # still unavailable: a fresh count from here
+    sc.shadow_mode = False  # still unavailable: a fresh count from here
     sc.advance(2)
     assert len(sc.events_of(MISMATCH)) == 1
     sc.advance(1)
@@ -478,7 +478,7 @@ def test_long_run_alarm_survives_an_unavailable_spell() -> None:
 
 def test_long_run_alarm_in_shadow_mode_and_not_repeated_after_restart() -> None:
     sc = _long_run()
-    sc.control_active = False
+    sc.shadow_mode = True
     sc.advance_to("18:31")
     assert len(sc.events_of(EventKind.LONG_RUN)) == 1
     sc.restart(downtime=5)

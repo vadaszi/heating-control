@@ -848,7 +848,7 @@ def _inputs(zones: dict[str, ZoneInput], params: dict[str, ZoneParams]) -> Input
         zone_params=params,
         global_params=GlobalParams(),
         heating_season=True,
-        control_active=True,
+        shadow_mode=False,
         time_zone=UTC,
         reconcile_tick=True,
     )

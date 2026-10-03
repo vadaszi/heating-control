@@ -17,7 +17,7 @@ async def _shadow_heating(world: World) -> None:
 async def test_a21_shadow_mode_decides_but_sends_nothing(world: World) -> None:
     await _shadow_heating(world)
     controller = world.controller
-    assert not controller.settings.control_active  # OFF on first install
+    assert controller.settings.shadow_mode  # ON on first install
     assert world.mode(1) == "heating"
     outputs = controller.outputs
     assert outputs is not None
@@ -62,7 +62,7 @@ async def test_a21_no_mismatch_alert_in_shadow(
     assert "does not follow its command" not in caplog.text
 
 
-async def test_a21_switching_off_sends_one_final_safe_set(world: World) -> None:
+async def test_a21_shadow_mode_on_sends_one_final_safe_set(world: World) -> None:
     world.setup_entities()
     assert await world.setup()
     world.temp(1, 21.8)
@@ -71,7 +71,7 @@ async def test_a21_switching_off_sends_one_final_safe_set(world: World) -> None:
     assert world.state(valve(1)) == "on"
     world.calls.clear()
 
-    await world.controller.async_set_control_active(False)
+    await world.controller.async_set_shadow_mode(True)
     await world.hass.async_block_till_done()
     assert sorted(world.calls) == [(HEAT_SOURCE, "off"), (valve(1), "off")]
     assert world.controller.pending_off == frozenset()
@@ -95,7 +95,7 @@ async def test_final_off_waits_for_an_unavailable_heat_source(world: World) -> N
     await world.hass.async_block_till_done()
     world.calls.clear()
 
-    await world.controller.async_set_control_active(False)
+    await world.controller.async_set_shadow_mode(True)
     await world.hass.async_block_till_done()
     assert world.calls == [(valve(1), "off")]
     assert world.controller.pending_off == {HEAT_SOURCE}
@@ -111,7 +111,7 @@ async def test_final_off_is_retried_until_confirmed(world: World) -> None:
     assert await world.setup()
     world.ignoring.add(HEAT_SOURCE)
     world.calls.clear()
-    await world.controller.async_set_control_active(False)
+    await world.controller.async_set_shadow_mode(True)
     await world.hass.async_block_till_done()
     await world.advance(3)
     assert world.calls.count((HEAT_SOURCE, "off")) == 3  # at once, +1 min, +3 min
@@ -124,13 +124,13 @@ async def test_final_off_is_retried_until_confirmed(world: World) -> None:
     assert world.calls == []
 
 
-async def test_switching_on_sets_all_outputs(world: World) -> None:
+async def test_shadow_mode_off_sets_all_outputs(world: World) -> None:
     world.setup_entities()
     world.switch(valve(2), "on")  # e.g. switched by hand
     assert await world.setup(live=False)
     await world.advance(5)
     assert world.calls == []
-    await world.controller.async_set_control_active(True)
+    await world.controller.async_set_shadow_mode(False)
     await world.hass.async_block_till_done()
     assert world.calls == [(valve(2), "off")]
 
@@ -139,7 +139,7 @@ async def test_going_live_while_shadow_heats_applies_min_off(world: World) -> No
     """Shadow had the HP ON, the real switch is OFF: that counts as a stop, so min OFF
     applies before the first real start (accepted and documented)."""
     await _shadow_heating(world)
-    await world.controller.async_set_control_active(True)
+    await world.controller.async_set_shadow_mode(False)
     await world.hass.async_block_till_done()
     assert world.calls == [(valve(1), "on")]  # HEATING, held by min OFF
     assert world.reason(1) == "held_by_minimum_off_time"

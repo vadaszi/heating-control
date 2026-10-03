@@ -46,7 +46,7 @@ GLOBAL_ENTITIES = {
     "sensor.floor_heating_schedules": ("schedules", None),
     "sensor.floor_heating_heat_source": ("heat_source", None),
     "switch.floor_heating_heating_season": ("heating_season", None),
-    "switch.floor_heating_control_active": ("control_active", None),
+    "switch.floor_heating_shadow_mode": ("shadow_mode", None),
     "time.floor_heating_sensor_fault_reminder_time": (
         "sensor_fault_reminder",
         EntityCategory.CONFIG,
@@ -124,7 +124,7 @@ async def test_views_are_unavailable_before_the_first_run(
     assert _state(hass, "climate.zone_1_floor_heating").state == "unavailable"
     assert _state(hass, "binary_sensor.floor_heating_heat_request").state == "unavailable"
     # settings can be changed at once
-    assert _state(hass, "switch.floor_heating_control_active").state == "off"
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "on"
     assert float(_state(hass, "number.floor_heating_heat_source_minimum_on_time").state) == 60
 
 
@@ -188,8 +188,26 @@ async def test_mode_sensor_shows_shadow(world: World, hass: HomeAssistant) -> No
     mode = _state(hass, "sensor.floor_heating_mode")
     assert mode.state == "normal"
     assert mode.attributes["shadow"] is True
-    await _call(hass, "switch", "turn_on", "switch.floor_heating_control_active")
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "on"
+    await _call(hass, "switch", "turn_off", "switch.floor_heating_shadow_mode")
     assert _state(hass, "sensor.floor_heating_mode").attributes["shadow"] is False
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "off"
+    await _call(hass, "switch", "turn_on", "switch.floor_heating_shadow_mode")
+    assert _state(hass, "sensor.floor_heating_mode").attributes["shadow"] is True
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "on"
+
+
+async def test_shadow_mode_is_on_after_the_first_install(world: World, hass: HomeAssistant) -> None:
+    """A first install sends nothing until Shadow mode is switched OFF."""
+    world.setup_entities()
+    assert await world.setup(live=False)
+    world.temp(1, 21.8)
+    await world.advance_to("06:30")
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "on"
+    assert _state(hass, "binary_sensor.floor_heating_heat_request").state == "on"  # decided
+    assert world.calls == []
+    await _call(hass, "switch", "turn_off", "switch.floor_heating_shadow_mode")
+    assert (valve(1), "on") in world.calls
 
 
 async def test_heat_source_sensor(world: World, hass: HomeAssistant) -> None:
@@ -359,13 +377,13 @@ async def test_entity_settings_survive_a_restart(world: World, hass: HomeAssista
         climate = _state(new.hass, "climate.zone_2_floor_heating")
         assert climate.attributes["temperature"] == 20.5
         assert _state(new.hass, "switch.floor_heating_heating_season").state == "off"
-        assert _state(new.hass, "switch.floor_heating_control_active").state == "on"
+        assert _state(new.hass, "switch.floor_heating_shadow_mode").state == "off"
 
 
 # ---------------------------------------------------------------- switches
 
 
-async def test_control_active_switch_off_sends_the_final_safe_set(
+async def test_shadow_mode_switch_on_sends_the_final_safe_set(
     world: World, hass: HomeAssistant
 ) -> None:
     world.setup_entities()
@@ -373,9 +391,9 @@ async def test_control_active_switch_off_sends_the_final_safe_set(
     world.temp(1, 21.8)
     await world.advance_to("06:30")
     world.calls.clear()
-    await _call(hass, "switch", "turn_off", "switch.floor_heating_control_active")
+    await _call(hass, "switch", "turn_on", "switch.floor_heating_shadow_mode")
     assert sorted(world.calls) == [(HEAT_SOURCE, "off"), (valve(1), "off")]
-    assert _state(hass, "switch.floor_heating_control_active").state == "off"
+    assert _state(hass, "switch.floor_heating_shadow_mode").state == "on"
 
 
 async def test_heating_season_switch_stops_the_request(world: World, hass: HomeAssistant) -> None:
@@ -412,7 +430,7 @@ async def test_shadow_trial_with_stand_in_switches(world: World, hass: HomeAssis
     alerts = _state(hass, "sensor.floor_heating_alerts")
     assert [a["kind"] for a in alerts.attributes["alerts"]] == ["long_run"]
 
-    await _call(hass, "switch", "turn_on", "switch.floor_heating_control_active")
+    await _call(hass, "switch", "turn_off", "switch.floor_heating_shadow_mode")
     world.temp(1, 21.5)
     await world.advance(90)
     assert (valve(1), "on") in world.calls  # live: the stand-ins now follow the integration

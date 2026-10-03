@@ -6,10 +6,10 @@ that differ from the desired state. Runs are serialised by a lock and start:
 - when a mapped sensor or switch changes state;
 - when a setting changes.
 
-Shadow mode (Control active OFF):
+Shadow mode (the Shadow mode switch ON):
 - no commands; the core gets the commanded states as feedback. When the desired
   state changes, `step` runs again at once, as if the switches had followed;
-- Control active ON → OFF: every switch not reporting OFF gets OFF, retried with backoff
+- Shadow mode OFF → ON: every switch not reporting OFF gets OFF, retried with backoff
   until it has reported OFF once, also across a restart; then nothing more is sent.
 
 The loop starts once HA has started, so entities that are still loading neither get
@@ -192,17 +192,17 @@ class FloorHeatingController:
 
     # ------------------------------------------------------------ settings
 
-    async def async_set_control_active(self, active: bool) -> None:
-        if active == self._settings.control_active:
+    async def async_set_shadow_mode(self, on: bool) -> None:
+        if on == self._settings.shadow_mode:
             return
         self._commander.reset()
-        if active:
-            self._pending_off.clear()
-        else:  # final safe command set, then no commands
+        if on:  # final safe command set, then no commands
             self._pending_off = set(self.config.switches)
             self._commanded = dict.fromkeys(self.config.switches, False)
-        _LOGGER.info("Control active %s", "ON" if active else "OFF (shadow mode)")
-        await self._async_update_settings(control_active=active)
+        else:
+            self._pending_off.clear()
+        _LOGGER.info("Shadow mode %s", "ON (no commands)" if on else "OFF (controlling)")
+        await self._async_update_settings(shadow_mode=on)
 
     async def async_set_heating_season(self, on: bool) -> None:
         await self._async_update_settings(heating_season=on)
@@ -398,19 +398,19 @@ class FloorHeatingController:
             entity_id: read_switch(self.hass.states.get(entity_id))
             for entity_id in self.config.switches
         }
-        control = self._settings.control_active
+        shadow = self._settings.shadow_mode
         for _ in range(_MAX_SHADOW_RUNS):
-            feedback = actual if control else self._commanded_states()
+            feedback = self._commanded_states() if shadow else actual
             outputs = self._step(feedback, now, tick=tick)
             desired = self._desired(outputs)
-            if control or desired == self._commanded:
+            if not shadow or desired == self._commanded:
                 break
             self._commanded = desired
             tick = False  # the same `now` is one reconcile tick
-        if control:
-            self._commander.apply(desired, actual, now)
-        else:
+        if shadow:
             self._final_off(actual, now)
+        else:
+            self._commander.apply(desired, actual, now)
         self._settle(outputs)
         self._last_run_ok_at = now
         self.async_update_listeners()
@@ -464,7 +464,7 @@ class FloorHeatingController:
             zone_params=dict(settings.zone_params),
             global_params=settings.global_params,
             heating_season=settings.heating_season,
-            control_active=settings.control_active,
+            shadow_mode=settings.shadow_mode,
             time_zone=dt_util.get_default_time_zone(),  # follows HA's setting
             reconcile_tick=tick,
             schedules=settings.schedules,

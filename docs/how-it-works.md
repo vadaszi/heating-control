@@ -134,9 +134,9 @@ After a Home Assistant restart the integration continues where it stopped: runni
 
 ## Shadow mode
 
-With **Control active** OFF the integration makes every decision but switches nothing. It treats its decisions as if the relays had followed, so they stay consistent. Heartbeats to the Shellys and the watchdog ping continue. This is the state after the first installation; see [Getting started](getting-started.md#7-shadow-run).
+With **Shadow mode** ON the integration makes every decision but switches nothing. It treats its decisions as if the relays had followed, so they stay consistent. Heartbeats to the Shellys and the watchdog ping continue. This is the state after the first installation; see [Getting started](getting-started.md#7-shadow-run).
 
-Switching Control active OFF while it was in control sends the heat source and every valve OFF once, then nothing more. For switching the relays by hand, see [Troubleshooting](troubleshooting.md#switching-by-hand).
+Switching Shadow mode ON while the integration was in control sends the heat source and every valve OFF once, then nothing more. For switching the relays by hand, see [Troubleshooting](troubleshooting.md#switching-by-hand).
 
 ## Hot water
 

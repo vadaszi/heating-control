@@ -103,7 +103,7 @@ def test_only_built_in_cards() -> None:
 
 
 def test_no_header_toggle() -> None:
-    """A "toggle all" header switch would switch the season, Control active and holiday
+    """A "toggle all" header switch would switch the season, Shadow mode and holiday
     with one tap."""
     entities_cards = [c for c in _cards(_dashboard()) if c["type"] == "entities"]
     assert entities_cards
@@ -130,7 +130,7 @@ def test_badges_show_everything_at_a_glance() -> None:
     for entity_id in (  # not badges: they are on the House card
         "sensor.floor_heating_mode",
         "switch.floor_heating_heating_season",
-        "switch.floor_heating_control_active",
+        "switch.floor_heating_shadow_mode",
     ):
         assert entity_id not in shown, entity_id
     wanted = [b for b in badges if b.get("state_content") == ["valve"]]

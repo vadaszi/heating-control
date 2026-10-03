@@ -103,7 +103,7 @@ async def test_reload_restarts_the_control_and_keeps_settings(
     assert new is not old
     assert old._stopped  # nothing of the old instance runs on
     assert not new.settings.heating_season
-    assert new.settings.control_active
+    assert not new.settings.shadow_mode
     await world.advance(2)
     assert new.outputs is not None
     assert hass.states.get("switch.floor_heating_heating_season").state == "off"  # type: ignore[union-attr]
@@ -138,7 +138,7 @@ async def test_removing_the_entry_keeps_the_stored_settings(
     await hass.async_block_till_done()
     assert world.entry.state is ConfigEntryState.LOADED
     assert not world.controller.settings.heating_season
-    assert world.controller.settings.control_active
+    assert not world.controller.settings.shadow_mode
 
 
 async def test_missing_yaml_section_fails_the_entry_and_deletes_nothing(

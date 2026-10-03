@@ -123,7 +123,7 @@ class ModeSensor(FloorHeatingEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"shadow": not self.controller.settings.control_active}
+        return {"shadow": self.controller.settings.shadow_mode}
 
 
 class HeatSourceSensor(FloorHeatingEntity, SensorEntity):

@@ -104,7 +104,7 @@ class Scenario:
         self.valves_actual = {z.id: OutputState.OFF for z in self.config.zones if z.has_valve}
         self.valves_follow = dict.fromkeys(self.valves_actual, True)
         self.heating_season = True
-        self.control_active = True
+        self.shadow_mode = False
         self.schedules: list[Schedule] = []
         self.holiday_on = False
         self.holiday_until: datetime | None = None
@@ -225,7 +225,7 @@ class Scenario:
             zone_params=dict(self.zone_params),
             global_params=self.global_params,
             heating_season=self.heating_season,
-            control_active=self.control_active,
+            shadow_mode=self.shadow_mode,
             time_zone=self.tz,
             reconcile_tick=True,
             schedules=tuple(self.schedules),

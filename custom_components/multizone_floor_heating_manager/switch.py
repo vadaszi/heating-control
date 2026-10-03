@@ -1,7 +1,7 @@
-"""Heating season, Control active and Holiday switches.
+"""Heating season, Shadow mode and Holiday switches.
 
-Their state is the controller's setting; switching Control active OFF sends the
-final safe command set. Holiday: switching it on with an end in the past
+Their state is the controller's setting; switching Shadow mode ON sends the
+final safe command set, then no commands. Holiday: switching it on with an end in the past
 is refused; switching it off clears the end.
 """
 
@@ -35,9 +35,9 @@ async def async_setup_entry(
             ),
             SettingSwitch(
                 controller,
-                "control_active",
-                lambda: controller.settings.control_active,
-                controller.async_set_control_active,
+                "shadow_mode",
+                lambda: controller.settings.shadow_mode,
+                controller.async_set_shadow_mode,
             ),
             SettingSwitch(
                 controller,

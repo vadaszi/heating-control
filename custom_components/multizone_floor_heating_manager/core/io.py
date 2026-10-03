@@ -48,6 +48,9 @@ class Inputs:
 
     - `time_zone`: HA's configured time zone. `now` may be in any time zone; the core
       converts it for local wall-clock rules.
+    - `shadow_mode`: True = shadow mode, the adapter sends no commands and passes the
+      commanded states as `heat_source` and valve states; False = the integration
+      controls the switches.
     - `reconcile_tick`: True only for the run started by the ReconcileInterval timer, not
       for runs on sensor updates or heat source changes. The mismatch counter counts
       these ticks.
@@ -60,7 +63,7 @@ class Inputs:
     zone_params: Mapping[str, ZoneParams]
     global_params: GlobalParams
     heating_season: bool
-    control_active: bool
+    shadow_mode: bool
     time_zone: tzinfo
     reconcile_tick: bool
     schedules: Sequence[Schedule] = ()

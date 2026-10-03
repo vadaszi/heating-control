@@ -50,7 +50,7 @@ class OutputCommander:
         self._tasks: set[asyncio.Task[None]] = set()
 
     def reset(self) -> None:
-        """Forget retry state (e.g. when Control active changes)."""
+        """Forget retry state (e.g. when Shadow mode changes)."""
         for track in self._tracks.values():
             track.desired, track.sent, track.next_at = None, 0, None
 

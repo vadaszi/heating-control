@@ -172,7 +172,7 @@ views:
                 format: time
               - entity: sensor.floor_heating_mode
               - entity: switch.floor_heating_heating_season
-              - entity: switch.floor_heating_control_active
+              - entity: switch.floor_heating_shadow_mode
       - type: grid
         cards:
           # What the states and reasons mean. Delete this card once you know them.

@@ -21,7 +21,7 @@ step(config: CoreConfig, state: CoreState, inputs: Inputs, now: datetime) -> tup
 | `zones[zone_id]` | `reading` (raw °C before the offset, `None` if not numeric), `last_reported` (the sensor's aware `last_reported`), `valve` (`OutputState` ON / OFF / UNAVAILABLE; `None` for a zone without a valve). Every configured zone must be present. |
 | `heat_source` | The heat source switch's `OutputState`. In shadow mode the adapter passes the commanded state. |
 | `zone_params`, `global_params` | The UI values. |
-| `heating_season`, `control_active` | The two switches. |
+| `heating_season`, `shadow_mode` | The two switches. `shadow_mode` True: no commands (the mismatch alert is inactive). |
 | `time_zone` | HA's time zone (`tzinfo`). |
 | `reconcile_tick` | True only for the run started by the reconcile timer; the output mismatch counter counts these ticks. |
 | `schedules`, `holiday_on`, `holiday_until` | Owned and stored by the adapter. Holiday is active while it is on and `now` is before its end (no end: until switched off). |

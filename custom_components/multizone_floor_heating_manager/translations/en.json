@@ -251,8 +251,8 @@
       "heating_season": {
         "name": "Heating season"
       },
-      "control_active": {
-        "name": "Control active"
+      "shadow_mode": {
+        "name": "Shadow mode"
       },
       "holiday": {
         "name": "Holiday"

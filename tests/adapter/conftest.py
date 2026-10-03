@@ -173,7 +173,7 @@ class World:
         ok = await async_setup_component(self.hass, DOMAIN, conf or make_conf())
         await self.hass.async_block_till_done()
         if ok and live:
-            await self.controller.async_set_control_active(True)
+            await self.controller.async_set_shadow_mode(False)
             await self.hass.async_block_till_done()
         return ok
 

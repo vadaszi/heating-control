@@ -103,7 +103,7 @@ Check the configuration (*Developer tools → YAML → Check configuration*), th
 - *Settings → Devices & services* shows "Multizone Floor Heating Manager" with one device per zone ("Living room floor heating", …) and a "Floor heating" device for the house. Assign each zone device to its area in the device settings if you like.
 - *Settings → System → Logs* (search "multizone_floor_heating_manager") should show no errors. A persistent notification lists any entity that Home Assistant doesn't know (a typo in the YAML).
 - The entities are listed in [Entities](configuration.md#entities): per zone e.g. `climate.living_room_floor_heating` and `sensor.living_room_floor_heating_reason`, for the house e.g. `binary_sensor.floor_heating_heat_request`.
-- **Control active** (`switch.floor_heating_control_active`) is **OFF**: the integration is in shadow mode and switches nothing.
+- **Shadow mode** (`switch.floor_heating_shadow_mode`) is **ON**: the integration decides but switches nothing.
 - Set each zone's target temperature on its climate entity. Check the parameters (the *Configuration* entities of the "Floor heating" device and of each zone): minimum on and off time of the heat source, hysteresis and wait time per zone. The defaults suit a heat pump with underfloor heating.
 - Install the [example dashboard](dashboard.md). It shows everything below at a glance, with a 24-hour graph per zone and a card that explains every state and reason.
 
@@ -124,14 +124,14 @@ When the decisions look right:
 
 1. Switch your old controller off, or disconnect it from the relays, so only one controller switches them.
 2. Make sure the relays' own settings are right (power-on state OFF, no timers).
-3. Switch **Control active** ON. From the next run (within a minute) the integration switches the relays.
+3. Switch **Shadow mode** OFF. From the next run (within a minute) the integration switches the relays.
 4. Watch the first hours:
    - The real switch states count from now on. If shadow mode believed the heat source was running but the real switch is OFF, that counts as a stop: the **minimum off time** (default 60 min) runs before the first real heat request. The zones that need heat open their valves at once.
    - If the heat source was already running when you went live and no zone needs heat, it keeps running until its minimum on time has passed, with every valve open, so the heat goes somewhere. This happens once.
    - Each valve relay should follow its zone's `valve` attribute. A relay that doesn't follow its command for 3 minutes raises the alert "switch not following command".
 5. Keep the old controller at hand for the first days.
 
-To go back, switch Control active OFF: the integration switches the heat source and every valve OFF once and then sends nothing more ([Shadow mode](configuration.md#shadow-mode); for switching relays by hand see [Troubleshooting](troubleshooting.md#switching-by-hand)).
+To go back, switch Shadow mode ON: the integration switches the heat source and every valve OFF once and then sends nothing more ([Shadow mode](configuration.md#shadow-mode); for switching relays by hand see [Troubleshooting](troubleshooting.md#switching-by-hand)).
 
 ## 9. External watchdog
 
@@ -162,7 +162,7 @@ Other services with a push URL (e.g. an Uptime Kuma push monitor) work the same 
 
 ## Trying it out without hardware
 
-To see how the logic behaves before any relay is installed, use template helpers as stand-ins. Leave Control active OFF, or switch it ON: the integration then switches the stand-ins, so you can watch its commands safely.
+To see how the logic behaves before any relay is installed, use template helpers as stand-ins. Leave Shadow mode ON, or switch it OFF: the integration then switches the stand-ins, so you can watch its commands safely.
 
 **Stand-in switches:** *Settings → Devices & services → Helpers → Create helper → Template → Template a switch*. Leave the value template and both actions empty; the switch then remembers what it was switched to. **Switch each one OFF once** after creating it: a new template switch has no state ("unknown"), and the integration sends no command to a switch in that state. List the stand-ins in `no_watchdog`.
 

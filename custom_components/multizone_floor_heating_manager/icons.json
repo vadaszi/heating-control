@@ -65,8 +65,8 @@
       "heating_season": {
         "default": "mdi:sun-snowflake-variant"
       },
-      "control_active": {
-        "default": "mdi:robot"
+      "shadow_mode": {
+        "default": "mdi:eye-outline"
       },
       "holiday": {
         "default": "mdi:palm-tree"

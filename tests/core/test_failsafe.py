@@ -241,7 +241,7 @@ def test_not_notified_again_after_a_restart() -> None:
 
 def test_notified_in_shadow_mode() -> None:
     sc = _dead_from("06:00")
-    sc.control_active = False
+    sc.shadow_mode = True
     sc.advance_to("10:00", NEXT)
     assert len(sc.events_of(EventKind.FAILSAFE_STARTED)) == 1
     assert sc.hp  # the simulated decision

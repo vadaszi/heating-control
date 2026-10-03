@@ -42,7 +42,7 @@ Why it is built this way: the logic (calling zone, sync rule, minimum times, sch
 | `__init__.py` | Setup: YAML import into a single config entry, devices, platforms, removal of stale devices and entities, start and stop. |
 | `config_flow.py` | Import only; the UI step points to the YAML. |
 | `schema.py`, `const.py` | The YAML schema and defaults; `build_config` converts units and checks the wiring. |
-| `controller.py` | The reconcile loop, the settings (parameters, season, Control active, schedules, holiday), events, liveness. |
+| `controller.py` | The reconcile loop, the settings (parameters, season, shadow mode, schedules, holiday), events, liveness. |
 | `inputs.py`, `outputs.py` | Reading sensors and switches into `Inputs`; sending commands with backoff. |
 | `storage.py` | The `Store` file: core state, settings, pending final OFF, heartbeat alert state. |
 | `heartbeat.py`, `watchdog.py` | The Shelly heartbeat client; the external watchdog ping. |

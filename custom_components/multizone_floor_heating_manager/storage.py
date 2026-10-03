@@ -3,10 +3,10 @@
 One `helpers.storage.Store` file holds:
 - `core`: `CoreState.to_dict()`, restored with `load_state` (versioned by the core);
 - `settings`: the values changed from the UI (zone and global parameters, heating
-  season, control active, schedules, holiday); the adapter owns them and the entities
+  season, shadow mode, schedules, holiday); the adapter owns them and the entities
   and services only show and change them;
-- `pending_off`: switches that still have to confirm the final OFF after Control active
-  was switched OFF;
+- `pending_off`: switches that still have to confirm the final OFF after Shadow mode
+  was switched ON;
 - `heartbeat`: per Shelly (`ShellyWiring.key`), failed heartbeat calls in a row and the
   alerts sent, so a restart neither repeats an alert nor loses a recovery.
 
@@ -54,7 +54,7 @@ class Settings:
     zone_params: Mapping[str, ZoneParams]
     global_params: GlobalParams = field(default_factory=GlobalParams)
     heating_season: bool = True
-    control_active: bool = False  # shadow mode on first install
+    shadow_mode: bool = True  # on first install, and when nothing usable is stored
     schedules: tuple[Schedule, ...] = ()
     schedule_counter: int = 0  # the last schedule number handed out; never reused
     holiday_on: bool = False
@@ -77,7 +77,7 @@ class Settings:
                 "valve_exercise_weekday": self.global_params.valve_exercise_weekday,
             },
             "heating_season": self.heating_season,
-            "control_active": self.control_active,
+            "shadow_mode": self.shadow_mode,
             "schedules": schedules_to_list(self.schedules),
             "schedule_counter": self.schedule_counter,
             "holiday_on": self.holiday_on,
@@ -113,10 +113,10 @@ class Settings:
             GlobalParams, global_data, GLOBAL_PARAM_SPECS, warnings, _other_globals(global_data)
         )
         season = data.get("heating_season", defaults.heating_season)
-        control = data.get("control_active", defaults.control_active)
-        if not isinstance(season, bool) or not isinstance(control, bool):
-            warnings.append("Stored heating season / control active are unusable; using defaults.")
-            season, control = defaults.heating_season, defaults.control_active
+        shadow = data.get("shadow_mode", defaults.shadow_mode)
+        if not isinstance(season, bool) or not isinstance(shadow, bool):
+            warnings.append("Stored heating season / shadow mode are unusable; using defaults.")
+            season, shadow = defaults.heating_season, defaults.shadow_mode
         schedules, schedule_warnings = load_schedules(data.get("schedules"), config)
         warnings += schedule_warnings
         holiday_on, end_date, end_time = _holiday(data, warnings, time_zone)
@@ -124,7 +124,7 @@ class Settings:
             zone_params,
             global_params,
             season,
-            control,
+            shadow,
             schedules,
             _counter(data.get("schedule_counter"), schedules),
             holiday_on,

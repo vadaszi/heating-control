@@ -35,7 +35,7 @@ Look at the zone's **reason**:
 | Sensor fault, valve follows the heat source | See [sensor fault](#sensor-fault) below. |
 | Heating, heat source switch unavailable | The zone wants heat, but the heat source relay doesn't report. Check the relay and its Wi-Fi. |
 
-If the reason says *Heating* or *Calling zone* but nothing gets warm: check **Control active** (OFF = shadow mode, nothing is switched), the valve relay's state, and whether the heat source reacts to its relay.
+If the reason says *Heating* or *Calling zone* but nothing gets warm: check **Shadow mode** (ON = nothing is switched), the valve relay's state, and whether the heat source reacts to its relay.
 
 ## The heat source runs although every zone is warm
 
@@ -92,10 +92,10 @@ The integration sends heartbeats and watchdog pings only while its control loop 
 
 There is no separate manual mode. To control the relays yourself (e.g. to heat one room outside the logic, or for heat pump maintenance):
 
-1. Switch **Control active** OFF. The integration switches the heat source and every valve OFF once, then sends no more commands.
+1. Switch **Shadow mode** ON. The integration switches the heat source and every valve OFF once, then sends no more commands.
 2. Switch the relays as you like, in Home Assistant or the device app. No minimum on/off time, no temperature limit and no other protection applies now: you are in charge.
 3. Leave the watchdog scripts running. The integration keeps sending heartbeats, so the scripts act only if Home Assistant itself stops.
-4. Switch **Control active** ON to return to automatic control. It continues from the relays' real states; the heat source's minimum off time may delay the next start.
+4. Switch **Shadow mode** OFF to return to automatic control. It continues from the relays' real states; the heat source's minimum off time may delay the next start.
 
 ## Entity ids look odd after an update
 
